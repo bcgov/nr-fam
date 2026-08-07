@@ -28,15 +28,42 @@ parameters:
     description: The maximum amount of replicas for the horizontal pod autoscaler.
     value: "5"
   - name: CPU_REQUEST
-    value: "100m"
+    value: "200m"
   - name: MEMORY_REQUEST
-    value: "128Mi"
+    description: JVM working set. Higher than a Node backend would need.
+    value: "768Mi"
   - name: MEMORY_LIMIT
     description: Memory limit for the container (bounds the pod's working set).
-    value: "4Gi"
+    value: "2Gi"
   - name: LOG_LEVEL
-    description: Application log level (debug|info|warn|error)
-    value: "info"
+    description: Application log level (DEBUG|INFO|WARN|ERROR)
+    value: "INFO"
+  - name: SPRING_PROFILES_ACTIVE
+    value: ""
+  # ---------------------------------------------------------------------------
+  # BC Gov SSO (Keycloak). Replaces the AWS Cognito user pool.
+  # ---------------------------------------------------------------------------
+  - name: KEYCLOAK_ISSUER_URI
+    description: Keycloak realm issuer URI
+    required: true
+  - name: FAM_OIDC_CLIENT_ID
+    description: >-
+      FAM's own Keycloak client id. Tokens on the internal API must carry this as
+      their authorized party; /external is exempt.
+    required: true
+  - name: FAM_DEPLOYMENT_ENVIRONMENT
+    description: >-
+      dev, test or prod. Only "prod" allows the PROD instances of the Forest
+      Client API and IDIM proxy to be reached.
+    value: "dev"
+  # ---------------------------------------------------------------------------
+  # Secret holding the Keycloak client id for every downstream application, keyed
+  # as FLYWAY_PLACEHOLDERS_CLIENT_ID_<ENV>_<APP>_OIDC_CLIENT. Consumed by the
+  # migrations init container. See migrations/README.md.
+  # ---------------------------------------------------------------------------
+  - name: OIDC_CLIENTS_SECRET
+    description: Name of the secret holding the per-application OIDC client ids
+    value: oidc-clients
 objects:
   - apiVersion: apps/v1
     kind: Deployment
@@ -70,18 +97,31 @@ objects:
                         deployment: ${NAME}-${ZONE}-${COMPONENT}
                     topologyKey: kubernetes.io/hostname
           initContainers:
+            # The database is on-prem and is NOT deployed by this repo. This only
+            # checks reachability; it never provisions anything.
             - name: wait-for-db
               image: ${REGISTRY}/${ORG_NAME}/${NAME}/migrations:${IMAGE_TAG}
+              env:
+                - name: DB_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-database
+                      key: database-host
+                - name: DB_PORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-database
+                      key: database-port
               command:
                 - /bin/sh
                 - -c
                 - |
-                  echo "Waiting for database to be reachable..."
+                  echo "Waiting for on-prem database ${DB_HOST}:${DB_PORT} to be reachable..."
                   max_retries=30
                   attempt=1
-                  until nc -z -v -w3 ${NAME}-${ZONE}-database 5432; do
+                  until nc -z -v -w3 "${DB_HOST}" "${DB_PORT}"; do
                     if [ "$attempt" -ge "$max_retries" ]; then
-                      echo "ERROR: Database ${NAME}-${ZONE}-database:5432 is not reachable after ${max_retries} attempts." >&2
+                      echo "ERROR: Database ${DB_HOST}:${DB_PORT} is not reachable after ${max_retries} attempts." >&2
                       exit 1
                     fi
                     echo "Database not ready (attempt ${attempt}/${max_retries}), sleeping..."
@@ -103,14 +143,31 @@ objects:
             - name: migrations
               image: ${REGISTRY}/${ORG_NAME}/${NAME}/migrations:${IMAGE_TAG}
               imagePullPolicy: Always
+              envFrom:
+                # Per-application Keycloak client ids substituted into the
+                # seed-data migrations. Absent values fail the migration rather
+                # than seeding a bogus client.
+                - secretRef:
+                    name: ${OIDC_CLIENTS_SECRET}
+                    optional: false
               env:
+                - name: POSTGRES_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-database
+                      key: database-host
+                - name: POSTGRES_PORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-database
+                      key: database-port
                 - name: POSTGRES_DATABASE
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-database
                       key: database-name
                 - name: FLYWAY_URL
-                  value: jdbc:postgresql://${NAME}-${ZONE}-database:5432/$(POSTGRES_DATABASE)
+                  value: jdbc:postgresql://$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)
                 - name: FLYWAY_USER
                   valueFrom:
                     secretKeyRef:
@@ -121,10 +178,13 @@ objects:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-database
                       key: database-password
-                - name: FLYWAY_DEFAULT_SCHEMA
-                  value: "users"
+                - name: FLYWAY_SCHEMAS
+                  value: "app_fam"
+                # Deliberately NOT baselining on migrate: the full V1..V93
+                # history is present, so an unexpectedly non-empty schema should
+                # fail loudly rather than silently skip migrations.
                 - name: FLYWAY_BASELINE_ON_MIGRATE
-                  value: "true"
+                  value: "false"
               resources:
                 requests:
                   cpu: 10m
@@ -150,10 +210,18 @@ objects:
               env:
                 - name: LOG_LEVEL
                   value: ${LOG_LEVEL}
+                - name: SPRING_PROFILES_ACTIVE
+                  value: ${SPRING_PROFILES_ACTIVE}
                 - name: POSTGRES_HOST
-                  value: ${NAME}-${ZONE}-database
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-database
+                      key: database-host
                 - name: POSTGRES_PORT
-                  value: "5432"
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-database
+                      key: database-port
                 - name: POSTGRES_DATABASE
                   valueFrom:
                     secretKeyRef:
@@ -170,7 +238,23 @@ objects:
                       name: ${NAME}-${ZONE}-database
                       key: database-password
                 - name: POSTGRES_SCHEMA
-                  value: "users"
+                  value: "app_fam"
+                - name: KEYCLOAK_ISSUER_URI
+                  value: ${KEYCLOAK_ISSUER_URI}
+                - name: FAM_OIDC_CLIENT_ID
+                  value: ${FAM_OIDC_CLIENT_ID}
+                - name: FAM_DEPLOYMENT_ENVIRONMENT
+                  value: ${FAM_DEPLOYMENT_ENVIRONMENT}
+                  # Unused while Caddy proxies /api (same-origin), but kept
+                  # correct so a future direct-route setup is not silently broken.
+                - name: ALLOW_ORIGIN
+                  value: https://${NAME}-${ZONE}.${DOMAIN}
+              # Integration credentials (Forest Client API, IDIM proxy, GC Notify)
+              # and the CMENG shared secret. Created out of band, not by this repo.
+              envFrom:
+                - secretRef:
+                    name: ${NAME}-${ZONE}-integrations
+                    optional: true
               resources:
                 requests:
                   cpu: ${CPU_REQUEST}
@@ -188,29 +272,29 @@ objects:
               volumeMounts:
                 - name: tmp
                   mountPath: /tmp
+              # JVM start-up is slower than Node's; allow up to 150s before the
+              # container is considered failed.
               startupProbe:
                 httpGet:
-                  path: /api/health
+                  path: /actuator/health/readiness
                   port: http
                 periodSeconds: 5
                 failureThreshold: 30
               readinessProbe:
                 httpGet:
-                  path: /api/health
+                  path: /actuator/health/readiness
                   port: http
                 periodSeconds: 5
                 failureThreshold: 3
               livenessProbe:
                 httpGet:
-                  path: /api
+                  path: /actuator/health/liveness
                   port: http
                 periodSeconds: 10
                 failureThreshold: 3
-              lifecycle:
-                preStop:
-                  exec:
-                    # distroless/nodejs has no /bin/sleep; exec hooks skip image ENTRYPOINT
-                    command: ["/nodejs/bin/node", "-e", "setTimeout(() => {}, 10000)"]
+              # No preStop hook: the distroless java image has no shell, and
+              # Spring Boot's graceful shutdown (server.shutdown=graceful, 20s
+              # drain) covers in-flight requests within the 30s grace period.
           volumes:
             - name: tmp
               emptyDir:

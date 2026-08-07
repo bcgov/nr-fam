@@ -22,8 +22,17 @@ on:
         type: string
 
     secrets:
+      db_host:
+        description: Hostname of the on-prem PostgreSQL instance
+        required: true
+      db_name:
+        description: Database name on the on-prem instance
+        required: true
+      db_user:
+        description: Runtime application role (created by the DBA team)
+        required: true
       db_password:
-        description: Database password
+        description: Password for the runtime application role
         required: true
       oc_namespace:
         description: OpenShift namespace
@@ -55,7 +64,16 @@ jobs:
           oc_server: ${{ vars.oc_server }}
           oc_token: ${{ secrets.oc_token }}
           overwrite: true
-          parameters: -p DB_PASSWORD="${{ secrets.db_password }}"
+          parameters: -p DB_HOST="${{ secrets.db_host }}"
+            -p DB_PORT="${{ vars.db_port || '5432' }}"
+            -p DB_NAME="${{ secrets.db_name }}"
+            -p DB_USER="${{ secrets.db_user }}"
+            -p DB_PASSWORD="${{ secrets.db_password }}"
+            -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
+            -p KEYCLOAK_CLIENT_ID="${{ vars.keycloak_client_id }}"
+            -p LOGOUT_KEYCLOAK_CLIENT_ID_IDIR="${{ vars.logout_keycloak_client_id_idir }}"
+            -p LOGOUT_KEYCLOAK_CLIENT_ID_BCEIDBUSINESS="${{ vars.logout_keycloak_client_id_bceidbusiness }}"
+            -p TARGET_ENV="${{ inputs.environment || 'dev' }}"
             -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"
           triggers: ${{ inputs.triggers }}
@@ -69,14 +87,14 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        name: [database, backend, frontend]
+        name: [backend, frontend]
         include:
-          - name: database
-            file: common/openshift.database.yml
-            parameters: -p DB_PVC_SIZE="256Mi"
           - name: backend
             file: backend/openshift.deploy.yml
             parameters: -p IMAGE_TAG="${{ inputs.tag }}"
+              -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
+              -p FAM_OIDC_CLIENT_ID="${{ vars.keycloak_client_id }}"
+              -p FAM_DEPLOYMENT_ENVIRONMENT="${{ inputs.environment || 'dev' }}"
           - name: frontend
             file: frontend/openshift.deploy.yml
             parameters: -p IMAGE_TAG="${{ inputs.tag }}"

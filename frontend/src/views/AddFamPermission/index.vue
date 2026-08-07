@@ -1,0 +1,257 @@
+<script setup lang="ts">
+import BreadCrumbs from "@/components/UI/BreadCrumbs.vue";
+import Button from "@/components/UI/Button.vue";
+import Dropdown from "@/components/UI/Dropdown.vue";
+import PageTitle from "@/components/UI/PageTitle.vue";
+import StepContainer from "@/components/UI/StepContainer.vue";
+import { SELF_GRANT_PROHIBITED_ERROR_CODE } from "@/constants/ApiErrorCodes";
+import { ManagePermissionsRoute } from "@/router/routes";
+import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
+import type { BreadCrumbType } from "@/types/BreadCrumbTypes";
+import type { SelectedUser } from "@/types/SelectUserType";
+import { formatAxiosError, getFamAdminApplications } from "@/utils/ApiUtils";
+import { formatUserNameAndId } from "@/utils/UserUtils";
+import CheckmarkIcon from "@carbon/icons-vue/es/checkmark/16";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { isAxiosError } from "axios";
+import {
+    UserType,
+    type FamAppAdminCreateRequest,
+} from "fam-api/model";
+import type { SelectChangeEvent } from "primevue/select";
+import { useForm } from "vee-validate";
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import {
+    AddAppAdminErrorQueryKey,
+    AddAppAdminSuccessQueryKey,
+    generatePayload,
+    getDefaultFormData,
+    NewAppAdminQueryParamKey,
+    validateAppAdminForm,
+    type AppAdminFormType,
+} from "./utils";
+
+const router = useRouter();
+
+// Breadcrumb configuration
+const crumbs: BreadCrumbType[] = [
+    {
+        label: "Manage permissions",
+        routeName: ManagePermissionsRoute.name!,
+    },
+];
+
+/**
+ * Form setup using vee-validate's v4 useForm composable.
+ * - validationSchema: Schema for form validation.
+ * - initialValues: Default values for the form fields to be initialized.
+ * Returns form handlers and state.
+ * handleSubmit - function to handle form submission
+ * errors - reactive object containing validation errors
+ * values - reactive object containing form field values
+ * setFieldValue - function to programmatically set field values
+ */
+const { handleSubmit, errors, values, setFieldValue, meta } = useForm<AppAdminFormType>({
+    validationSchema: validateAppAdminForm(),
+    initialValues: getDefaultFormData(),
+});
+
+const handleSearchUsersSelected = (selectedUsers: SelectedUser[]) => {
+    const selectedUser = selectedUsers[0];
+    if (selectedUser) {
+        setFieldValue('user', selectedUser);
+    } else {
+        setFieldValue('user', null);
+    }
+};
+
+// Flag to track if form has been submitted - to control error display
+const hasSubmitted = ref<boolean>(false);
+
+const queryClient = useQueryClient();
+const applicationListQuery = useQuery({
+    queryKey: ["admin-user-apps-privilege"],
+    queryFn: () =>
+        AdminMgmtApiService.adminUserAccessesApi
+            .adminUserAccessPrivilege()
+            .then((res) => res.data),
+    select: (data) => getFamAdminApplications(data),
+});
+
+const handleApplicationChange = (e: SelectChangeEvent) => {
+    setFieldValue("application", e.value);
+};
+
+const famPermissionMutation = useMutation({
+    mutationFn: (payload: FamAppAdminCreateRequest) =>
+        AdminMgmtApiService.applicationAdminApi.createApplicationAdmin(payload),
+    onSuccess: (res) => {
+        const userFullName = formatUserNameAndId(
+            values.user?.userId,
+            values.user?.firstName,
+            values.user?.lastName
+        );
+        const appName = values.application?.description;
+        const successMsg = `Admin privilege has been added to ${userFullName} for application ${appName}`;
+        queryClient.setQueryData([AddAppAdminSuccessQueryKey], successMsg);
+        router.push({
+            name: ManagePermissionsRoute.name,
+            query: {
+                appId: 1,
+                [NewAppAdminQueryParamKey]: [res.data.application_admin_id],
+            },
+        });
+    },
+    onError: (error) => {
+        let errMsg = "";
+        const userFullName = formatUserNameAndId(
+            values.user?.userId,
+            values.user?.firstName,
+            values.user?.lastName
+        );
+        const appName = values.application?.description;
+
+        if (isAxiosError(error) && error.response?.status === 409) {
+            errMsg = `${userFullName} is already a ${appName} admin`;
+        } else if (
+            isAxiosError(error) &&
+            (error.response?.data as any)?.detail?.code ===
+                SELF_GRANT_PROHIBITED_ERROR_CODE
+        ) {
+            errMsg = `Failed to add ${userFullName} as a ${appName} admin. Error: ${formatAxiosError(error)}`;
+        } else {
+            errMsg = `Failed to add ${userFullName} as a ${appName} admin`;
+        }
+
+        queryClient.setQueryData([AddAppAdminErrorQueryKey], errMsg);
+        router.push({ name: ManagePermissionsRoute.name, query: { appId: 1 } });
+    },
+    retry: 0,
+});
+
+const onSubmit = () => {
+    hasSubmitted.value = true;
+    famPermissionMutation.mutate(generatePayload(values));
+};
+
+// vee-validate onInvalid handler after form submission attempt.
+// For displaying validation errors after first submit attempt.
+// After v5 upgrade, can probably remove this and use better approach.
+const onInvalid = () => {
+  hasSubmitted.value = true;
+};
+</script>
+
+<template>
+    <div class="add-fam-permission-container">
+        <BreadCrumbs :crumbs="crumbs" />
+        <PageTitle
+            title="Add application admin"
+            subtitle="All fields are mandatory"
+        />
+        <div class="app-admin-form-container container-fluid">
+            <form
+                id="add-app-admin-form-id"
+                class="col-sm-12 col-md-12 col-lg-10"
+                @submit.prevent="handleSubmit(onSubmit, onInvalid)()"
+            >
+                <StepContainer title="User information" divider>
+                    <UserSearch
+                        :app-id="1"
+                        :multi-user-mode="false"
+                        :available-domains="[UserType.I]"
+                        search-button-label="Search"
+                        helperText="Only IDIR users are allowed to be added as application admins"
+                        @user-selection-update="handleSearchUsersSelected"
+                    >
+                        <template #formError>
+                            <span v-if="hasSubmitted && errors.user" class="invalid-feedback">
+                                {{ errors.user }}
+                            </span>
+                        </template>
+                    </UserSearch>
+                </StepContainer>
+
+                <StepContainer title="Add application">
+                    <div>
+                        <Dropdown
+                            required
+                            label-text="Select an application this user will be able to manage"
+                            class="application-dropdown"
+                            name="application-dropdown"
+                            :value="values.application"
+                            :options="applicationListQuery.data.value"
+                            @change="handleApplicationChange"
+                            option-label="description"
+                            placeholder="Choose an application"
+                            :is-fetching="
+                                applicationListQuery.isLoading.value
+                            "
+                            :is-error="applicationListQuery.isError.value"
+                            :error-msg="
+                                isAxiosError(
+                                    applicationListQuery.error.value
+                                )
+                                    ? formatAxiosError(
+                                          applicationListQuery.error.value
+                                      )
+                                    : 'Failed to fetch data.'
+                            "
+                        />
+                        <span v-if="hasSubmitted && errors.application" class="invalid-feedback">
+                            {{ errors.application }}
+                        </span>
+                    </div>
+                </StepContainer>
+                <div class="button-group">
+                    <Button
+                        label="Back"
+                        severity="secondary"
+                        @click="
+                            () =>
+                                router.push({
+                                    name: ManagePermissionsRoute.name,
+                                    query: { appId: 1 },
+                                })
+                        "
+                    />
+                    <Button
+                        :label="`Create Application Admin`"
+                        type="submit"
+                        :icon="CheckmarkIcon"
+                        :is-loading="famPermissionMutation.isPending.value"
+                    />
+                </div>
+            </form>
+        </div>
+    </div>
+</template>
+<style lang="scss">
+.add-fam-permission-container {
+    .app-admin-form-container {
+        margin-top: 3rem;
+        padding: 0;
+        margin-bottom: 3rem;
+
+        .invalid-feedback {
+            display: block;
+        }
+    }
+
+    .button-group {
+        display: flex;
+        flex-direction: row;
+        gap: 1rem;
+        margin-top: 3rem;
+        .fam-button {
+            width: 15.1875rem;
+            height: 3rem;
+
+            .button-label {
+                @include type.type-style("body-compact-01");
+            }
+        }
+    }
+}
+</style>

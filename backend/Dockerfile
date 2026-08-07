@@ -1,35 +1,33 @@
-# Build
-FROM node:24.18.0-slim AS build
+# syntax=docker/dockerfile:1
 
-# Copy, build static files; see .dockerignore for exclusions
+### Build
+FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
-COPY . ./
-ENV PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x
-RUN npm run deploy
 
-# Dependencies
-FROM node:24.18.0-slim AS dependencies
+# Resolve dependencies as their own layer so source-only changes stay cached.
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN ./mvnw -B -ntp dependency:go-offline
 
-# Copy, build static files; see .dockerignore for exclusions
+COPY src/ src/
+RUN ./mvnw -B -ntp clean package -DskipTests
+
+# Explode the jar so the runtime image can use Spring Boot's layered layout,
+# keeping dependency layers stable across application-only rebuilds.
+RUN java -Djarmode=tools -jar target/*.jar extract --layers --destination extracted
+
+### Deploy
+FROM gcr.io/distroless/java21-debian12:nonroot AS deploy
 WORKDIR /app
-COPY . ./
-ENV PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x
-RUN npm ci --ignore-scripts --no-update-notifier --omit=dev
 
-# Deploy using minimal Distroless image
-FROM gcr.io/distroless/nodejs22-debian12:nonroot
-ENV NODE_ENV=production
+COPY --from=build /app/extracted/dependencies/ ./
+COPY --from=build /app/extracted/spring-boot-loader/ ./
+COPY --from=build /app/extracted/snapshot-dependencies/ ./
+COPY --from=build /app/extracted/application/ ./
 
-# Copy app and dependencies
-WORKDIR /app
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=build /app/generated ./generated
-COPY --from=build /app/dist ./dist
+# Container-aware heap sizing; OpenShift sets the memory limit, not the image.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=50 -Djava.security.egd=file:/dev/./urandom"
 
-# Boilerplate, not used in OpenShift/Kubernetes
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:3000/api
-
-# Nonroot user, limit heap size to 150 MB
 USER nonroot
-CMD ["--max-old-space-size=150", "/app/dist/main"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

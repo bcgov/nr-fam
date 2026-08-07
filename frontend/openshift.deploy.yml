@@ -143,6 +143,13 @@ objects:
                   mountPath: /tmp/caddy
                 - name: coraza-tmp
                   mountPath: /tmp/coraza
+                # Replaces the local-development env.json baked into the image
+                # with this environment's settings. The SPA fetches it before it
+                # mounts, so one image can be promoted across environments.
+                - name: frontend-env
+                  mountPath: /srv/env.json
+                  subPath: env.json
+                  readOnly: true
               startupProbe:
                 httpGet:
                   path: /health
@@ -174,6 +181,9 @@ objects:
               emptyDir:
                 medium: Memory
                 sizeLimit: 256Mi
+            - name: frontend-env
+              configMap:
+                name: ${NAME}-${ZONE}-frontend-env
   - apiVersion: v1
     kind: Service
     metadata:

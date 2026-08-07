@@ -7,7 +7,9 @@ COPY ./sql /flyway/sql
 RUN adduser -D app
 USER app
 
+# The FAM schema. Flyway's history table is created here too.
+ENV FLYWAY_SCHEMAS=app_fam
+
 # Health check and startup
 HEALTHCHECK CMD info
-# Adding repair to see if it fixes migration issues.
-CMD ["info", "migrate", "repair"] 
+CMD ["info", "migrate", "info"]

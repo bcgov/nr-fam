@@ -1,98 +1,100 @@
-# Reusable vars
+# Local development stack.
+#
+# NOTE: the PostgreSQL service here is for DEVELOPMENT ONLY. FAM runs against an
+# on-prem PostgreSQL instance that this repository does not deploy - there is no
+# database in any OpenShift template. See migrations/README.md.
+
 x-var:
   - &POSTGRES_USER postgres
   - &POSTGRES_PASSWORD default
   - &POSTGRES_DATABASE postgres
-  - &node-image node:22
 
-# Reusable envars for postgres
 x-postgres-vars: &postgres-vars
   POSTGRES_HOST: database
+  POSTGRES_PORT: "5432"
   POSTGRES_USER: *POSTGRES_USER
   POSTGRES_PASSWORD: *POSTGRES_PASSWORD
   POSTGRES_DATABASE: *POSTGRES_DATABASE
 
 services:
   database:
-    image: postgis/postgis:17-3.4 # if using crunchy , make sure to align with crunchy version, currently it is at 16 and postgis 3.3
-    container_name: database
+    image: postgres:17-alpine
+    container_name: fam-database
     environment:
-      <<: *postgres-vars
+      POSTGRES_USER: *POSTGRES_USER
+      POSTGRES_PASSWORD: *POSTGRES_PASSWORD
+      POSTGRES_DB: *POSTGRES_DATABASE
     healthcheck:
       test: ["CMD", "pg_isready", "-U", *POSTGRES_USER]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     ports: ["5432:5432"]
 
+  # Applies migrations/sql V1..V93 plus the local-only seed data in local_sql.
+  # conf/flyway.local.conf supplies dummy values for the 51 OIDC client-id
+  # placeholders; deployed environments supply real Keycloak client ids and have
+  # no defaults, so a missing one fails loudly there.
   migrations:
     image: flyway/flyway:13-alpine
-    container_name: migrations
-    command: info migrate info
-    volumes: ["./migrations/sql:/flyway/sql:ro"]
+    container_name: fam-migrations
+    command: -configFiles=/flyway/conf/flyway.local.conf info migrate info
+    volumes:
+      - ./migrations/sql:/flyway/sql:ro
+      - ./migrations/local_sql:/flyway/local_sql:ro
+      - ./migrations/conf:/flyway/conf:ro
     environment:
       FLYWAY_URL: jdbc:postgresql://database:5432/postgres
       FLYWAY_USER: *POSTGRES_USER
       FLYWAY_PASSWORD: *POSTGRES_PASSWORD
-      FLYWAY_BASELINE_ON_MIGRATE: true
-      FLYWAY_DEFAULT_SCHEMA: users
+      FLYWAY_SCHEMAS: app_fam
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql,filesystem:/flyway/local_sql
+      FLYWAY_BASELINE_ON_MIGRATE: "false"
     depends_on:
       database:
         condition: service_healthy
 
-  schemaspy:
-    image: schemaspy/schemaspy:7.0.2
-    profiles: ["schemaspy"]
-    container_name: schemaspy
-    command: -t pgsql11 -db postgres -host database -port 5432 -u postgres -p default -schemas users
+  backend:
+    container_name: fam-backend
+    build:
+      context: ./backend
+    environment:
+      <<: *postgres-vars
+      POSTGRES_SCHEMA: app_fam
+      SPRING_PROFILES_ACTIVE: local
+      LOG_LEVEL: DEBUG
+      # Point at a real BC Gov SSO realm to sign in locally. Left unset, the app
+      # still starts - JWKS is fetched lazily, not at boot - but every
+      # authenticated call will be rejected.
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-https://dev.loginproxy.gov.bc.ca/auth/realms/standard}
+      # Blank skips the FAM-client check; see FamClientTokenFilter.
+      FAM_OIDC_CLIENT_ID: ${FAM_OIDC_CLIENT_ID:-}
+      FAM_DEPLOYMENT_ENVIRONMENT: dev
+      ALLOW_ORIGIN: http://localhost:5173
+    ports: ["3000:3000"]
+    healthcheck:
+      test: ["CMD", "java", "-version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       migrations:
         condition: service_completed_successfully
-    volumes: ["./output:/output"]
-
-  backend:
-    container_name: backend
-    depends_on:
-      migrations:
-        condition: service_started
-    entrypoint: sh -c "npm i && npm run start:dev"
-    environment:
-      <<: *postgres-vars
-      NODE_ENV: development
-    image: *node-image
-    ports: ["3001:3000"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api"]
-    working_dir: "/app"
-    volumes: ["./backend:/app", "/app/node_modules"]
 
   frontend:
-    container_name: frontend
-    entrypoint: sh -c "npm ci --ignore-scripts && npm run dev"
+    container_name: fam-frontend
+    image: node:22
+    working_dir: /app
+    # install-frontend deliberately installs nothing under client-code-gen: the
+    # generated client declares axios as a peer dependency, and a second copy
+    # would break the typecheck.
+    entrypoint: sh -c "npm run install-frontend && npm run dev -- --host"
     environment:
-      BACKEND_URL: http://backend:3000
-      PORT: 3000
-      NODE_ENV: development
-    image: *node-image
-    ports: ["3000:3000"]
-    volumes: ["./frontend:/app", "/app/node_modules"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-    working_dir: "/app"
+      # The dev server proxies /api here, matching the Caddy setup in production.
+      VITE_BACKEND_URL: http://backend:3000
+    ports: ["5173:5173"]
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
-      backend:
-        condition: service_healthy
-
-  caddy:
-    container_name: caddy
-    profiles: ["caddy"]
-    build: ./frontend
-    environment:
-      NODE_ENV: development
-      PORT: 3000
-      BACKEND_URL: http://backend:3000
-      LOG_LEVEL: info
-    ports: ["3005:3000"]
-    volumes: ["./frontend/Caddyfile:/etc/caddy/Caddyfile"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-    depends_on:
-      backend:
-        condition: service_healthy
+      - backend

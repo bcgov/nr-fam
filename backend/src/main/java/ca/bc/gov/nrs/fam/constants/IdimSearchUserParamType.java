@@ -1,0 +1,22 @@
+package ca.bc.gov.nrs.fam.constants;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import com.fasterxml.jackson.annotation.JsonValue;
+
+/** {@code enumAsRef} emits this as a named schema so the generated client keeps the name. */
+@Schema(enumAsRef = true)
+public enum IdimSearchUserParamType {
+  USER_GUID("userGuid"),
+  USER_ID("userId");
+
+  private final String value;
+
+  IdimSearchUserParamType(String value) {
+    this.value = value;
+  }
+
+  @JsonValue
+  public String getValue() {
+    return value;
+  }
+}

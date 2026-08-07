@@ -3,16 +3,57 @@ kind: Template
 parameters:
   - name: NAME
     description: Product name
-    value: quickstart-openshift
-  - name: PG_DATABASE
-    description: Postgres database name
-    value: app
+    value: nr-fam
   - name: ZONE
     description: Deployment zone, e.g. pr-### or prod
     required: true
-  - name: DB_PASSWORD
-    description: Password for the PostgreSQL connection user.
+  # ---------------------------------------------------------------------------
+  # FAM runs against an on-prem PostgreSQL instance. This repo does not deploy a
+  # database - there is no StatefulSet, no Patroni, no Crunchy operator. These
+  # parameters describe how to *reach* that instance; they are supplied from
+  # GitHub environment secrets/vars by reusable-deploy.yml.
+  # ---------------------------------------------------------------------------
+  - name: DB_HOST
+    description: Hostname of the on-prem PostgreSQL instance
     required: true
+  - name: DB_PORT
+    description: Port of the on-prem PostgreSQL instance
+    value: "5432"
+  - name: DB_NAME
+    description: Database name on the on-prem instance
+    required: true
+  - name: DB_USER
+    description: Runtime application role (created by the DBA team; see migrations/dba/)
+    required: true
+  - name: DB_PASSWORD
+    description: Password for the runtime application role
+    required: true
+  # ---------------------------------------------------------------------------
+  # Frontend runtime configuration. The SPA fetches /env.json into localStorage
+  # before it mounts (public/env.js), so one built image can be promoted between
+  # environments. The image ships a local-development env.json; this ConfigMap
+  # replaces it at /srv/env.json in a deployed pod.
+  # ---------------------------------------------------------------------------
+  - name: KEYCLOAK_ISSUER_URI
+    description: Keycloak realm issuer URI
+    required: true
+  - name: KEYCLOAK_CLIENT_ID
+    description: FAM's own Keycloak client id, used by the browser
+    required: true
+  - name: LOGOUT_SITEMINDER_URL
+    description: Siteminder logoff endpoint, first hop of the federated logout chain
+    value: https://logon7.gov.bc.ca/clp-cgi/logoff.cgi
+  - name: LOGOUT_KEYCLOAK_CLIENT_ID_IDIR
+    description: Keycloak client id to end the session for an IDIR login
+    required: true
+  - name: LOGOUT_KEYCLOAK_CLIENT_ID_BCEIDBUSINESS
+    description: Keycloak client id to end the session for a Business BCeID login
+    required: true
+  - name: TARGET_ENV
+    description: dev, test or prod. Drives the environment banner in the UI.
+    value: dev
+  - name: DOMAIN
+    value: apps.silver.devops.gov.bc.ca
 objects:
   - apiVersion: v1
     kind: Secret
@@ -21,9 +62,65 @@ objects:
       labels:
         app: ${NAME}-${ZONE}
     stringData:
-      database-name: ${PG_DATABASE}
+      database-host: ${DB_HOST}
+      database-port: ${DB_PORT}
+      database-name: ${DB_NAME}
+      database-user: ${DB_USER}
       database-password: ${DB_PASSWORD}
-      database-user: ${NAME}
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: ${NAME}-${ZONE}-frontend-env
+      labels:
+        app: ${NAME}-${ZONE}
+    data:
+      # Mounted over /srv/env.json. The nested "sensitive/type/value" shape is
+      # what EnvUtils expects; it is carried over from the AWS-generated file so
+      # the frontend reader did not have to change.
+      #
+      # The API base URL is RELATIVE: Caddy proxies /api to the backend Service
+      # in-cluster and strips the prefix. That keeps the API same-origin, so
+      # there is no CORS and no second Route, and it satisfies the frontend's
+      # connect-src 'self' CSP.
+      env.json: |
+        {
+          "fam_api_base_url": {
+            "sensitive": false, "type": "string",
+            "value": "/api"
+          },
+          "keycloak_issuer_uri": {
+            "sensitive": false, "type": "string",
+            "value": "${KEYCLOAK_ISSUER_URI}"
+          },
+          "keycloak_client_id": {
+            "sensitive": false, "type": "string",
+            "value": "${KEYCLOAK_CLIENT_ID}"
+          },
+          "front_end_redirect_base_url": {
+            "sensitive": false, "type": "string",
+            "value": "https://${NAME}-${ZONE}.${DOMAIN}"
+          },
+          "logout_siteminder_url": {
+            "sensitive": false, "type": "string",
+            "value": "${LOGOUT_SITEMINDER_URL}"
+          },
+          "logout_keycloak_url": {
+            "sensitive": false, "type": "string",
+            "value": "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/logout"
+          },
+          "logout_keycloak_client_id_idir": {
+            "sensitive": false, "type": "string",
+            "value": "${LOGOUT_KEYCLOAK_CLIENT_ID_IDIR}"
+          },
+          "logout_keycloak_client_id_bceidbusiness": {
+            "sensitive": false, "type": "string",
+            "value": "${LOGOUT_KEYCLOAK_CLIENT_ID_BCEIDBUSINESS}"
+          },
+          "target_env": {
+            "sensitive": false, "type": "string",
+            "value": "${TARGET_ENV}"
+          }
+        }
   - apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
@@ -57,23 +154,5 @@ objects:
                 matchLabels:
                   app: ${NAME}-${ZONE}
                   deployment: ${NAME}-${ZONE}-frontend
-      policyTypes:
-        - Ingress
-  - apiVersion: networking.k8s.io/v1
-    kind: NetworkPolicy
-    metadata:
-      name: ${NAME}-${ZONE}-database-ingress
-      labels:
-        app: ${NAME}-${ZONE}
-    spec:
-      podSelector:
-        matchLabels:
-          deployment: ${NAME}-${ZONE}-database
-      ingress:
-        - from:
-            - podSelector:
-                matchLabels:
-                  app: ${NAME}-${ZONE}
-                  deployment: ${NAME}-${ZONE}-backend
       policyTypes:
         - Ingress

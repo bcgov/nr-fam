@@ -1,0 +1,2096 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "Forest Access Management - FAM - API",
+    "description" : "Forest Access Management API. Defines who has access to which applications, and the roles they operate under once access is granted.\n\nCovers both the app-access-control and admin-management surfaces that upstream FAM served from two separate APIs.",
+    "contact" : {
+      "name" : "Team Heartwood",
+      "url" : "https://apps.nrs.gov.bc.ca/int/confluence/display/FSAST1/Team+Heartwood",
+      "email" : "SIBIFSAF@Victoria1.gov.bc.ca"
+    },
+    "license" : {
+      "name" : "Apache 2.0",
+      "url" : "https://www.apache.org/licenses/LICENSE-2.0.html"
+    },
+    "version" : "1.0.0"
+  },
+  "servers" : [ {
+    "url" : "/",
+    "description" : "Relative to the host serving this document"
+  } ],
+  "security" : [ {
+    "bearerAuth" : [ ]
+  } ],
+  "paths" : {
+    "/users/users-information" : {
+      "put" : {
+        "tags" : [ "FAM User" ],
+        "summary" : "Refresh stored user details from IDIM",
+        "description" : "Guarded by the X-API-Key shared secret, not a bearer token.",
+        "operationId" : "update_user_information_from_idim_source",
+        "parameters" : [ {
+          "name" : "X-API-Key",
+          "in" : "header",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "name" : "perPage",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 100
+          }
+        }, {
+          "name" : "usePagination",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean",
+            "default" : false
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FamUserUpdateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKey" : [ ]
+        } ]
+      }
+    },
+    "/user-terms-conditions" : {
+      "post" : {
+        "tags" : [ "FAM User Terms and Conditions" ],
+        "summary" : "Record acceptance of the current terms and conditions",
+        "operationId" : "create_user_terms_and_conditions",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/user-terms-conditions/user:validate" : {
+      "post" : {
+        "tags" : [ "FAM User Terms and Conditions" ],
+        "summary" : "Whether the requester must accept the terms and conditions",
+        "operationId" : "validate_user_requires_accept_terms_and_conditions",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user-role-assignment" : {
+      "post" : {
+        "tags" : [ "FAM User Role Assignment" ],
+        "summary" : "Grant multiple users access to an application's role",
+        "description" : "Granting IDIR/BCeID users access to an application's role, supporting expiry dates for role assignments.",
+        "operationId" : "create_user_role_assignment_many",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FamUserRoleAssignmentCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FamUserRoleAssignmentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Provision the signed-in user and return their access",
+        "description" : "Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.",
+        "operationId" : "login",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/application-admins" : {
+      "get" : {
+        "tags" : [ "FAM Application Admin" ],
+        "summary" : "All application admins",
+        "operationId" : "get_application_admins",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/FamAppAdminGetResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "FAM Application Admin" ],
+        "summary" : "Make a user an administrator of an application",
+        "operationId" : "create_application_admin",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FamAppAdminCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FamAppAdminGetResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access-control-privileges" : {
+      "get" : {
+        "tags" : [ "FAM Access Control Privileges" ],
+        "summary" : "Delegated admin privileges for an application",
+        "operationId" : "get_access_control_privileges_by_application_id",
+        "parameters" : [ {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "pageNumber",
+          "in" : "query",
+          "description" : "Page number",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1,
+            "description" : "Page number",
+            "minimum" : 1
+          }
+        }, {
+          "name" : "pageSize",
+          "in" : "query",
+          "description" : "Number of records per page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "description" : "Number of records per page",
+            "maximum" : 100000,
+            "minimum" : 10
+          }
+        }, {
+          "name" : "search",
+          "in" : "query",
+          "description" : "Search by keyword",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "Search by keyword",
+            "maxLength" : 30,
+            "minLength" : 3
+          }
+        }, {
+          "name" : "sortOrder",
+          "in" : "query",
+          "description" : "Column sorting order",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/SortOrder"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "Column to be sorted by",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/UserRoleSortBy"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResultsFamAccessControlPrivilegeGetResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "FAM Access Control Privileges" ],
+        "summary" : "Grant delegated admin privileges",
+        "operationId" : "create_access_control_privilege_many",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FamAccessControlPrivilegeCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FamAccessControlPrivilegeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/smoke_test" : {
+      "get" : {
+        "tags" : [ "Smoke Test" ],
+        "summary" : "Verify database connectivity and seeded application data",
+        "operationId" : "smoke_test",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/permission-audit-history" : {
+      "get" : {
+        "tags" : [ "Permission Audit" ],
+        "summary" : "Permission audit history for a user within an application",
+        "operationId" : "get_permission_audit_history_by_user_and_application",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/PermissionAuditHistoryDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity-lookup/users/idir/search" : {
+      "get" : {
+        "tags" : [ "IDIR/BCeID Proxy" ],
+        "summary" : "Search IDIR users",
+        "description" : "Search for IDIR users.",
+        "operationId" : "search_idir_users",
+        "parameters" : [ {
+          "name" : "firstName",
+          "in" : "query",
+          "description" : "IDIR first name search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR first name search value (min 2 chars)",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "lastName",
+          "in" : "query",
+          "description" : "IDIR last name search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR last name search value (min 2 chars)",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "userId",
+          "in" : "query",
+          "description" : "IDIR user id search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR user id search value (min 2 chars)",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "pageSize",
+          "in" : "query",
+          "description" : "Number of records to return",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Number of records to return",
+            "maximum" : 500,
+            "minimum" : 10
+          }
+        }, {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IdimProxyIdirUsersSearchResultDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity-lookup/idir" : {
+      "get" : {
+        "tags" : [ "IDIR/BCeID Proxy" ],
+        "summary" : "Lookup IDIR user",
+        "description" : "Lookup an IDIR user by user ID.",
+        "operationId" : "idir_lookup",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IdimProxyIdirInfoDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity-lookup/bceid" : {
+      "get" : {
+        "tags" : [ "IDIR/BCeID Proxy" ],
+        "summary" : "Lookup BCEID user",
+        "description" : "Lookup a BCeID Business user by user ID.",
+        "operationId" : "bceid_lookup",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IdimProxyBceidInfoDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/forest-clients/search" : {
+      "get" : {
+        "tags" : [ "FAM Forest Clients" ],
+        "summary" : "Search forest clients by client number",
+        "operationId" : "search",
+        "parameters" : [ {
+          "name" : "clientNumber",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 8,
+            "minLength" : 3
+          }
+        }, {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/FamForestClientDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fam-applications/{applicationId}/users/{userId}" : {
+      "get" : {
+        "tags" : [ "FAM Applications" ],
+        "summary" : "Retrieve user information by user ID under an application",
+        "operationId" : "get_application_user_by_id",
+        "parameters" : [ {
+          "name" : "applicationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "userId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FamUserInfoDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fam-applications/{applicationId}/user-role-assignment" : {
+      "get" : {
+        "tags" : [ "FAM Applications" ],
+        "summary" : "Paged users and roles assigned within an application",
+        "operationId" : "get_fam_application_user_role_assignment",
+        "parameters" : [ {
+          "name" : "applicationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }, {
+          "name" : "pageNumber",
+          "in" : "query",
+          "description" : "Page number",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1,
+            "description" : "Page number",
+            "minimum" : 1
+          }
+        }, {
+          "name" : "pageSize",
+          "in" : "query",
+          "description" : "Number of records per page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "description" : "Number of records per page",
+            "maximum" : 100000,
+            "minimum" : 10
+          }
+        }, {
+          "name" : "search",
+          "in" : "query",
+          "description" : "Search by keyword",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "Search by keyword",
+            "maxLength" : 30,
+            "minLength" : 3
+          }
+        }, {
+          "name" : "sortOrder",
+          "in" : "query",
+          "description" : "Column sorting order",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/SortOrder"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "Column to be sorted by",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/UserRoleSortBy"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResultsFamApplicationUserRoleAssignmentGetDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fam-applications/{applicationId}/user-role-assignment/export" : {
+      "get" : {
+        "tags" : [ "FAM Applications" ],
+        "summary" : "Export user roles information by application ID",
+        "operationId" : "export_application_user_roles",
+        "parameters" : [ {
+          "name" : "applicationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/csv" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/external/v1/users" : {
+      "get" : {
+        "tags" : [ "FAM External API" ],
+        "summary" : "Search FAM users",
+        "description" : "Search FAM users associated with the calling application.",
+        "operationId" : "user_search",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "description" : "Page number - 1 index",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Page number - 1 index",
+            "minimum" : 1
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Number of records per page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Number of records per page",
+            "maximum" : 100,
+            "minimum" : 10
+          }
+        }, {
+          "name" : "idpType",
+          "in" : "query",
+          "description" : "Identity provider type. Available values: IDIR, BCEID, BCSC",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/IdpType"
+          }
+        }, {
+          "name" : "idpUsername",
+          "in" : "query",
+          "description" : "Username from the identity provider",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "Username from the identity provider",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "firstName",
+          "in" : "query",
+          "description" : "User's first name",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "User's first name",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "lastName",
+          "in" : "query",
+          "description" : "User's last name",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "User's last name",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "role",
+          "in" : "query",
+          "description" : "Role codes to filter by, e.g. ILCR_SUBMITTER",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "description" : "Role codes to filter by, e.g. ILCR_SUBMITTER",
+            "items" : {
+              "type" : "string",
+              "description" : "Role codes to filter by, e.g. ILCR_SUBMITTER",
+              "maxLength" : 25,
+              "minLength" : 0
+            },
+            "maxItems" : 5,
+            "minItems" : 0
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExtUserSearchPagedResults"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/external/v1/users/me/role-metadata" : {
+      "get" : {
+        "tags" : [ "FAM External API" ],
+        "summary" : "Get current user role metadata",
+        "description" : "Roles for the authenticated user within the calling application.",
+        "operationId" : "get_current_user_role_metadata",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExtUserRoleMetadataResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/external/v1/users/identity/idir/search" : {
+      "get" : {
+        "tags" : [ "FAM External API" ],
+        "summary" : "Search IDIR users",
+        "description" : "Search IDIR user identities through IDIM.",
+        "operationId" : "search_idim_idir_users",
+        "parameters" : [ {
+          "name" : "firstName",
+          "in" : "query",
+          "description" : "IDIR first name search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR first name search value (min 2 chars)",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "lastName",
+          "in" : "query",
+          "description" : "IDIR last name search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR last name search value (min 2 chars)",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "userId",
+          "in" : "query",
+          "description" : "IDIR user id search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR user id search value (min 2 chars)",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "pageSize",
+          "in" : "query",
+          "description" : "Number of records to return",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Number of records to return",
+            "maximum" : 500,
+            "minimum" : 10
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/IdimProxyIdirUsersSearchResultDto"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/auth/self" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Current user's identity and effective access roles",
+        "operationId" : "self",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/application-admins/export" : {
+      "get" : {
+        "tags" : [ "FAM Application Admin" ],
+        "summary" : "Export application admins information",
+        "operationId" : "export_application_admins",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/csv" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/application-admins/application/{applicationId}" : {
+      "get" : {
+        "tags" : [ "FAM Application Admin" ],
+        "summary" : "Application admins for one application",
+        "operationId" : "get_application_admins_by_application_id",
+        "parameters" : [ {
+          "name" : "applicationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/FamAppAdminGetResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin-user-accesses" : {
+      "get" : {
+        "tags" : [ "Admin User Accesses" ],
+        "summary" : "Admin user access privilege",
+        "description" : "Access privilege for the logged-on admin user: which applications and scoped roles the user can grant.",
+        "operationId" : "admin_user_access_privilege",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminUserAccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access-control-privileges/export" : {
+      "get" : {
+        "tags" : [ "FAM Access Control Privileges" ],
+        "summary" : "Export delegated admin roles by application ID",
+        "operationId" : "export_access_control_privileges_by_application_id",
+        "parameters" : [ {
+          "name" : "applicationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/csv" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user-role-assignment/{userRoleXrefId}" : {
+      "delete" : {
+        "tags" : [ "FAM User Role Assignment" ],
+        "summary" : "Remove a specific application's role from a user's access",
+        "operationId" : "delete_user_role_assignment",
+        "parameters" : [ {
+          "name" : "userRoleXrefId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/application-admins/{applicationAdminId}" : {
+      "delete" : {
+        "tags" : [ "FAM Application Admin" ],
+        "summary" : "Remove an application administrator",
+        "operationId" : "delete_application_admin",
+        "parameters" : [ {
+          "name" : "applicationAdminId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/access-control-privileges/{accessControlPrivilegeId}" : {
+      "delete" : {
+        "tags" : [ "FAM Access Control Privileges" ],
+        "summary" : "Remove a delegated admin privilege",
+        "operationId" : "delete_access_control_privilege",
+        "parameters" : [ {
+          "name" : "accessControlPrivilegeId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "FamUserUpdateEntryDto" : {
+        "properties" : {
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_name" : {
+            "type" : "string"
+          },
+          "user_type" : {
+            "type" : "string"
+          },
+          "user_guid" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FamUserUpdateResponse" : {
+        "properties" : {
+          "total_db_users_count" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "current_page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "users_count_on_page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "run_on" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "elapsed" : {
+            "type" : "string"
+          },
+          "success_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          },
+          "failed_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          },
+          "ignored_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          },
+          "mismatch_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          }
+        }
+      },
+      "FamUserRoleAssignmentCreateRequest" : {
+        "properties" : {
+          "users" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserRoleAssignmentUserDto"
+            },
+            "maxItems" : 50,
+            "minItems" : 0
+          },
+          "user_type_code" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "role_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "forest_client_numbers" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "maxLength" : 8,
+              "minLength" : 1
+            }
+          },
+          "requires_send_user_email" : {
+            "type" : "boolean"
+          },
+          "expiry_date_date" : {
+            "type" : "string",
+            "description" : "The expiry date as a string (YYYY-MM-DD), BC timezone. If provided, the role is valid until the end of this day."
+          }
+        },
+        "required" : [ "role_id", "user_type_code", "users" ]
+      },
+      "FamUserRoleAssignmentUserDto" : {
+        "properties" : {
+          "user_name" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 3
+          },
+          "user_guid" : {
+            "type" : "string",
+            "maxLength" : 32,
+            "minLength" : 32
+          }
+        },
+        "required" : [ "user_guid", "user_name" ]
+      },
+      "UserType" : {
+        "type" : "string",
+        "enum" : [ "I", "B", "CD", "CT", "CP" ]
+      },
+      "EmailSendingStatus" : {
+        "type" : "string",
+        "enum" : [ "NOT_REQUIRED", "SENT_TO_EMAIL_SERVICE_SUCCESS", "SENT_TO_EMAIL_SERVICE_FAILURE" ]
+      },
+      "FamApplicationDto" : {
+        "properties" : {
+          "application_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "application_name" : {
+            "type" : "string"
+          },
+          "application_description" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "application_description", "application_id", "application_name" ]
+      },
+      "FamApplicationUserRoleAssignmentGetDto" : {
+        "properties" : {
+          "user_role_xref_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "role_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user" : {
+            "$ref" : "#/components/schemas/FamUserInfoDto"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/FamRoleWithClientDto"
+          },
+          "create_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "expiry_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "create_date", "role", "role_id", "user", "user_id", "user_role_xref_id" ]
+      },
+      "FamForestClientDto" : {
+        "properties" : {
+          "client_name" : {
+            "type" : "string"
+          },
+          "forest_client_number" : {
+            "type" : "string"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusDto"
+          }
+        },
+        "required" : [ "forest_client_number" ]
+      },
+      "FamForestClientStatusDto" : {
+        "properties" : {
+          "status_code" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusType"
+          },
+          "description" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FamForestClientStatusType" : {
+        "type" : "string",
+        "enum" : [ "A", "I" ]
+      },
+      "FamRoleMinDto" : {
+        "properties" : {
+          "role_name" : {
+            "type" : "string"
+          },
+          "role_type_code" : {
+            "type" : "string"
+          },
+          "application" : {
+            "$ref" : "#/components/schemas/FamApplicationDto"
+          }
+        },
+        "required" : [ "application", "role_name", "role_type_code" ]
+      },
+      "FamRoleWithClientDto" : {
+        "properties" : {
+          "role_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "role_name" : {
+            "type" : "string"
+          },
+          "role_type_code" : {
+            "type" : "string"
+          },
+          "display_name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "application" : {
+            "$ref" : "#/components/schemas/FamApplicationDto"
+          },
+          "forest_client" : {
+            "$ref" : "#/components/schemas/FamForestClientDto"
+          },
+          "parent_role" : {
+            "$ref" : "#/components/schemas/FamRoleMinDto"
+          }
+        },
+        "required" : [ "application", "description", "forest_client", "role_id", "role_name", "role_type_code" ]
+      },
+      "FamUserInfoDto" : {
+        "properties" : {
+          "user_name" : {
+            "type" : "string"
+          },
+          "user_type" : {
+            "$ref" : "#/components/schemas/FamUserTypeDto"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "user_name", "user_type" ]
+      },
+      "FamUserRoleAssignmentCreateResponse" : {
+        "properties" : {
+          "status_code" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "$ref" : "#/components/schemas/FamApplicationUserRoleAssignmentGetDto"
+          },
+          "error_message" : {
+            "type" : "string"
+          },
+          "email_sending_status" : {
+            "$ref" : "#/components/schemas/EmailSendingStatus"
+          },
+          "success" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "status_code" ]
+      },
+      "FamUserRoleAssignmentResponse" : {
+        "properties" : {
+          "assignments_detail" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserRoleAssignmentCreateResponse"
+            }
+          }
+        },
+        "required" : [ "assignments_detail" ]
+      },
+      "FamUserTypeDto" : {
+        "properties" : {
+          "code" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "description" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "code", "description" ]
+      },
+      "SelfDto" : {
+        "properties" : {
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_name" : {
+            "type" : "string"
+          },
+          "user_type_code" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "access_roles" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "is_delegated_admin" : {
+            "type" : "boolean"
+          },
+          "requires_accept_tc" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "FamAppAdminCreateRequest" : {
+        "properties" : {
+          "user_name" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 3
+          },
+          "user_guid" : {
+            "type" : "string",
+            "maxLength" : 32,
+            "minLength" : 32
+          },
+          "user_type_code" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "application_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        },
+        "required" : [ "application_id", "user_guid", "user_name", "user_type_code" ]
+      },
+      "AppEnv" : {
+        "type" : "string",
+        "enum" : [ "DEV", "TEST", "PROD" ]
+      },
+      "FamAppAdminGetResponse" : {
+        "properties" : {
+          "application_admin_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "application_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "create_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "user" : {
+            "$ref" : "#/components/schemas/FamUserInfoDto"
+          },
+          "application" : {
+            "$ref" : "#/components/schemas/FamApplicationBase"
+          }
+        },
+        "required" : [ "application", "application_admin_id", "application_id", "user", "user_id" ]
+      },
+      "FamApplicationBase" : {
+        "properties" : {
+          "application_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "application_name" : {
+            "type" : "string"
+          },
+          "application_description" : {
+            "type" : "string"
+          },
+          "app_environment" : {
+            "$ref" : "#/components/schemas/AppEnv"
+          }
+        },
+        "required" : [ "application_description", "application_id", "application_name" ]
+      },
+      "FamAccessControlPrivilegeCreateRequest" : {
+        "properties" : {
+          "user_name" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 3
+          },
+          "user_guid" : {
+            "type" : "string",
+            "maxLength" : 32,
+            "minLength" : 32
+          },
+          "user_type_code" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "role_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "forest_client_numbers" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "maxLength" : 8,
+              "minLength" : 1
+            }
+          },
+          "requires_send_user_email" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "role_id", "user_guid", "user_name", "user_type_code" ]
+      },
+      "FamAccessControlPrivilegeCreateResponse" : {
+        "properties" : {
+          "status_code" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "$ref" : "#/components/schemas/FamAccessControlPrivilegeGetResponse"
+          },
+          "error_message" : {
+            "type" : "string"
+          },
+          "success" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "detail", "status_code" ]
+      },
+      "FamAccessControlPrivilegeGetResponse" : {
+        "properties" : {
+          "access_control_privilege_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "role_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user" : {
+            "$ref" : "#/components/schemas/FamUserInfoDto"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/FamRoleWithClientDto"
+          },
+          "create_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "access_control_privilege_id", "create_date", "role", "role_id", "user", "user_id" ]
+      },
+      "FamAccessControlPrivilegeResponse" : {
+        "properties" : {
+          "email_sending_status" : {
+            "$ref" : "#/components/schemas/EmailSendingStatus"
+          },
+          "assignments_detail" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamAccessControlPrivilegeCreateResponse"
+            }
+          }
+        },
+        "required" : [ "assignments_detail" ]
+      },
+      "PermissionAuditHistoryDto" : {
+        "properties" : {
+          "privilege_change_audit_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "create_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "create_user" : {
+            "type" : "string"
+          },
+          "change_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "change_performer_user_details" : {
+            "$ref" : "#/components/schemas/PrivilegeChangePerformerDto"
+          },
+          "change_performer_user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "privilege_change_type_code" : {
+            "$ref" : "#/components/schemas/PrivilegeChangeType"
+          },
+          "privilege_change_type_description" : {
+            "type" : "string"
+          },
+          "privilege_details" : {
+            "$ref" : "#/components/schemas/PrivilegeDetailsDto"
+          }
+        },
+        "required" : [ "change_date", "change_performer_user_details", "change_performer_user_id", "create_date", "create_user", "privilege_change_audit_id", "privilege_change_type_code", "privilege_change_type_description", "privilege_details" ]
+      },
+      "PrivilegeChangePerformerDto" : {
+        "properties" : {
+          "username" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "username" ]
+      },
+      "PrivilegeChangeType" : {
+        "type" : "string",
+        "enum" : [ "GRANT", "REVOKE", "UPDATE" ]
+      },
+      "PrivilegeDetailsDto" : {
+        "properties" : {
+          "permission_type" : {
+            "$ref" : "#/components/schemas/PrivilegeDetailsPermissionType"
+          },
+          "roles" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PrivilegeDetailsRoleDto"
+            }
+          },
+          "consistent" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "permission_type" ]
+      },
+      "PrivilegeDetailsPermissionType" : {
+        "type" : "string",
+        "enum" : [ "End User", "Delegated Admin", "Application Admin" ]
+      },
+      "PrivilegeDetailsRoleDto" : {
+        "properties" : {
+          "role" : {
+            "type" : "string"
+          },
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PrivilegeDetailsScopeDto"
+            }
+          },
+          "role_assignment_expiry_date" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "role" ]
+      },
+      "PrivilegeDetailsScopeDto" : {
+        "properties" : {
+          "scope_type" : {
+            "$ref" : "#/components/schemas/PrivilegeDetailsScopeType"
+          },
+          "client_id" : {
+            "type" : "string"
+          },
+          "client_name" : {
+            "type" : "string"
+          },
+          "role_assignment_expiry_date" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "scope_type" ]
+      },
+      "PrivilegeDetailsScopeType" : {
+        "type" : "string",
+        "enum" : [ "Client", "District" ]
+      },
+      "IdimProxyIdirUserSearchItemDto" : {
+        "properties" : {
+          "userId" : {
+            "type" : "string"
+          },
+          "guid" : {
+            "type" : "string"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "email", "firstName", "guid", "lastName", "userId" ]
+      },
+      "IdimProxyIdirUsersSearchResultDto" : {
+        "properties" : {
+          "totalItems" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pageSize" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/IdimProxyIdirUserSearchItemDto"
+            }
+          }
+        },
+        "required" : [ "items", "pageSize", "totalItems" ]
+      },
+      "IdimProxyIdirInfoDto" : {
+        "properties" : {
+          "found" : {
+            "type" : "boolean"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "guid" : {
+            "type" : "string"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "found", "userId" ]
+      },
+      "IdimProxyBceidInfoDto" : {
+        "properties" : {
+          "found" : {
+            "type" : "boolean"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "guid" : {
+            "type" : "string"
+          },
+          "businessGuid" : {
+            "type" : "string"
+          },
+          "businessLegalName" : {
+            "type" : "string"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "found", "userId" ]
+      },
+      "SortOrder" : {
+        "type" : "string",
+        "description" : "Column sorting order",
+        "enum" : [ "asc", "desc" ]
+      },
+      "UserRoleSortBy" : {
+        "type" : "string",
+        "description" : "Column to be sorted by",
+        "enum" : [ "create_date", "user_name", "user_type_code", "email", "full_name", "role_display_name", "forest_client_number" ]
+      },
+      "PageResultMeta" : {
+        "properties" : {
+          "total" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Total records counts for query conditions"
+          },
+          "number_of_pages" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Total pages for query records"
+          },
+          "page_number" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Page number"
+          },
+          "page_size" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Number of records per page"
+          }
+        },
+        "required" : [ "number_of_pages", "page_number", "page_size", "total" ]
+      },
+      "PagedResultsFamApplicationUserRoleAssignmentGetDto" : {
+        "properties" : {
+          "meta" : {
+            "$ref" : "#/components/schemas/PageResultMeta"
+          },
+          "results" : {
+            "type" : "array",
+            "description" : "Paged results",
+            "items" : {
+              "$ref" : "#/components/schemas/FamApplicationUserRoleAssignmentGetDto"
+            }
+          }
+        },
+        "required" : [ "meta", "results" ]
+      },
+      "IdpType" : {
+        "type" : "string",
+        "description" : "Identity provider type. Available values: IDIR, BCEID, BCSC",
+        "enum" : [ "IDIR", "BCEID", "BCSC" ]
+      },
+      "ExtApplicationUserSearchGetDto" : {
+        "properties" : {
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "idpUsername" : {
+            "type" : "string"
+          },
+          "idpUserGuid" : {
+            "type" : "string"
+          },
+          "idpType" : {
+            "$ref" : "#/components/schemas/IdpType"
+          },
+          "roles" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ExtRoleWithScopeDto"
+            }
+          }
+        }
+      },
+      "ExtPageResultMeta" : {
+        "properties" : {
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "pageCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "ExtRoleWithScopeDto" : {
+        "properties" : {
+          "applicationName" : {
+            "type" : "string"
+          },
+          "roleName" : {
+            "type" : "string"
+          },
+          "roleDisplayName" : {
+            "type" : "string"
+          },
+          "scopeType" : {
+            "$ref" : "#/components/schemas/ScopeType"
+          },
+          "value" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "ExtUserSearchPagedResults" : {
+        "properties" : {
+          "meta" : {
+            "$ref" : "#/components/schemas/ExtPageResultMeta"
+          },
+          "users" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ExtApplicationUserSearchGetDto"
+            }
+          }
+        }
+      },
+      "ScopeType" : {
+        "type" : "string",
+        "enum" : [ "FOREST_CLIENT" ]
+      },
+      "ExtUserRoleMetadataResponse" : {
+        "properties" : {
+          "userName" : {
+            "type" : "string"
+          },
+          "domain" : {
+            "$ref" : "#/components/schemas/IdpType"
+          },
+          "roles" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ExtUserRoleMetadataRoleDto"
+            }
+          }
+        }
+      },
+      "ExtUserRoleMetadataRoleDto" : {
+        "properties" : {
+          "roleName" : {
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "expiryDate" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "forestClientNumber" : {
+            "type" : "string"
+          }
+        }
+      },
+      "AdminRoleAuthGroup" : {
+        "type" : "string",
+        "enum" : [ "FAM_ADMIN", "APP_ADMIN", "DELEGATED_ADMIN" ]
+      },
+      "AdminUserAccessResponse" : {
+        "properties" : {
+          "access" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamAuthGrantDto"
+            }
+          }
+        },
+        "required" : [ "access" ]
+      },
+      "FamApplicationGrantDto" : {
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "env" : {
+            "$ref" : "#/components/schemas/AppEnv"
+          }
+        },
+        "required" : [ "id", "name" ]
+      },
+      "FamAuthGrantDto" : {
+        "properties" : {
+          "auth_key" : {
+            "$ref" : "#/components/schemas/AdminRoleAuthGroup"
+          },
+          "grants" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamGrantDetailDto"
+            }
+          }
+        },
+        "required" : [ "auth_key", "grants" ]
+      },
+      "FamForestClientBase" : {
+        "properties" : {
+          "client_name" : {
+            "type" : "string"
+          },
+          "forest_client_number" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "forest_client_number" ]
+      },
+      "FamGrantDetailDto" : {
+        "properties" : {
+          "application" : {
+            "$ref" : "#/components/schemas/FamApplicationGrantDto"
+          },
+          "roles" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamRoleGrantDto"
+            }
+          }
+        },
+        "required" : [ "application" ]
+      },
+      "FamRoleGrantDto" : {
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "display_name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "type_code" : {
+            "$ref" : "#/components/schemas/RoleType"
+          },
+          "forest_clients" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamForestClientBase"
+            }
+          }
+        },
+        "required" : [ "description", "id", "name", "type_code" ]
+      },
+      "RoleType" : {
+        "type" : "string",
+        "enum" : [ "A", "C" ]
+      },
+      "PagedResultsFamAccessControlPrivilegeGetResponse" : {
+        "properties" : {
+          "meta" : {
+            "$ref" : "#/components/schemas/PageResultMeta"
+          },
+          "results" : {
+            "type" : "array",
+            "description" : "Paged results",
+            "items" : {
+              "$ref" : "#/components/schemas/FamAccessControlPrivilegeGetResponse"
+            }
+          }
+        },
+        "required" : [ "meta", "results" ]
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "type" : "http",
+        "description" : "Access token issued by BC Gov SSO (Keycloak).",
+        "scheme" : "bearer",
+        "bearerFormat" : "JWT"
+      },
+      "apiKey" : {
+        "type" : "apiKey",
+        "description" : "Shared secret for the scheduled user-information refresh.",
+        "name" : "X-API-Key",
+        "in" : "header"
+      }
+    }
+  }
+}

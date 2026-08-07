@@ -89,12 +89,11 @@ jobs:
               echo "No PR deployments found for ${{ github.event.repository.name }}"
             fi
 
-  schema-spy:
-    name: SchemaSpy
-    permissions:
-      contents: write
-      pages: write
-    uses: bcgov/quickstart-openshift-helpers/.github/workflows/.schema-spy.yml@a11ad3d1b9288fb40757c4314a62eb86ff227931 # v1.2.1
+  # SchemaSpy was removed with the in-cluster database. The helper workflow
+  # documents a database this repo deploys; FAM's is on-prem, not reachable from
+  # a GitHub runner, and its schema is owned by the DBA team. Generating docs
+  # against it would need network access and credentials that do not belong in
+  # CI. See migrations/dba/ for how the schema is administered.
 
   # Run sequentially to reduce chances of rate limiting
   zap:

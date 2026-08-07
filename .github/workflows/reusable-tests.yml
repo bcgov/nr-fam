@@ -1,9 +1,18 @@
 name: Reusable Tests
 
+# Post-deployment checks against a running environment.
+#
+# The quickstart's integration, E2E and load jobs were removed rather than left
+# red: their suites targeted the demo application (common/tests/integration only
+# had nest/fastapi/fiber/quarkus suites hitting /api/users) and the frontend's
+# e2e/ directory went with the React demo. FAM has no browser tests yet.
+#
+# What remains is a genuine smoke test, using the endpoint FAM already provides
+# for exactly this purpose.
+
 on:
   workflow_call:
     inputs:
-      ### Required
       target:
         description: PR number, test or prod
         default: ${{ github.event.number }}
@@ -16,101 +25,70 @@ env:
 permissions: {}
 
 jobs:
-  integration-tests:
-    name: Integration
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        name: Setup Node
-        with:
-          node-version: 24
-      - id: cache-npm
-        uses: actions/cache@v6
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-build-cache-node-modules-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-cache-node-modules-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
-
-      - name: Wait for backend health check
-        env:
-          BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
-        run: |
-          echo "Waiting for backend health check at ${BASE_URL}/api/health..."
-          for i in {1..30}; do
-            status=$(curl -k --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/health" || true)
-            if [ "$status" -eq 200 ]; then
-              echo "Backend is healthy!"
-              exit 0
-            fi
-            echo "Waiting for health check (HTTP $status), retrying in 10s... ($i/30)"
-            sleep 10
-          done
-          echo "ERROR: Backend did not become healthy in time."
-          exit 1
-
-      - name: Run Integration Tests
-        env:
-          API_NAME: nest
-          BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
-        run: |
-          cd common/tests/integration
-          npm ci
-          node src/main.js
-
-  e2e-tests:
-    name: E2E
-    defaults:
-      run:
-        working-directory: frontend
+  smoke-test:
+    name: Smoke Test
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-        name: Checkout
-      - uses: actions/setup-node@v7
-        name: Setup Node
-        with:
-          node-version: 24
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: |
-          npm ci
-          npx playwright install --with-deps
-
-      - name: Run Tests
+      # The frontend Route is the only public entry point; the backend has no
+      # Route of its own and is reached through Caddy at /api.
+      - name: Wait for the frontend to serve
         env:
-          E2E_BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}/
-          CI: "true"
+          BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
         run: |
-          npx playwright test --project="chromium" --reporter=html
+          echo "Waiting for ${BASE_URL} ..."
+          for i in $(seq 1 30); do
+            status=$(curl -k --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" "${BASE_URL}" || true)
+            if [ "$status" = "200" ]; then
+              echo "Frontend is serving."
+              exit 0
+            fi
+            echo "  HTTP $status, retrying in 10s ($i/30)"
+            sleep 10
+          done
+          echo "::error::Frontend did not become available in time."
+          exit 1
 
-      - uses: actions/upload-artifact@v7
-        if: (! cancelled())
-        name: upload results
-        with:
-          name: playwright-report-chromium
-          path: "./frontend/playwright-report" # path from current folder
-          retention-days: 7
-
-  load-tests:
-    name: Load
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        name: [backend, frontend]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
-      - uses: grafana/run-k6-action@de51a7390bdf0ac85a3bef493691bd71d4c7c158 # v1.4.0
+      - name: Backend health through the frontend proxy
         env:
-          BACKEND_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}/api
-          FRONTEND_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
-        with:
-          path: ./common/tests/load/${{ matrix.name }}-test.js
-          flags: --vus 100 --duration 300s
+          BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
+        run: |
+          echo "Checking ${BASE_URL}/api/actuator/health ..."
+          for i in $(seq 1 30); do
+            status=$(curl -k --connect-timeout 5 --max-time 10 -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/actuator/health" || true)
+            if [ "$status" = "200" ]; then
+              echo "Backend is healthy, and the /api proxy is wired correctly."
+              exit 0
+            fi
+            echo "  HTTP $status, retrying in 10s ($i/30)"
+            sleep 10
+          done
+          echo "::error::Backend health check failed through the /api proxy."
+          exit 1
+
+      # FAM's own smoke endpoint: 200 when the database is reachable AND holds
+      # seeded applications, 417 when it is reachable but empty. A healthy but
+      # unmigrated database is a failed deployment, so 417 fails here.
+      - name: FAM smoke test
+        env:
+          BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
+        run: |
+          status=$(curl -k --connect-timeout 5 --max-time 15 -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/smoke_test" || true)
+          case "$status" in
+            200) echo "Smoke test passed: database reachable and seeded." ;;
+            417) echo "::error::Database reachable but has no applications - migrations did not seed."; exit 1 ;;
+            *)   echo "::error::Smoke test returned HTTP $status."; exit 1 ;;
+          esac
+
+      # The OpenAPI document must be reachable: it is what the frontend client is
+      # generated from, and a 404 means springdoc failed to start up correctly.
+      - name: OpenAPI document is served
+        env:
+          BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
+        run: |
+          status=$(curl -k --connect-timeout 5 --max-time 15 -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/v3/api-docs" || true)
+          if [ "$status" != "200" ]; then
+            echo "::error::OpenAPI document not served (HTTP $status)."
+            exit 1
+          fi
+          echo "OpenAPI document is served."
