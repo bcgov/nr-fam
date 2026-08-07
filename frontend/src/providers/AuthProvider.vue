@@ -13,7 +13,6 @@ import {
     AUTH_CALLBACK_PATH,
 } from "@/services/keycloak";
 import { bootstrapLogin, fetchSelf } from "@/services/AuthApiService";
-import { buildFederatedLogoutUrl } from "@/utils/logoutChain";
 import { authState } from "@/providers/authState";
 import { useRouter } from "vue-router";
 import Spinner from "@/components/UI/Spinner.vue";
@@ -81,31 +80,23 @@ const login = async (idP: IdpTypes) => {
 /**
  * Logs the user out and resets authentication state.
  *
- * When the federated logout chain is configured this drives a full-page
- * navigation through Siteminder → Keycloak → app, so the upstream IdP session is
- * terminated too and the next sign-in is not silently resumed. Local tokens are
- * cleared first so the post-chain landing renders logged out.
+ * Redirects through Keycloak's end-session endpoint, which ends the realm
+ * session and returns to `post_logout_redirect_uri` - the app origin, set in
+ * `keycloak.ts`. That origin must be on the client's post-logout redirect
+ * allow-list in the realm, or Keycloak refuses the return leg.
  *
- * If the chain config is incomplete, it falls back to a plain Keycloak
- * end-session redirect, which clears the realm session but leaves Siteminder's.
+ * This ends the Keycloak session only. An upstream Siteminder session, if the
+ * provider has one, outlives it - so a later sign-in through that provider may
+ * not prompt for credentials again.
+ *
+ * Local state is cleared first, but the stored user is left for
+ * `signoutRedirect` to remove: it needs the id_token_hint to tell Keycloak which
+ * session to end.
  */
 const logout = async () => {
     stopSilentRefresh();
 
     delete axios.defaults.headers.common["Authorization"];
-
-    const chainUrl = buildFederatedLogoutUrl(
-        environmentSettings.getFrontEndRedirectBaseUrl(),
-        authState.value.famLoginUser?.idpProvider
-    );
-
-    if (chainUrl) {
-        // Drop local tokens before handing the browser to the chain.
-        await getUserManager().removeUser();
-        // Full-page navigation discards the SPA, so nothing after this runs.
-        window.location.assign(chainUrl);
-        return;
-    }
 
     authState.value = {
         isAuthenticated: false,

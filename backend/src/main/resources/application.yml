@@ -1,5 +1,5 @@
 server:
-  port: 3000
+  port: 8080
   shutdown: graceful
   # Behind the Caddy frontend / OpenShift route.
   forward-headers-strategy: framework
@@ -122,7 +122,7 @@ fam:
   # Origins allowed to call this API. Upstream read a single ALLOW_ORIGIN env var
   # on AWS and fell back to "*" locally.
   cors:
-    allowed-origins: ${ALLOW_ORIGIN:http://localhost:5173,http://localhost:3000}
+    allowed-origins: ${ALLOW_ORIGIN:http://localhost:3000}
 
   # Outbound integrations. Base URLs and keys are per-environment; there are no
   # production defaults here on purpose.

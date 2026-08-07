@@ -46,8 +46,12 @@ docker compose up
 ```
 
 That starts PostgreSQL, applies the migrations (with dummy OIDC client ids from
-`migrations/conf/flyway.local.conf`), runs the backend on `:3000` and the
-frontend on `:5173`.
+`migrations/conf/flyway.local.conf`), runs the backend on `:8080` and the
+frontend on `:3000`.
+
+The frontend is the one you open. It proxies `/api` to the backend and strips
+the prefix, mirroring the Caddy config the deployed frontend runs behind, so the
+API is same-origin in development too.
 
 To sign in you need a real BC Gov SSO client; set `KEYCLOAK_ISSUER_URI` and
 `FAM_OIDC_CLIENT_ID` in your environment first. Without them the stack still
@@ -100,8 +104,7 @@ merge. Each environment needs:
 **Secrets** - `db_host`, `db_name`, `db_user`, `db_password`, `oc_namespace`,
 `oc_token`
 
-**Variables** - `oc_server`, `keycloak_issuer_uri`, `keycloak_client_id`,
-`logout_keycloak_client_id_idir`, `logout_keycloak_client_id_bceidbusiness`
+**Variables** - `oc_server`, `keycloak_issuer_uri`, `keycloak_client_id`
 
 **Created out of band** - a secret named `oidc-clients` holding the
 per-application Keycloak client ids as

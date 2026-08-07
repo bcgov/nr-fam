@@ -71,8 +71,6 @@ jobs:
             -p DB_PASSWORD="${{ secrets.db_password }}"
             -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
             -p KEYCLOAK_CLIENT_ID="${{ vars.keycloak_client_id }}"
-            -p LOGOUT_KEYCLOAK_CLIENT_ID_IDIR="${{ vars.logout_keycloak_client_id_idir }}"
-            -p LOGOUT_KEYCLOAK_CLIENT_ID_BCEIDBUSINESS="${{ vars.logout_keycloak_client_id_bceidbusiness }}"
             -p TARGET_ENV="${{ inputs.environment || 'dev' }}"
             -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"

@@ -1,0 +1,38 @@
+# Profile used only to generate the OpenAPI document (OpenApiSpecGeneratorTest).
+#
+# springdoc builds the document from controller and DTO signatures, so the
+# database is irrelevant here - H2 just has to let the context start. This keeps
+# spec generation runnable without Docker.
+spring:
+  datasource:
+    url: jdbc:h2:mem:famspec;INIT=CREATE SCHEMA IF NOT EXISTS app_fam;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      # The real schema is Flyway's. Here Hibernate generates a throwaway one
+      # from the entities purely so the EntityManagerFactory can start.
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        default_schema: app_fam
+        dialect: org.hibernate.dialect.H2Dialect
+
+  flyway:
+    enabled: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # jwk-set-uri only - setting issuer-uri would make Spring fetch the
+          # realm's discovery document at startup, which needs network access.
+          jwk-set-uri: http://localhost:0/protocol/openid-connect/certs
+          issuer-uri:
+
+fam:
+  deployment-environment: dev
+  oidc:
+    fam-client-id: ""

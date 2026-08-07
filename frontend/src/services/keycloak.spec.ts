@@ -8,7 +8,7 @@ import {
 
 const ISSUER = "https://dev.loginproxy.gov.bc.ca/auth/realms/standard";
 const CLIENT_ID = "fam-console-local";
-const APP_ORIGIN = "http://localhost:5173";
+const APP_ORIGIN = "http://localhost:3000";
 
 const asEnvEntry = (value: string) => ({ sensitive: false, type: "string", value });
 

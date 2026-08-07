@@ -53,7 +53,7 @@ export class EnvironmentSettings {
      * separate base URLs. They are one service now, so there is one accessor.
      */
     getApiBaseUrl(): string {
-        return this.env?.fam_api_base_url.value || 'http://localhost:3000';
+        return this.env?.fam_api_base_url.value || 'http://localhost:8080';
     }
 
     getEnvironmentDisplayName(prefix = '', suffix = ''): string {

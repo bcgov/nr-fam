@@ -40,15 +40,6 @@ parameters:
   - name: KEYCLOAK_CLIENT_ID
     description: FAM's own Keycloak client id, used by the browser
     required: true
-  - name: LOGOUT_SITEMINDER_URL
-    description: Siteminder logoff endpoint, first hop of the federated logout chain
-    value: https://logon7.gov.bc.ca/clp-cgi/logoff.cgi
-  - name: LOGOUT_KEYCLOAK_CLIENT_ID_IDIR
-    description: Keycloak client id to end the session for an IDIR login
-    required: true
-  - name: LOGOUT_KEYCLOAK_CLIENT_ID_BCEIDBUSINESS
-    description: Keycloak client id to end the session for a Business BCeID login
-    required: true
   - name: TARGET_ENV
     description: dev, test or prod. Drives the environment banner in the UI.
     value: dev
@@ -99,22 +90,6 @@ objects:
           "front_end_redirect_base_url": {
             "sensitive": false, "type": "string",
             "value": "https://${NAME}-${ZONE}.${DOMAIN}"
-          },
-          "logout_siteminder_url": {
-            "sensitive": false, "type": "string",
-            "value": "${LOGOUT_SITEMINDER_URL}"
-          },
-          "logout_keycloak_url": {
-            "sensitive": false, "type": "string",
-            "value": "${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/logout"
-          },
-          "logout_keycloak_client_id_idir": {
-            "sensitive": false, "type": "string",
-            "value": "${LOGOUT_KEYCLOAK_CLIENT_ID_IDIR}"
-          },
-          "logout_keycloak_client_id_bceidbusiness": {
-            "sensitive": false, "type": "string",
-            "value": "${LOGOUT_KEYCLOAK_CLIENT_ID_BCEIDBUSINESS}"
           },
           "target_env": {
             "sensitive": false, "type": "string",

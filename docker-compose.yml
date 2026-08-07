@@ -70,8 +70,8 @@ services:
       # Blank skips the FAM-client check; see FamClientTokenFilter.
       FAM_OIDC_CLIENT_ID: ${FAM_OIDC_CLIENT_ID:-}
       FAM_DEPLOYMENT_ENVIRONMENT: dev
-      ALLOW_ORIGIN: http://localhost:5173
-    ports: ["3000:3000"]
+      ALLOW_ORIGIN: http://localhost:3000
+    ports: ["8080:8080"]
     healthcheck:
       test: ["CMD", "java", "-version"]
       interval: 10s
@@ -91,8 +91,8 @@ services:
     entrypoint: sh -c "npm run install-frontend && npm run dev -- --host"
     environment:
       # The dev server proxies /api here, matching the Caddy setup in production.
-      VITE_BACKEND_URL: http://backend:3000
-    ports: ["5173:5173"]
+      VITE_BACKEND_URL: http://backend:8080
+    ports: ["3000:3000"]
     volumes:
       - ./frontend:/app
       - /app/node_modules

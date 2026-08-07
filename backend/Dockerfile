@@ -28,6 +28,6 @@ COPY --from=build /app/extracted/application/ ./
 # Container-aware heap sizing; OpenShift sets the memory limit, not the image.
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=50 -Djava.security.egd=file:/dev/./urandom"
 
-EXPOSE 3000
+EXPOSE 8080
 USER nonroot
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -206,7 +206,7 @@ objects:
               imagePullPolicy: Always
               ports:
                 - name: http
-                  containerPort: 3000
+                  containerPort: 8080
               env:
                 - name: LOG_LEVEL
                   value: ${LOG_LEVEL}
@@ -310,7 +310,7 @@ objects:
       ports:
         - name: http
           port: 80
-          targetPort: 3000
+          targetPort: 8080
       selector:
         deployment: ${NAME}-${ZONE}-${COMPONENT}
   - apiVersion: autoscaling/v2

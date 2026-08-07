@@ -9,7 +9,7 @@ import path from "path";
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
-    const port = parseInt(env.VITE_PORT || "5173");
+    const port = parseInt(env.VITE_PORT || "3000");
 
     return {
         plugins: [
@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
             // CORS and an absolute base URL that production does not use.
             proxy: {
                 "/api": {
-                    target: env.VITE_BACKEND_URL || "http://localhost:3000",
+                    target: env.VITE_BACKEND_URL || "http://localhost:8080",
                     changeOrigin: true,
                     rewrite: (path) => path.replace(/^\/api/, ""),
                 },

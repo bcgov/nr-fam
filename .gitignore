@@ -385,7 +385,14 @@ pyrightconfig.json
 **/application-local.properties
 **/application-prod.properties
 **/application-secrets.properties
-**/application-*.yml
+# Deliberately NOT a blanket **/application-*.yml: that also swallowed
+# src/test/resources/application-openapi.yml, which every build needs, so the
+# spec-generation test failed anywhere the file had not been created by hand.
+# Only profiles that actually hold credentials are ignored.
+**/application-local.yml
+**/application-local-*.yml
+**/application-prod.yml
+**/application-secrets.yml
 **/bootstrap-local.yml
 **/bootstrap-prod.yml
 # Other common credential/config files
