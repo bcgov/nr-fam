@@ -3,256 +3,187 @@ package ca.bc.gov.nrs.fam.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.when;
 
-import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.UserType;
-import ca.bc.gov.nrs.fam.entity.FamApplication;
-import ca.bc.gov.nrs.fam.entity.FamRole;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
-import ca.bc.gov.nrs.fam.repository.FamAccessControlPrivilegeRepository;
-import ca.bc.gov.nrs.fam.service.ApplicationService;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpStatus;
 
-@ExtendWith(MockitoExtension.class)
-@DisplayName("AuthorizationService (port of router_guards.py)")
+/**
+ * The guards that survived V94.
+ *
+ * <p>Everything that took a {@code FamRole} or a FAM application id went with the
+ * tables behind it; what remains is decided entirely from the requester's token.
+ */
+@DisplayName("AuthorizationService (token-derived guards)")
 class AuthorizationServiceTest {
 
-  @Mock
-  private ApplicationService applicationService;
+  private final AuthorizationService service = new AuthorizationService(famPropertiesWithOwnIntegration());
 
-  @Mock
-  private FamAccessControlPrivilegeRepository accessControlPrivilegeRepository;
 
-  @InjectMocks
-  private AuthorizationService authorizationService;
+  /** FAM's own integration, reserved to FAM_ADMIN. */
+  static final int FAM_OWN_INTEGRATION = 22261;
 
-  private static Requester requester(UserType type, boolean delegatedAdmin, String... roles) {
+  private static ca.bc.gov.nrs.fam.configuration.FamProperties
+      famPropertiesWithOwnIntegration() {
+    return new ca.bc.gov.nrs.fam.configuration.FamProperties("dev", null,
+        new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration(null,
+            new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration.Css(
+                null, null, null, null, FAM_OWN_INTEGRATION,
+                new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration.Css
+                    .IdpAliases(null, null),
+                null),
+            null, null),
+        null);
+  }
+
+  private static Requester withRoles(String... roles) {
     return Requester.builder()
-        .userId(1L)
-        .userName("TESTER")
-        .userType(type)
-        .userGuid("0".repeat(32))
+        .userGuid("AAAA")
+        .userType(UserType.IDIR)
         .accessRoles(List.of(roles))
-        .isDelegatedAdmin(delegatedAdmin)
         .build();
   }
 
-  private static FamRole roleIn(String applicationName, String appEnvironment) {
-    FamApplication application = new FamApplication();
-    application.setApplicationId(10L);
-    application.setApplicationName(applicationName);
-    application.setAppEnvironment(appEnvironment);
-
-    FamRole role = new FamRole();
-    role.setRoleId(100L);
-    role.setRoleName("SOME_ROLE");
-    role.setApplication(application);
-    return role;
+  @Test
+  @DisplayName("allows a caller holding any admin role")
+  void allowsCallerWithAnyRole() {
+    assertThatCode(() -> service.authorize(withRoles("FOM_DEV_ADMIN")))
+        .doesNotThrowAnyException();
   }
 
-  @Nested
-  @DisplayName("authorize")
-  class Authorize {
-
-    @Test
-    @DisplayName("passes when the token carries any admin group")
-    void allowsWithAdminGroup() {
-      assertThatCode(() -> authorizationService.authorize(
-          requester(UserType.IDIR, false, "FOM_DEV_ADMIN"))).doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("passes for a delegated admin with no admin groups")
-    void allowsDelegatedAdminWithoutGroups() {
-      assertThatCode(() -> authorizationService.authorize(
-          requester(UserType.BCEID, true))).doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("rejects a user who is neither, with authorization_groups_required")
-    void rejectsWithoutAnyAdminCapacity() {
-      assertThatThrownBy(() -> authorizationService.authorize(requester(UserType.IDIR, false)))
-          .isInstanceOf(FamHttpException.class)
-          .extracting("code", "status")
-          .containsExactly(ErrorCode.GROUPS_REQUIRED, HttpStatus.FORBIDDEN);
-    }
+  @Test
+  @DisplayName("refuses a caller with no roles at all")
+  void refusesCallerWithNoRoles() {
+    // Admin rights are token roles now, so an empty list means they administer
+    // nothing - there is no second source to fall back on.
+    assertThatThrownBy(() -> service.authorize(withRoles()))
+        .isInstanceOf(FamHttpException.class)
+        .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
   }
 
-  @Nested
-  @DisplayName("authorizeByAppId")
-  class AuthorizeByAppId {
-
-    @Test
-    @DisplayName("passes for an application admin without touching privileges")
-    void allowsAppAdmin() {
-      when(applicationService.isAppAdmin(anyLong(), any())).thenReturn(true);
-
-      assertThatCode(() -> authorizationService.authorizeByAppId(
-          10L, requester(UserType.IDIR, false, "FOM_DEV_ADMIN"))).doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("passes for a delegated admin of that application")
-    void allowsDelegatedAdminOfApplication() {
-      when(applicationService.isAppAdmin(anyLong(), any())).thenReturn(false);
-      when(accessControlPrivilegeRepository.findManagedRoleIds(1L, 10L))
-          .thenReturn(List.of(100L));
-
-      assertThatCode(() -> authorizationService.authorizeByAppId(
-          10L, requester(UserType.BCEID, true))).doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("rejects a delegated admin of a different application")
-    void rejectsDelegatedAdminOfOtherApplication() {
-      when(applicationService.isAppAdmin(anyLong(), any())).thenReturn(false);
-      when(accessControlPrivilegeRepository.findManagedRoleIds(1L, 10L)).thenReturn(List.of());
-
-      assertThatThrownBy(() -> authorizationService.authorizeByAppId(
-          10L, requester(UserType.BCEID, true)))
-          .isInstanceOf(FamHttpException.class)
-          .extracting("code", "status")
-          .containsExactly(ErrorCode.PERMISSION_REQUIRED, HttpStatus.FORBIDDEN);
-    }
+  @Test
+  @DisplayName("refuses a caller whose roles are null")
+  void refusesNullRoles() {
+    assertThatThrownBy(() -> service.authorize(Requester.builder().build()))
+        .isInstanceOf(FamHttpException.class);
   }
 
-  @Nested
-  @DisplayName("enforceBceidTermsConditions")
-  class TermsConditions {
+  @Test
+  @DisplayName("FAM administration requires the FAM_ADMIN role specifically")
+  void famAdminRequiresFamRole() {
+    assertThatCode(() -> service.authorizeByFamAdmin(withRoles("FAM_ADMIN")))
+        .doesNotThrowAnyException();
 
-    @Test
-    @DisplayName("rejects with HTTP 400 so the frontend can show the terms dialog")
-    void rejectsWhenAcceptanceOutstanding() {
-      Requester needsTerms = requester(UserType.BCEID, true).toBuilder()
-          .requiresAcceptTc(true).build();
-
-      assertThatThrownBy(() -> authorizationService.enforceBceidTermsConditions(needsTerms))
-          .isInstanceOf(FamHttpException.class)
-          .extracting("code", "status")
-          .containsExactly(ErrorCode.TERMS_CONDITIONS_REQUIRED, HttpStatus.BAD_REQUEST);
-    }
-
-    @Test
-    @DisplayName("passes once accepted")
-    void allowsWhenAccepted() {
-      assertThatCode(() -> authorizationService.enforceBceidTermsConditions(
-          requester(UserType.BCEID, true))).doesNotThrowAnyException();
-    }
+    assertThatThrownBy(() -> service.authorizeByFamAdmin(withRoles("FOM_DEV_ADMIN")))
+        .isInstanceOf(FamHttpException.class);
   }
 
-  @Nested
-  @DisplayName("internalOnlyAction")
-  class InternalOnly {
+  @ParameterizedTest
+  @EnumSource(value = UserType.class, names = {"IDIR"}, mode = EnumSource.Mode.EXCLUDE)
+  @DisplayName("IDIR-only endpoints refuse every other user type")
+  void internalOnlyRefusesExternalUsers(UserType userType) {
+    Requester external = Requester.builder()
+        .userType(userType).accessRoles(List.of("X_ADMIN")).build();
 
-    @Test
-    @DisplayName("allows IDIR")
-    void allowsIdir() {
-      assertThatCode(() -> authorizationService.internalOnlyAction(
-          requester(UserType.IDIR, false))).doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("rejects BCeID")
-    void rejectsBceid() {
-      assertThatThrownBy(() -> authorizationService.internalOnlyAction(
-          requester(UserType.BCEID, true)))
-          .isInstanceOf(FamHttpException.class)
-          .extracting("code")
-          .isEqualTo(ErrorCode.EXTERNAL_USER_ACTION_PROHIBITED);
-    }
-
-    @Test
-    @DisplayName("rejects BCSC, which is neither IDIR nor BCeID")
-    void rejectsBcsc() {
-      Requester bcsc = requester(UserType.IDIR, false).toBuilder()
-          .userType(UserType.BCSC_PROD).build();
-
-      assertThatThrownBy(() -> authorizationService.internalOnlyAction(bcsc))
-          .isInstanceOf(FamHttpException.class);
-    }
+    assertThatThrownBy(() -> service.internalOnlyAction(external))
+        .isInstanceOf(FamHttpException.class);
   }
 
-  @Nested
-  @DisplayName("isSelfGrantExempt")
-  class SelfGrantExemption {
-
-    @ParameterizedTest(name = "{0} in {1} -> exempt={2}")
-    @CsvSource({
-        // App admins may self-manage on non-production instances of other apps.
-        "FOM_DEV,   DEV,  true",
-        "FOM_TEST,  TEST, true",
-        // Production is never exempt.
-        "FOM_PROD,  PROD, false",
-        // FAM itself is never exempt, whatever its environment.
-        "FAM,       DEV,  false",
-    })
-    @DisplayName("allows self-management only on DEV/TEST instances of other applications")
-    void exemptionByApplicationAndEnvironment(
-        String applicationName, String environment, boolean expected) {
-
-      FamRole role = roleIn(applicationName, environment);
-      Requester appAdmin = requester(UserType.IDIR, false, applicationName + "_ADMIN");
-
-      assertThat(authorizationService.isSelfGrantExempt(role, appAdmin)).isEqualTo(expected);
-    }
-
-    @Test
-    @DisplayName("fails closed when the application environment is null")
-    void failsClosedOnMissingEnvironment() {
-      FamRole role = roleIn("FOM_DEV", null);
-      Requester appAdmin = requester(UserType.IDIR, false, "FOM_DEV_ADMIN");
-
-      assertThat(authorizationService.isSelfGrantExempt(role, appAdmin)).isFalse();
-    }
-
-    @Test
-    @DisplayName("fails closed when the application environment is unrecognised")
-    void failsClosedOnUnknownEnvironment() {
-      FamRole role = roleIn("FOM_DEV", "QA");
-      Requester appAdmin = requester(UserType.IDIR, false, "FOM_DEV_ADMIN");
-
-      assertThat(authorizationService.isSelfGrantExempt(role, appAdmin)).isFalse();
-    }
-
-    @Test
-    @DisplayName("never exempts a delegated admin, only an application admin")
-    void doesNotExemptDelegatedAdmin() {
-      FamRole role = roleIn("FOM_DEV", "DEV");
-      Requester delegatedAdmin = requester(UserType.BCEID, true);
-
-      assertThat(authorizationService.isSelfGrantExempt(role, delegatedAdmin)).isFalse();
-    }
+  @Test
+  @DisplayName("IDIR-only endpoints allow an IDIR caller")
+  void internalOnlyAllowsIdir() {
+    assertThatCode(() -> service.internalOnlyAction(withRoles("X_ADMIN")))
+        .doesNotThrowAnyException();
   }
 
-  @Nested
-  @DisplayName("requirePrivilegeOnRole")
-  class PrivilegeOnRole {
+  private static Requester bceidRequester(String businessGuid) {
+    return Requester.builder()
+        .userType(UserType.BCEID).businessGuid(businessGuid)
+        .accessRoles(List.of("X_ADMIN")).build();
+  }
 
-    @Test
-    @DisplayName("rejects when the delegated admin does not manage the role")
-    void rejectsWithoutPrivilege() {
-      when(accessControlPrivilegeRepository.findByUserUserIdAndRoleRoleId(1L, 100L))
-          .thenReturn(Optional.empty());
+  @Test
+  @DisplayName("lets a BCeID caller read a user from their own organisation")
+  void allowsSameOrganization() {
+    assertThatCode(() -> service.enforceSameOrganization(bceidRequester("ORG-A"), "ORG-A"))
+        .doesNotThrowAnyException();
+  }
 
-      assertThatThrownBy(() -> authorizationService.requirePrivilegeOnRole(
-          requester(UserType.BCEID, true), 100L))
-          .isInstanceOf(FamHttpException.class)
-          .extracting("code")
-          .isEqualTo(ErrorCode.PERMISSION_REQUIRED);
-    }
+  @Test
+  @DisplayName("refuses a BCeID caller reading a user from another organisation")
+  void refusesOtherOrganization() {
+    // This rule used to live inside the IDIM integration. nr-user-lookup-api
+    // takes no requester, so losing it would let a BCeID administrator enumerate
+    // users at other organisations.
+    assertThatThrownBy(() -> service.enforceSameOrganization(bceidRequester("ORG-A"), "ORG-B"))
+        .isInstanceOf(FamHttpException.class)
+        .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  @DisplayName("matches organisations case-insensitively")
+  void sameOrganizationIgnoresCasing() {
+    assertThatCode(() -> service.enforceSameOrganization(bceidRequester("org-a"), "ORG-A"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("refuses when either organisation is unknown, rather than allowing it")
+  void unknownOrganizationIsRefused() {
+    // An absent organisation is not a matching one. Allowing it would turn a
+    // missing attribute into unrestricted access.
+    assertThatThrownBy(() -> service.enforceSameOrganization(bceidRequester(null), "ORG-A"))
+        .isInstanceOf(FamHttpException.class);
+    assertThatThrownBy(() -> service.enforceSameOrganization(bceidRequester("ORG-A"), null))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("does not restrict an IDIR caller")
+  void idirCallerIsUnrestricted() {
+    // The rule is about BCeID administrators being confined to their own
+    // business; IDIR staff administer across organisations by design.
+    assertThatCode(() -> service.enforceSameOrganization(withRoles("X_ADMIN"), "ANY-ORG"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("refuses a grant the requester is making to themselves")
+  void refusesSelfGrant() {
+    // Unconditional: the old exemption for app admins on DEV/TEST of another
+    // application depended on FAM knowing application environments from its own
+    // tables, which it no longer does.
+    assertThatThrownBy(() -> service.forbidSelfGrant(withRoles("X_ADMIN"), "aaaa"))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("allows a grant to somebody else")
+  void allowsGrantToAnotherUser() {
+    assertThatCode(() -> service.forbidSelfGrant(withRoles("X_ADMIN"), "BBBB"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("a requester with no GUID cannot accidentally match a target")
+  void nullRequesterGuidDoesNotMatch() {
+    Requester noGuid = Requester.builder().accessRoles(List.of("X_ADMIN")).build();
+
+    assertThatCode(() -> service.forbidSelfGrant(noGuid, null))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("self-grant comparison ignores GUID casing")
+  void selfGrantIgnoresCasing() {
+    // FAM stores GUIDs upper case; CSS usernames are lower case.
+    assertThat(
+        assertThatThrownBy(() -> service.forbidSelfGrant(withRoles("X_ADMIN"), "AaAa"))
+            .isInstanceOf(FamHttpException.class)).isNotNull();
   }
 }

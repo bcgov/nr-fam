@@ -10,7 +10,11 @@ public interface FamPrivilegeChangeAuditRepository
     extends JpaRepository<FamPrivilegeChangeAudit, Long> {
 
   /**
-   * Audit history for one user within one application, most recent change first.
+   * Audit history for one user within one CSS integration environment, most
+   * recent change first.
+   *
+   * <p>Keyed on the target user's GUID rather than a user id: the audit keeps no
+   * foreign key into fam_user, so that history survives the user record.
    *
    * <p>Ordered by {@code change_date}, not {@code create_date}: backfilled rows
    * carry a historical change date that differs from when the row was written.
@@ -18,10 +22,13 @@ public interface FamPrivilegeChangeAuditRepository
   @Query("""
       select a from FamPrivilegeChangeAudit a
       join fetch a.privilegeChangeType
-      where a.changeTargetUser.userId = :userId
-        and a.application.applicationId = :applicationId
+      where upper(a.targetUserGuid) = upper(:targetUserGuid)
+        and a.cssIntegrationId = :cssIntegrationId
+        and a.cssEnvironment = :cssEnvironment
       order by a.changeDate desc
       """)
   List<FamPrivilegeChangeAudit> findHistory(
-      @Param("userId") Long userId, @Param("applicationId") Long applicationId);
+      @Param("targetUserGuid") String targetUserGuid,
+      @Param("cssIntegrationId") Integer cssIntegrationId,
+      @Param("cssEnvironment") String cssEnvironment);
 }

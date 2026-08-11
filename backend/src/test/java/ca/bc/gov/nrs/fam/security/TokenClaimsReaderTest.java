@@ -204,4 +204,34 @@ class TokenClaimsReaderTest {
       assertThat(reader.appClientId(jwt(idirClaims()))).isEqualTo("fam-console");
     }
   }
+
+  @Test
+  @DisplayName("names the missing claim and the provider when a key claim is absent")
+  void reportsMissingClaim() {
+    // The realm maps these; when one does not reach the ACCESS token the failure
+    // has to say which, or the only signal is a bare error code.
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("identity_provider", "azureidir");
+    claims.put("idir_username", "M2VILLEN");
+    claims.put("azp", "forests-access-management-22261");
+    // idir_user_guid deliberately absent.
+
+    assertThatThrownBy(() -> reader.identity(jwt(claims)))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("user GUID")
+        .hasMessageContaining("azureidir");
+  }
+
+  @Test
+  @DisplayName("a token with the GUID but no username fails on the username")
+  void reportsMissingUsername() {
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("identity_provider", "azureidir");
+    claims.put("idir_user_guid", "1B0E096EA77D4E6981E58F2060C3ED9D");
+    claims.put("azp", "forests-access-management-22261");
+
+    assertThatThrownBy(() -> reader.identity(jwt(claims)))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("username");
+  }
 }

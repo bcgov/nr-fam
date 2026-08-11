@@ -1,6 +1,6 @@
 package ca.bc.gov.nrs.fam.controller;
 
-import ca.bc.gov.nrs.fam.repository.FamApplicationRepository;
+import ca.bc.gov.nrs.fam.repository.FamUserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
  * seeded application data?
  *
  * <p>Port of {@code router_smoke_test.py}, including its unusual 417 for "reached
- * the database but found no applications" - a healthy but unseeded database is a
+ * the database but found nothing seeded" - a healthy but unseeded database is a
  * failed deployment, not a healthy one. Unauthenticated, as upstream.
+ *
+ * <p>Applications moved to CSS in V94, so the seeded-data check is now against
+ * fam_user: it is the only table the service still populates itself.
  */
 @RestController
 @RequestMapping("/smoke_test")
@@ -24,13 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class SmokeTestController {
 
-  private final FamApplicationRepository applicationRepository;
+  private final FamUserRepository userRepository;
 
   @GetMapping
   @Operation(operationId = "smoke_test", summary = "Verify database connectivity and seeded application data")
   public ResponseEntity<Void> smokeTest() {
-    long applications = applicationRepository.count();
-    return applications == 0
+    long seededRows = userRepository.count();
+    return seededRows == 0
         ? ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).build()
         : ResponseEntity.ok().build();
   }

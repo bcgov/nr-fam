@@ -1,44 +1,23 @@
 <script setup lang="ts">
 import Label from "@/components/UI/Label.vue";
 import { sideNavItems } from "@/constants/SideNavConfig";
-import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { sideNavState } from "@/store/SideNavState";
 import AlignBoxIcon from "@carbon/icons-vue/es/align-box--top-center/16";
 import EmailIcon from "@carbon/icons-vue/es/email/16";
-import { useQuery } from "@tanstack/vue-query";
-import { AdminRoleAuthGroup } from "fam-api/model";
 import { computed } from "vue";
 import { useRouter, type RouteRecordName } from "vue-router";
 
 const router = useRouter();
 
-const adminUserAccessQuery = useQuery({
-    queryKey: ["admin-user-access"],
-    queryFn: () =>
-        AdminMgmtApiService.adminUserAccessesApi
-            .adminUserAccessPrivilege()
-            .then((res) => res.data),
-});
 
 /**
- * Determines if a user is an app admin for at least one application,
- * @returns {string} a path to the relevant pdf file.
+ * Path to the administrator guide.
+ *
+ * This used to branch on whether the caller was an app admin or a delegated
+ * admin, read from FAM's admin tables. Delegated administration went to CSS with
+ * those tables, so there is one guide left.
  */
-const pathToPdfGuide = computed(() => {
-    if (!adminUserAccessQuery.data.value) {
-        return "";
-    }
-
-    const accessList = adminUserAccessQuery.data.value.access.map(
-        (grantDto) => grantDto.auth_key
-    );
-
-    if (accessList.indexOf(AdminRoleAuthGroup.AppAdmin) > -1)
-        return "/files/FAM_app-admin-instructions.pdf";
-
-    if (accessList.indexOf(AdminRoleAuthGroup.DelegatedAdmin) > -1)
-        return "/files/FAM_delegated-admin-instructions.pdf";
-});
+const pathToPdfGuide = computed(() => "/files/FAM_app-admin-instructions.pdf");
 
 const getRoutePathByName = (routeName: RouteRecordName): string | undefined => {
     const route = router.getRoutes().find((r) => r.name === routeName);

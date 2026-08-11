@@ -1,46 +1,43 @@
-import { IdpProvider } from "@/enum/IdpEnum";
 import type { TextInputType } from "@/types/InputTypes";
 import type { SelectedUser } from "@/types/SelectUserType";
 import {
-    RoleType,
-    type FamAccessControlPrivilegeCreateRequest,
-    type FamGrantDetailDto,
-    type FamRoleGrantDto,
-} from "fam-api/model";
-import {
     UserType,
+    type CssRoleOptionDto,
+    type CssUserRoleAssignmentRequest,
+    type FamDistrictDto,
     type FamForestClientDto,
-    type FamUserRoleAssignmentCreateRequest,
 } from "fam-api/model";
-import { array, mixed, object } from "yup";
+import { array, mixed, object, string } from "yup";
 
+// Query param keys for the post-grant notification.
 export const AddAppUserPermissionSuccessQuerykey = "app-user-mutation-success";
 export const AddAppUserPermissionErrorQuerykey = "app-user-mutation-error";
-export const AddDelegatedAdminSuccessQuerykey = "delegated-admin-mutation-success";
-export const AddDelegatedAdminErrorQuerykey = "delegated-admin-mutation-error";
-
-// Query Param keys for new ids
-export const NewRegularUserQueryParamKey = "newRegularUserIds";
-export const NewDelegatedAddminQueryParamKey = "newDelegatedAdminIds";
 
 export const MAX_USERS_GRANTING_ALLOWED = 50;
+
+/**
+ * A selectable role in the permission form.
+ *
+ * Scope comes from flags rather than a type code: CSS has no abstract/concrete
+ * concept, and a role is district or client scoped by virtue of the marker roles
+ * in its composite chain.
+ */
+export type RoleOption = CssRoleOptionDto;
 
 export type AppPermissionFormType = {
     domain: UserType;
     users: SelectedUser[];
     forestClients: FamForestClientDto[];
-    role: FamRoleGrantDto | null;
-    sendUserEmail: boolean;
+    districts: FamDistrictDto[];
+    role: RoleOption | null;
     forestClientInput: TextInputType & {
         /**
-         * Track if a verification of a client number is in progress.
-         * Disable role selection if it's verifying, otherwise a client might be added
-         * right after switching.
+         * Track if a verification of a client number is in progress. Role
+         * selection is disabled while verifying, otherwise a client could be
+         * added right after switching.
          */
         isVerifying: boolean;
     };
-    isAddingDelegatedAdmin: boolean;
-    expiryDate?: string | null; // Optional expiry date for permissions
 };
 
 export type AppPermissionQueryErrorType = {
@@ -52,8 +49,8 @@ const defaultFormData: AppPermissionFormType = {
     domain: UserType.B,
     users: [],
     forestClients: [],
+    districts: [],
     role: null,
-    sendUserEmail: false,
     forestClientInput: {
         id: "forest-client-number-input",
         value: "",
@@ -61,119 +58,93 @@ const defaultFormData: AppPermissionFormType = {
         errorMsg: "",
         isVerifying: false,
     },
-    isAddingDelegatedAdmin: false,
-    expiryDate: null,
 };
 
-export const getDefaultFormData = (
-    domain: UserType,
-    sendUserEmail: boolean
-): AppPermissionFormType => {
+export const getDefaultFormData = (domain: UserType): AppPermissionFormType => {
     const copy = structuredClone(defaultFormData);
-    return {
-        ...copy,
-        domain,
-        sendUserEmail,
-    };
+    return { ...copy, domain };
 };
 
-/**
- * Validation schema for app admin and delegated admin
- */
-export const validateAppPermissionForm = () => {
-    return object({
+/** True when a forest client must be chosen before the role can be granted. */
+export const isClientScopedRoleSelected = (
+    formData?: AppPermissionFormType
+): boolean => Boolean(formData?.role?.role_type_client);
+
+/** True when one or more districts must be chosen before the role can be granted. */
+export const isDistrictScopedRoleSelected = (
+    formData?: AppPermissionFormType
+): boolean => Boolean(formData?.role?.role_type_district);
+
+export const validateAppPermissionForm = () =>
+    object({
+        domain: string().required(),
         users: array()
-            .of(mixed<SelectedUser>().required("A valid user is required"))
-            .max(MAX_USERS_GRANTING_ALLOWED, `User list exceeds ${MAX_USERS_GRANTING_ALLOWED} users allowed`)
-            .when("isAddingDelegatedAdmin", {
-                is: false,
-                then: (schema) => schema.min(1, "At least one user is required"),
-                otherwise: (schema) =>
-                    schema
-                        .min(1, "A valid user is required")
-                        .max(1, "Only one user is allowed for delegated admin"),
-            }),
-        role: mixed<FamRoleGrantDto>().required("Please select a role"),
+            .of(mixed<SelectedUser>().required())
+            .min(1, "At least one user is required")
+            .max(
+                MAX_USERS_GRANTING_ALLOWED,
+                `At most ${MAX_USERS_GRANTING_ALLOWED} users can be granted at once`
+            ),
+        role: mixed<RoleOption>().required("Please select a role"),
         forestClients: array()
-            .of(
-                mixed<FamForestClientDto>()
-                    .required("Each Forest Client must be a valid object")
-                    .test(
-                        "not-empty-object",
-                        "Forest Client cannot be empty",
-                        (item) => item && Object.keys(item).length > 0
-                    )
-            )
+            .of(mixed<FamForestClientDto>().required())
             .when("role", {
-                is: (role: FamRoleGrantDto | null) =>
-                    role?.type_code === RoleType.A,
+                is: (role: RoleOption | null) => Boolean(role?.role_type_client),
                 then: (schema) =>
                     schema.min(1, "At least one organization is required"),
                 otherwise: (schema) => schema.default([]).nullable(),
             }),
+        districts: array()
+            .of(mixed<FamDistrictDto>().required())
+            .when("role", {
+                is: (role: RoleOption | null) =>
+                    Boolean(role?.role_type_district),
+                then: (schema) =>
+                    schema.min(1, "At least one district is required"),
+                otherwise: (schema) => schema.default([]).nullable(),
+            }),
     });
-};
 
 /**
- * Generates a payload for creating a user role assignment or access control privilege request.
+ * One CSS assignment request per selected user.
  *
- * @param {AppPermissionFormType} formData - The complete form data containing user and role details.
- * @returns {FamUserRoleAssignmentCreateRequest | FamAccessControlPrivilegeCreateRequest} a payload object.
- *
+ * CSS grants a role to one user at a time, so a multi-user selection becomes one
+ * request each rather than a single batch call. Scope values travel as bare
+ * strings; the backend turns each into a scope-specific role, because CSS roles
+ * carry no attributes and the name is what reaches the token.
  */
-export const generatePayload = (
+export const generateCssRequests = (
     formData: AppPermissionFormType
-    ): FamUserRoleAssignmentCreateRequest | FamAccessControlPrivilegeCreateRequest => {
-        const common_payload = {
-            user_type_code: formData.domain,
-            role_id: formData.role?.id ?? -1,
-            forest_client_numbers: (formData.forestClients ?? []).map(
-                (fc) => fc.forest_client_number
-            ),
-            requires_send_user_email: formData.sendUserEmail,
-            // null would be sent as a value; undefined omits the field.
-            expiry_date_date: formData.expiryDate ?? undefined,
-        };
-
-        if (formData.isAddingDelegatedAdmin) {
-            const delegatedAdminUser = formData.users[0];
-            return {
-                ...common_payload,
-                user_name: delegatedAdminUser?.userId ?? "",
-                user_guid: delegatedAdminUser?.guid ?? "",
-            };
-        }
-        return {
-            ...common_payload,
-            users: formData.users.map((user) => ({
-                user_guid: user.guid ?? "",
-                user_name: user.userId ?? "",
-            })),
-        };
-    };
-
-export const getRolesByAppId = (data: FamGrantDetailDto[], appId: number) => {
-    const foundGrantByAppId = data.find(
-        (grant) => grant.application.id === appId
-    );
-
-    if (foundGrantByAppId) {
-        return {
-            application: foundGrantByAppId.application,
-            roles: foundGrantByAppId.roles,
-        };
+): CssUserRoleAssignmentRequest[] => {
+    const role = formData.role;
+    if (!role) {
+        return [];
     }
 
-    return null;
+    const districtScoped = Boolean(role.role_type_district);
+    const clientScoped = Boolean(role.role_type_client);
+
+    const scopeType = districtScoped
+        ? "DISTRICT"
+        : clientScoped
+          ? "FOREST_CLIENT"
+          : undefined;
+
+    const scopeValues = districtScoped
+        ? formData.districts.map((d) => d.org_unit_code)
+        : clientScoped
+          ? formData.forestClients.map((c) => c.forest_client_number)
+          : [];
+
+    // The address travels with the request because the picker already has it -
+    // the directory search returns it alongside the GUID. It only addresses the
+    // notification; who gets granted what comes from the GUID.
+    return formData.users.map((user) => ({
+        user_guid: user.guid ?? "",
+        user_type: formData.domain,
+        role_name: role.name,
+        target_user_email: user.email ?? undefined,
+        scope_type: scopeType,
+        scope_values: scopeValues,
+    }));
 };
-
-export const isAbstractRoleSelected = (
-    formData?: AppPermissionFormType
-): boolean => formData?.role?.type_code === RoleType.A;
-
-export const getUserNameInputHelperText = (domain: UserType) =>
-    `Type user's ${
-        domain === UserType.I
-            ? IdpProvider.IDIR
-            : IdpProvider.BCEIDBUSINESS
-    } and click "Verify username"`;

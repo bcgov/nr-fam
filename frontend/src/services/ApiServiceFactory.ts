@@ -1,40 +1,32 @@
 import { EnvironmentSettings } from "@/services/EnvironmentSettings";
 import axios from "axios";
 import {
-    AdminUserAccessesApi,
+    CSSIntegrationsApi,
     Configuration,
-    FAMAccessControlPrivilegesApi,
-    FAMApplicationAdminApi,
-    FAMApplicationsApi,
+    FAMDistrictsApi,
     FAMForestClientsApi,
-    FAMUserRoleAssignmentApi,
-    FAMUserTermsAndConditionsApi,
     IDIRBCeIDProxyApi,
     PermissionAuditApi,
 } from "fam-api";
 import { TEN_SECONDS } from "@/constants/TimeUnits";
 
 /*
- * FAM used to run two APIs on separate base URLs. They are one service now, so
- * every API class below is built against the same base URL.
+ * FAM used to run two APIs on separate base URLs, then one. What is left is
+ * smaller again: applications, roles and role assignments moved to CSS, so the
+ * clients that read them from FAM's own tables are gone.
  *
  * The two exported groupings are kept because they mirror how the UI is
- * organised - the admin screens versus the permission screens - not because
- * there are still two backends.
+ * organised, not because there are two backends.
  */
 type AppAccessControlApiType = {
-    applicationsApi: FAMApplicationsApi;
-    userRoleAssignmentApi: FAMUserRoleAssignmentApi;
     forestClientsApi: FAMForestClientsApi;
+    districtsApi: FAMDistrictsApi;
     idirBceidProxyApi: IDIRBCeIDProxyApi;
-    userTermsAndConditionsApi: FAMUserTermsAndConditionsApi;
     permissionAuditApi: PermissionAuditApi;
 };
 
 type AdminManagementApiType = {
-    applicationAdminApi: FAMApplicationAdminApi;
-    delegatedAdminApi: FAMAccessControlPrivilegesApi;
-    adminUserAccessesApi: AdminUserAccessesApi;
+    cssIntegrationsApi: CSSIntegrationsApi;
 };
 
 axios.defaults.headers.common["Content-Type"] = "application/json";
@@ -55,24 +47,13 @@ export default class ApiServiceFactory {
         const baseURL = this.environmentSettings.getApiBaseUrl();
 
         this.appAccessControlApiService = {
-            applicationsApi: this.createApiInstance(
-                FAMApplicationsApi,
-                baseURL
-            ),
-            userRoleAssignmentApi: this.createApiInstance(
-                FAMUserRoleAssignmentApi,
-                baseURL
-            ),
             forestClientsApi: this.createApiInstance(
                 FAMForestClientsApi,
                 baseURL
             ),
+            districtsApi: this.createApiInstance(FAMDistrictsApi, baseURL),
             idirBceidProxyApi: this.createApiInstance(
                 IDIRBCeIDProxyApi,
-                baseURL
-            ),
-            userTermsAndConditionsApi: this.createApiInstance(
-                FAMUserTermsAndConditionsApi,
                 baseURL
             ),
             permissionAuditApi: this.createApiInstance(
@@ -82,16 +63,8 @@ export default class ApiServiceFactory {
         };
 
         this.adminManagementApiService = {
-            applicationAdminApi: this.createApiInstance(
-                FAMApplicationAdminApi,
-                baseURL
-            ),
-            delegatedAdminApi: this.createApiInstance(
-                FAMAccessControlPrivilegesApi,
-                baseURL
-            ),
-            adminUserAccessesApi: this.createApiInstance(
-                AdminUserAccessesApi,
+            cssIntegrationsApi: this.createApiInstance(
+                CSSIntegrationsApi,
                 baseURL
             ),
         };

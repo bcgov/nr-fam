@@ -1,13 +1,10 @@
 package ca.bc.gov.nrs.fam.security;
 
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
-import ca.bc.gov.nrs.fam.constants.FamConstants;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.entity.FamUser;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
-import ca.bc.gov.nrs.fam.repository.FamAccessControlPrivilegeRepository;
 import ca.bc.gov.nrs.fam.repository.FamUserRepository;
-import ca.bc.gov.nrs.fam.repository.FamUserTermsConditionsRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,8 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class RequesterService {
 
   private final FamUserRepository userRepository;
-  private final FamAccessControlPrivilegeRepository accessControlPrivilegeRepository;
-  private final FamUserTermsConditionsRepository termsConditionsRepository;
   private final TokenClaimsReader claimsReader;
   private final AccessRoleResolver accessRoleResolver;
 
@@ -69,8 +64,7 @@ public class RequesterService {
         .orElseThrow(() -> new FamHttpException(HttpStatus.FORBIDDEN,
             ErrorCode.REQUESTER_NOT_EXISTS, "Requester does not exist, action is not allowed."));
 
-    List<String> accessRoles = accessRoleResolver.resolveAccessRoles(
-        identity.userGuid(), identity.userTypeCode(), claimsReader.appClientId(jwt));
+    List<String> accessRoles = accessRoleResolver.resolveAccessRoles(jwt);
 
     return toRequester(famUser, accessRoles);
   }
@@ -84,20 +78,18 @@ public class RequesterService {
   /**
    * Derive the two computed flags upstream attached to the requester.
    *
-   * <p>{@code requiresAcceptTc} is deliberately narrow: only a Business BCeID
-   * delegated admin is ever asked to accept terms, and only while their accepted
-   * version is not the current one.
+   * <p>{@code isDelegatedAdmin} and {@code requiresAcceptTc} are always false
+   * since V94: delegated administration and terms acceptance are CSS concerns,
+   * and the tables that backed them are gone.
    */
   private Requester toRequester(FamUser famUser, List<String> accessRoles) {
-    boolean delegatedAdmin =
-        accessControlPrivilegeRepository.existsByUserUserId(famUser.getUserId());
-
     UserType userType = UserType.fromCode(famUser.getUserTypeCode()).orElse(null);
 
-    boolean requiresAcceptTc = userType == UserType.BCEID
-        && delegatedAdmin
-        && !termsConditionsRepository.existsByUserUserIdAndVersion(
-            famUser.getUserId(), FamConstants.CURRENT_TERMS_AND_CONDITIONS_VERSION);
+    // Delegated administration and terms-and-conditions acceptance went to CSS
+    // in V94 along with the tables that recorded them. Both flags are retained on
+    // Requester so the response shape is unchanged, and both are now always false.
+    boolean delegatedAdmin = false;
+    boolean requiresAcceptTc = false;
 
     return Requester.builder()
         .userId(famUser.getUserId())

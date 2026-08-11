@@ -54,7 +54,7 @@ class ForestClientIntegrationServiceTest {
             new FamProperties.Integration.ForestClient.Retry(maxAttempts, retryDelay));
 
     FamProperties properties = new FamProperties("dev", null,
-        new FamProperties.Integration(config, null, null), null);
+        new FamProperties.Integration(config, null, null, null), null);
 
     ObjectMapper objectMapper = new ObjectMapper();
     ForestClientIntegrationService created = new ForestClientIntegrationService(
@@ -207,7 +207,7 @@ class ForestClientIntegrationServiceTest {
 
     ObjectMapper objectMapper = new ObjectMapper();
     ForestClientIntegrationService unconfigured = new ForestClientIntegrationService(
-        new FamProperties("dev", null, new FamProperties.Integration(config, null, null), null),
+        new FamProperties("dev", null, new FamProperties.Integration(config, null, null, null), null),
         new RestClientFactory(), new UpstreamErrorTranslator(objectMapper), objectMapper);
     unconfigured.initClients();
 

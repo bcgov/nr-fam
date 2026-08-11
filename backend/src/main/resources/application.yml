@@ -38,6 +38,24 @@ spring:
       # Keep well under any on-prem idle-session reaper.
       max-lifetime: 900000
 
+  # Outbound email through an SMTP relay, replacing GC Notify. No host means no
+  # mail is sent - the local default, so running FAM against real data cannot
+  # accidentally send to real people.
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:25}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SMTP_AUTH:false}
+          starttls:
+            enable: ${SMTP_STARTTLS:false}
+          connectiontimeout: 5000
+          timeout: 10000
+          writetimeout: 10000
+
   jpa:
     open-in-view: false
     # Schema is owned by Flyway (migrations/sql), never by Hibernate.
@@ -62,8 +80,15 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://dev.loginproxy.gov.bc.ca/auth/realms/standard}
-          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_ISSUER_URI:https://dev.loginproxy.gov.bc.ca/auth/realms/standard}/protocol/openid-connect/certs}
+          # No default realm. A baked-in issuer is worse than none: it points at
+          # whichever realm happened to be current when it was written, and a
+          # wrong realm fails as "invalid token" rather than as configuration.
+          # Supplied by KEYCLOAK_ISSUER_URI in every environment, and by
+          # application-local.yml for local work.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:}
+          # Derived from the issuer unless overridden - they are always the same
+          # realm, and letting them drift apart is its own failure mode.
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_ISSUER_URI:}/protocol/openid-connect/certs}
 
   threads:
     virtual:
@@ -141,27 +166,58 @@ fam:
         api-token: ${FC_API_TOKEN_PROD:}
       timeouts:
         connect: 5s
-        read: 10s
+        read: 20s
       retry:
         max-attempts: 2
         delay: 2s
-    idim-proxy:
-      test:
-        base-url: ${IDIM_PROXY_BASE_URL_TEST:https://nr-fam-idim-lookup-proxy-test-backend.apps.silver.devops.gov.bc.ca}
-      prod:
-        base-url: ${IDIM_PROXY_BASE_URL_PROD:}
-      api-key: ${IDIM_PROXY_API_KEY:}
+    # BC Gov Common Hosted Single Sign-On. Source of applications, roles and role
+    # assignments. A confidential client: client_credentials, secret is
+    # backend-only and never reaches the browser.
+    css:
+      # No defaults: the production CSS endpoints are not the right answer for a
+      # sandbox, and a default that is silently wrong reads as "no applications"
+      # rather than as misconfiguration. The deployment template supplies both.
+      api-base-url: ${CSS_API_URL:}
+      token-url: ${CSS_TOKEN_URL:}
+      client-id: ${CSS_CLIENT_ID:}
+      client-secret: ${CSS_CLIENT_SECRET:}
+      # FAM's own CSS integration. Administering FAM is administering who
+      # administers everything else, so only FAM_ADMIN may see or act on it.
+      # Unset, that protection cannot be applied and startup says so.
+      own-integration-id: ${CSS_OWN_INTEGRATION_ID:}
+      # Keycloak's federated username suffix, per provider. The standard realm
+      # carries two IDIR integrations and BC Gov users sign in through the
+      # Entra-backed one, so azureidir is the default.
+      idp-aliases:
+        idir: ${CSS_IDP_ALIAS_IDIR:azureidir}
+        bceid-business: ${CSS_IDP_ALIAS_BCEID:bceidbusiness}
       timeouts:
         connect: 5s
         read: 20s
-    gc-notify:
-      base-url: ${GC_NOTIFY_BASE_URL:https://api.notification.canada.ca}
-      api-key: ${GC_NOTIFY_EMAIL_API_KEY:}
-      grant-access-template-id: ${GC_NOTIFY_GRANT_ACCESS_TEMPLATE_ID:0806a36e-b33d-4e43-a401-b1eb92777116}
-      grant-delegated-admin-template-id: ${GC_NOTIFY_GRANT_DELEGATED_ADMIN_TEMPLATE_ID:4f36da24-7507-4813-8285-d66a254c1f88}
+
+    # Envelope settings for outbound mail. The relay itself is configured under
+    # spring.mail; these are the addresses FAM puts on the message.
+    smtp:
+      from: ${SMTP_FROM:}
+      reply-to: ${SMTP_REPLY_TO:}
+
+    # nr-user-lookup-api - the shared BC Gov identity directory, replacing the
+    # IDIM proxy. One instance, not partitioned by environment.
+    #
+    # Leaving all three credential values blank disables authentication and calls
+    # go out unauthenticated; setting only some of them is rejected at startup,
+    # because a half-configured directory reads as "no results" rather than as a
+    # misconfiguration.
+    user-lookup:
+      base-url: ${USER_LOOKUP_BASE_URL:}
+      token-url: ${USER_LOOKUP_TOKEN_URL:}
+      client-id: ${USER_LOOKUP_CLIENT_ID:}
+      client-secret: ${USER_LOOKUP_CLIENT_SECRET:}
+      scope: ${USER_LOOKUP_SCOPE:}
       timeouts:
         connect: 5s
-        read: 10s
+        read: 20s
+
 
   # Shared-secret API used by CMENG to push user info updates.
   update-user-info:

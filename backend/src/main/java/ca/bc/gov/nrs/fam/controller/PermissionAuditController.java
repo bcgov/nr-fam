@@ -26,9 +26,12 @@ public class PermissionAuditController {
   @GetMapping
   @Operation(operationId = "get_permission_audit_history_by_user_and_application", summary = "Permission audit history for a user within an application")
   public List<PermissionAuditHistoryDto> getHistory(
-      @RequestParam Long userId, @RequestParam Long applicationId, Requester requester) {
+      @RequestParam String targetUserGuid,
+      @RequestParam Integer cssIntegrationId,
+      @RequestParam String cssEnvironment,
+      Requester requester) {
 
-    authorizationService.authorizeByAppId(applicationId, requester);
-    return permissionAuditService.getHistory(userId, applicationId);
+    authorizationService.authorize(requester);
+    return permissionAuditService.getHistory(targetUserGuid, cssIntegrationId, cssEnvironment);
   }
 }

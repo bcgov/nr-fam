@@ -27,7 +27,83 @@ public record FamProperties(
 
   public record Cors(List<String> allowedOrigins) {}
 
-  public record Integration(ForestClient forestClient, IdimProxy idimProxy, GcNotify gcNotify) {
+  public record Integration(
+      ForestClient forestClient, Css css, UserLookup userLookup, Smtp smtp) {
+
+    /**
+     * nr-user-lookup-api, the shared BC Gov identity directory. Replaces the IDIM
+     * proxy.
+     *
+     * <p>One instance rather than a TEST/PROD pair: unlike IDIM, the directory is
+     * not environment-partitioned, so nothing here consults
+     * {@code ApiInstanceEnvResolver}.
+     *
+     * <p>A confidential service account. Note this means lookups are attributed
+     * to FAM rather than to the person performing them - see the note on
+     * {@code UserLookupClient}.
+     */
+    public record UserLookup(
+        String baseUrl,
+        String tokenUrl,
+        String clientId,
+        String clientSecret,
+        /** Normally blank: the scopes are default client scopes on the account. */
+        String scope,
+        Timeouts timeouts) {}
+
+    /**
+     * BC Gov Common Hosted Single Sign-On API.
+     *
+     * <p>Source of applications (CSS integrations), roles and role assignments,
+     * replacing the FAM tables that held them.
+     *
+     * <p>Unlike the browser client, this is a <em>confidential</em> client: the
+     * API account authenticates with client_credentials, so the secret is
+     * backend-only and must never reach {@code env.json}.
+     */
+    public record Css(
+        String apiBaseUrl,
+        String tokenUrl,
+        String clientId,
+        String clientSecret,
+        /**
+         * FAM's own CSS integration id.
+         *
+         * <p>Administering FAM itself means administering who administers
+         * everything else, so it is reserved to {@code FAM_ADMIN}. FAM has to be
+         * told which integration is its own; nothing in a CSS response marks it.
+         *
+         * <p>Left unset, that protection cannot be applied - see the startup
+         * warning in {@code AuthorizationService}.
+         */
+        Integer ownIntegrationId,
+        IdpAliases idpAliases,
+        Timeouts timeouts) {
+
+      /**
+       * The identity-provider suffixes Keycloak uses in a federated username
+       * ({@code <guid>@<alias>}).
+       *
+       * <p>Configurable because the standard realm carries two IDIR
+       * integrations: {@code azureidir} (Entra-backed, what BC Gov IDIR users
+       * actually sign in through) and the legacy {@code idir}. CSS has no user
+       * search, so FAM has to construct the username exactly - guessing the
+       * wrong alias assigns a role to a username that does not exist, and CSS
+       * accepts it silently.
+       */
+      public record IdpAliases(String idir, String bceidBusiness) {
+
+        public String idir() {
+          return idir == null || idir.isBlank() ? "azureidir" : idir;
+        }
+
+        public String bceidBusiness() {
+          return bceidBusiness == null || bceidBusiness.isBlank()
+              ? "bceidbusiness" : bceidBusiness;
+        }
+      }
+    }
+
 
     /**
      * FAM's PROD environment serves DEV, TEST and PROD applications, but external
@@ -49,19 +125,20 @@ public record FamProperties(
       public record Retry(int maxAttempts, Duration delay) {}
     }
 
-    /** One API key covers every IDIM proxy environment, so it sits outside the instances. */
-    public record IdimProxy(Instance test, Instance prod, String apiKey, Timeouts timeouts) {
-      public record Instance(String baseUrl) {}
-    }
 
-    public record GcNotify(
-        String baseUrl,
-        String apiKey,
-        /** Template for an end-user access grant. */
-        String grantAccessTemplateId,
-        /** Template for a delegated-admin grant; explains the admin capability. */
-        String grantDelegatedAdminTemplateId,
-        Timeouts timeouts) {}
+
+    /**
+     * Outbound email, sent through an SMTP relay.
+     *
+     * <p>Replaces GC Notify. The relay renders nothing - unlike GC Notify's
+     * templates, the body is composed here - so there are no template ids to
+     * keep in step with a third party.
+     *
+     * <p>{@code from} is required to send at all; a relay will reject a message
+     * with no envelope sender. Leaving the host blank disables sending, which is
+     * the local default.
+     */
+    public record Smtp(String from, String replyTo) {}
 
     public record Timeouts(Duration connect, Duration read) {}
   }

@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
   private final FamUserRepository userRepository;
-  private final FamDtoMapper mapper;
 
   @Transactional(readOnly = true)
   public FamUser getUser(Long userId) {
@@ -36,7 +35,8 @@ public class UserService {
   @Transactional(readOnly = true)
   public FamUserInfoDto getUserInfo(Long userId) {
     return userRepository.findById(userId)
-        .map(mapper::toUserInfoDto)
+        .map(user -> new FamUserInfoDto(user.getUserName(), null,
+            user.getFirstName(), user.getLastName(), user.getEmail()))
         .orElseThrow(() -> FamHttpException.notFound(
             ErrorCode.INVALID_REQUEST_PARAMETER, "User not found"));
   }

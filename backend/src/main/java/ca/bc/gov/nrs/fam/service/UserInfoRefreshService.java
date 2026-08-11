@@ -1,23 +1,22 @@
 package ca.bc.gov.nrs.fam.service;
 
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
-import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
-import ca.bc.gov.nrs.fam.constants.IdimSearchUserParamType;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.FamUserUpdateEntryDto;
 import ca.bc.gov.nrs.fam.dto.FamUserUpdateResponse;
-import ca.bc.gov.nrs.fam.dto.IdimProxyBceidInfoDto;
-import ca.bc.gov.nrs.fam.dto.IdimProxyIdirInfoDto;
+import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
+import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.entity.FamUser;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
-import ca.bc.gov.nrs.fam.integration.IdimProxyService;
+import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.repository.FamUserRepository;
 import ca.bc.gov.nrs.fam.security.Requester;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -25,7 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Refreshes stored user details from IDIM, in bulk.
+ * Refreshes stored user details from the identity directory, in bulk.
  *
  * <p>Port of {@code crud_user.update_user_info_from_idim_source}. Names and email
  * addresses change at the identity provider without FAM being told, so this is
@@ -45,7 +44,7 @@ public class UserInfoRefreshService {
       List.of(UserType.IDIR.getCode(), UserType.BCEID.getCode());
 
   private final FamUserRepository userRepository;
-  private final IdimProxyService idimProxyService;
+  private final UserLookupClient userLookupClient;
   private final FamProperties famProperties;
 
   /**
@@ -54,17 +53,9 @@ public class UserInfoRefreshService {
    *     can drive it in chunks.
    */
   @Transactional
-  public FamUserUpdateResponse refreshFromIdim(boolean usePagination, int page, int perPage) {
+  public FamUserUpdateResponse refreshFromDirectory(boolean usePagination, int page, int perPage) {
     OffsetDateTime runOn = OffsetDateTime.now();
 
-    Requester requester = resolveRequester();
-
-    // Upstream keyed this off "running on AWS prod". The deployment environment
-    // now decides, via the same resolver every other integration uses.
-    ApiInstanceEnv apiInstanceEnv = famProperties.deploymentEnvironment() != null
-        && "prod".equalsIgnoreCase(famProperties.deploymentEnvironment().trim())
-        ? ApiInstanceEnv.PROD
-        : ApiInstanceEnv.TEST;
 
     long totalUsers = userRepository.count();
 
@@ -89,7 +80,7 @@ public class UserInfoRefreshService {
 
     for (FamUser user : users) {
       try {
-        refreshOne(user, requester, apiInstanceEnv, success, failed, mismatch);
+        refreshOne(user, success, failed, mismatch);
       } catch (Exception e) {
         log.debug("Failed to refresh user {}: {}", user.getUserName(), e.getMessage());
         failed.add(toEntry(user));
@@ -109,8 +100,6 @@ public class UserInfoRefreshService {
 
   private void refreshOne(
       FamUser user,
-      Requester requester,
-      ApiInstanceEnv apiInstanceEnv,
       List<FamUserUpdateEntryDto> success,
       List<FamUserUpdateEntryDto> failed,
       List<FamUserUpdateEntryDto> mismatch) {
@@ -119,42 +108,40 @@ public class UserInfoRefreshService {
     String foundGuid;
 
     if (UserType.IDIR.getCode().equals(user.getUserTypeCode())) {
-      // IDIM cannot look up an IDIR user by GUID, so this searches by name and
-      // cross-checks the GUID below.
-      IdimProxyIdirInfoDto result =
-          idimProxyService.lookupIdir(user.getUserName(), requester, apiInstanceEnv);
-      found = result.found();
-      foundGuid = result.guid();
+      // The directory cannot look up an IDIR user by GUID, so this searches by
+      // name and cross-checks the GUID below.
+      Optional<UserLookupIdirUserDto> result =
+          userLookupClient.getIdirDetail(user.getUserName());
+      found = result.isPresent();
+      foundGuid = result.map(UserLookupIdirUserDto::guid).orElse(null);
 
-      if (found) {
-        applyIfPresent(user, result.firstName(), result.lastName(), result.email(), null);
-      }
+      result.ifPresent(idir ->
+          applyIfPresent(user, idir.firstName(), idir.lastName(), idir.email(), null));
 
     } else {
       // BCeID: look up by GUID when we have one, otherwise by name and back-fill
       // the GUID we get back.
       boolean hasGuid = user.getUserGuid() != null && !user.getUserGuid().isBlank();
 
-      IdimProxyBceidInfoDto result = idimProxyService.lookupBusinessBceid(
-          hasGuid ? IdimSearchUserParamType.USER_GUID : IdimSearchUserParamType.USER_ID,
-          hasGuid ? user.getUserGuid() : user.getUserName(),
-          requester, apiInstanceEnv);
+      Optional<UserLookupBceidUserDto> result = userLookupClient.getBusinessBceid(
+          hasGuid ? UserLookupClient.SearchBy.USER_GUID : UserLookupClient.SearchBy.USER_ID,
+          hasGuid ? user.getUserGuid() : user.getUserName());
 
-      found = result.found();
-      foundGuid = result.guid();
+      found = result.isPresent();
+      foundGuid = result.map(UserLookupBceidUserDto::guid).orElse(null);
 
-      if (found) {
+      result.ifPresent(bceid -> {
         if (hasGuid) {
           // Looked up by GUID, so the name is the thing that may have changed.
-          user.setUserName(result.userId());
+          user.setUserName(bceid.userId());
         }
-        applyIfPresent(user, result.firstName(), result.lastName(), result.email(),
-            result.businessGuid());
-      }
+        applyIfPresent(user, bceid.firstName(), bceid.lastName(), bceid.email(),
+            bceid.businessGuid());
+      });
     }
 
     if (!found) {
-      log.debug("IDIM could not find {} ({})", user.getUserName(), user.getUserTypeCode());
+      log.debug("The directory could not find {} ({})", user.getUserName(), user.getUserTypeCode());
       failed.add(toEntry(user));
       return;
     }
@@ -175,7 +162,7 @@ public class UserInfoRefreshService {
     success.add(toEntry(user));
   }
 
-  /** Null values from IDIM are not written; an absent field must not blank a stored one. */
+  /** Null values from the identity directory are not written; an absent field must not blank a stored one. */
   private static void applyIfPresent(
       FamUser user, String firstName, String lastName, String email, String businessGuid) {
     if (firstName != null) {
@@ -190,27 +177,6 @@ public class UserInfoRefreshService {
     if (businessGuid != null) {
       user.setBusinessGuid(businessGuid);
     }
-  }
-
-  /**
-   * IDIM audits every lookup against a real requester, so this runs as a
-   * configured service account that must exist in {@code fam_user}.
-   */
-  private Requester resolveRequester() {
-    String requesterName = famProperties.updateUserInfo().requesterName();
-
-    FamUser requesterUser = userRepository
-        .findByUserTypeCodeAndUserNameIgnoreCase(UserType.IDIR.getCode(), requesterName)
-        .orElseThrow(() -> FamHttpException.internalError(ErrorCode.REQUESTER_NOT_EXISTS,
-            "Configured refresh requester '" + requesterName + "' does not exist in fam_user."));
-
-    return Requester.builder()
-        .userId(requesterUser.getUserId())
-        .userName(requesterUser.getUserName())
-        .userGuid(requesterUser.getUserGuid())
-        .userType(UserType.IDIR)
-        .oidcUserId(requesterUser.getOidcUserId())
-        .build();
   }
 
   private static FamUserUpdateEntryDto toEntry(FamUser user) {

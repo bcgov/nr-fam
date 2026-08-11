@@ -33,8 +33,9 @@ public class PermissionAuditService {
 
   /** Most recent change first. */
   @Transactional(readOnly = true)
-  public List<PermissionAuditHistoryDto> getHistory(Long userId, Long applicationId) {
-    return auditRepository.findHistory(userId, applicationId).stream()
+  public List<PermissionAuditHistoryDto> getHistory(
+      String targetUserGuid, Integer cssIntegrationId, String cssEnvironment) {
+    return auditRepository.findHistory(targetUserGuid, cssIntegrationId, cssEnvironment).stream()
         .map(this::toDto)
         .toList();
   }
@@ -47,9 +48,8 @@ public class PermissionAuditService {
         audit.getChangeDate(),
         readJson(audit.getChangePerformerUserDetails(), PrivilegeChangePerformerDto.class,
             audit.getPrivilegeChangeAuditId(), "change_performer_user_details"),
-        audit.getChangePerformerUser() != null
-            ? audit.getChangePerformerUser().getUserId()
-            : null,
+        // The performer is recorded as a GUID now; there is no user id to return.
+        null,
         PrivilegeChangeType.valueOf(
             audit.getPrivilegeChangeType().getPrivilegeChangeTypeCode()),
         audit.getPrivilegeChangeType().getDescription(),

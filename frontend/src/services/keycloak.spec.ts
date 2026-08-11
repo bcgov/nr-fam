@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
     getUserManager,
+    loadStoredUser,
     resetUserManager,
     KC_IDP_HINT,
     AUTH_CALLBACK_PATH,
 } from "@/services/keycloak";
+import type { User } from "oidc-client-ts";
 
 const ISSUER = "https://dev.loginproxy.gov.bc.ca/auth/realms/standard";
 const CLIENT_ID = "fam-console-local";
@@ -77,5 +79,66 @@ describe("keycloak OIDC client", () => {
         setEnv();
 
         expect(getUserManager()).toBe(getUserManager());
+    });
+});
+
+/**
+ * The landing page renders behind a spinner until session restore finishes, so
+ * anything slow here is visible to every first-time visitor.
+ */
+describe("loadStoredUser", () => {
+    const asUser = (expired: boolean) =>
+        ({ expired, access_token: "tok" }) as unknown as User;
+
+    it("does not attempt a silent renewal when nobody is signed in", async () => {
+        // signinSilent has no refresh token to use here, so oidc-client-ts falls
+        // back to a hidden-iframe flow. No silent_redirect_uri is configured, so
+        // it cannot succeed - it just runs until its 10 second timeout. That is
+        // ten seconds of spinner on the landing page for every new visitor.
+        let silentCalls = 0;
+
+        const user = await loadStoredUser({
+            getUser: async () => null,
+            signinSilent: async () => {
+                silentCalls += 1;
+                return asUser(false);
+            },
+        } as any);
+
+        expect(user).toBeNull();
+        expect(silentCalls).toBe(0);
+    });
+
+    it("returns a valid stored user without renewing", async () => {
+        let silentCalls = 0;
+        const stored = asUser(false);
+
+        const user = await loadStoredUser({
+            getUser: async () => stored,
+            signinSilent: async () => {
+                silentCalls += 1;
+                return asUser(false);
+            },
+        } as any);
+
+        expect(user).toBe(stored);
+        expect(silentCalls).toBe(0);
+    });
+
+    it("renews silently when the stored token has expired", async () => {
+        // The case signinSilent actually exists for: there is a refresh token.
+        const renewed = asUser(false);
+        let silentCalls = 0;
+
+        const user = await loadStoredUser({
+            getUser: async () => asUser(true),
+            signinSilent: async () => {
+                silentCalls += 1;
+                return renewed;
+            },
+        } as any);
+
+        expect(user).toBe(renewed);
+        expect(silentCalls).toBe(1);
     });
 });

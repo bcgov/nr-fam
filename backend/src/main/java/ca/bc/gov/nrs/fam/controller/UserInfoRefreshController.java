@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Bulk refresh of stored user details from IDIM.
+ * Bulk refresh of stored user details from the identity directory.
  *
  * <p>Port of {@code router_user.py}. Called by a scheduled job, not by a person,
  * so it is guarded by a shared secret in {@code X-API-Key} rather than a bearer
@@ -42,8 +42,8 @@ public class UserInfoRefreshController {
    * @param page 1-indexed; only meaningful with {@code usePagination}
    */
   @PutMapping("/users-information")
-  @Operation(operationId = "update_user_information_from_idim_source",
-      summary = "Refresh stored user details from IDIM",
+  @Operation(operationId = "update_user_information_from_directory",
+      summary = "Refresh stored user details from the identity directory",
       description = "Guarded by the X-API-Key shared secret, not a bearer token.",
       security = @SecurityRequirement(name = "apiKey"))
   public FamUserUpdateResponse refreshUserInformation(
@@ -54,10 +54,10 @@ public class UserInfoRefreshController {
 
     verifyApiKey(apiKey);
 
-    log.debug("Refreshing user information from IDIM (paginated={}, page={})",
+    log.debug("Refreshing user information from the identity directory (paginated={}, page={})",
         usePagination, page);
 
-    return userInfoRefreshService.refreshFromIdim(usePagination, page, perPage);
+    return userInfoRefreshService.refreshFromDirectory(usePagination, page, perPage);
   }
 
   /**

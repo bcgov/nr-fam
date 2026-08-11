@@ -30,30 +30,10 @@ export const AddAppPermissionRoute: RouteRecordRaw = {
     path: "/manage-permissions/add-app-permission",
     component: () => import("@/views/AddAppPermission"),
     props: (route): AddAppPermissionRouteProps => ({
-        appId: Number(route.query.appId),
+        integrationId: Number(route.query.integrationId),
+        environment: String(route.query.environment ?? ""),
     }),
     name: "AddAppPermission",
-    meta: protectedLayoutMeta,
-};
-
-export const AddFamPermissionRoute: RouteRecordRaw = {
-    path: "/manage-permissions/add-fam-permission",
-    component: () => import("@/views/AddFamPermission"),
-    name: "AddFamPermission",
-    meta: protectedLayoutMeta,
-};
-
-export const UserDetailsRoute: RouteRecordRaw = {
-    path: "/manage-permissions/user-details/applications/:appId/users/:userId",
-    component: () => import("@/views/UserDetails"),
-    name: "UserDetails",
-    meta: protectedLayoutMeta,
-};
-
-export const MyPermissionsRoute: RouteRecordRaw = {
-    path: "/my-permissions",
-    name: "MyPermissions",
-    component: () => import("@/views/MyPermissions"),
     meta: protectedLayoutMeta,
 };
 
@@ -72,9 +52,6 @@ export const routeItems: RouteRecordRaw[] = [
     LandingRoute,
     ManagePermissionsRoute,
     AddAppPermissionRoute,
-    AddFamPermissionRoute,
-    UserDetailsRoute,
-    MyPermissionsRoute,
     NoAccessRoute,
     UnkownRoute,
 ];

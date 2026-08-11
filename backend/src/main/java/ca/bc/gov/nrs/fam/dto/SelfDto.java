@@ -8,7 +8,7 @@ import java.util.List;
  *
  * <p>Replaces the information the frontend used to read straight out of the
  * Cognito access token. {@code accessRoles} in particular used to be the
- * {@code cognito:groups} claim; it is now resolved from the database, so it is
+ * {@code cognito:groups} claim; it is now read from the access token, so it is
  * current rather than fixed at login.
  *
  * <p>Deliberately excludes {@code userGuid} and {@code businessGuid}: the frontend

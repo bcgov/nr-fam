@@ -5,14 +5,14 @@ import type { UserSearchParams } from "@/types/UserSearchTypes";
 import { useMutation } from "@tanstack/vue-query";
 import { isAxiosError } from "axios";
 import type {
-    IdimProxyBceidInfoDto,
-    IdimProxyIdirUserSearchItemDto,
+    UserLookupBceidUserDto,
+    UserLookupIdirUserDto,
 } from "fam-api";
 import { UserType } from "fam-api/model";
 import { ref } from "vue";
 
 /**
- * Composable/service that provides user search functionality using the IDIM-Proxy IDIR/BCeID API.
+ * Composable/service that provides user search functionality using nr-user-lookup-api.
  * This encapsulates the API call logic, normalization of results, and error handling for user searches
  * with tanstack/vue-query useMutation.
  */
@@ -26,12 +26,12 @@ export type UserSearchError = {
 };
 
 function normalizeIdirItem(
-    item: IdimProxyIdirUserSearchItemDto
+    item: UserLookupIdirUserDto
 ): SelectedUser {
     const firstName = item.firstName ?? "";
     const lastName = item.lastName ?? "";
     return {
-        userId: item.userId,
+        userId: item.userId ?? "",
         guid: item.guid ?? null,
         firstName,
         lastName,
@@ -41,11 +41,11 @@ function normalizeIdirItem(
     };
 }
 
-function normalizeBceidItem(item: IdimProxyBceidInfoDto): SelectedUser {
+function normalizeBceidItem(item: UserLookupBceidUserDto): SelectedUser {
     const firstName = item.firstName ?? "";
     const lastName = item.lastName ?? "";
     return {
-        userId: item.userId,
+        userId: item.userId ?? "",
         guid: item.guid ?? null,
         firstName,
         lastName,
@@ -70,20 +70,19 @@ export function useUserSearchApiService() {
                     params.searchType === "username" ? params.searchText : undefined;
 
                 const res = await AppActlApiService.idirBceidProxyApi.searchIdirUsers(
-                    params.appId,
                     firstName,
                     lastName,
                     userId,
                     IDIR_SEARCH_PAGE_SIZE,
-                    // 20 seconds timeout for IDIM/IDIR search, broader search with heavy load can be slow.
-                    // This overrides the default 10 seconds timeout set in ApiServiceFactory for this specific API call only.
-                    {timeout: 20000}
+                    // A broad directory search under load can be slow, so this
+                    // overrides the 10 second default set in ApiServiceFactory
+                    // for this call only.
+                    { timeout: 20000 }
                 );
                 return res.data.items.map(normalizeIdirItem);
             } else {
                 const res = await AppActlApiService.idirBceidProxyApi.bceidLookup(
-                    params.searchText,
-                    params.appId
+                    params.searchText
                 );
                 if (!res.data.found) {
                     return [];

@@ -68,6 +68,11 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
+    <!-- Outbound email through an SMTP relay, replacing GC Notify. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
 
     <!-- Persistence. On-prem PostgreSQL; this repo does not deploy a database. -->
     <dependency>

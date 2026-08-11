@@ -51,6 +51,27 @@ parameters:
       FAM's own Keycloak client id. Tokens on the internal API must carry this as
       their authorized party; /external is exempt.
     required: true
+  - name: CSS_API_URL
+    description: CSS API base URL
+    value: https://api.loginproxy.gov.bc.ca/api/v1
+  - name: CSS_TOKEN_URL
+    description: Token endpoint for the CSS API account's client_credentials grant
+    value: https://loginproxy.gov.bc.ca/auth/realms/standard/protocol/openid-connect/token
+  - name: CSS_OWN_INTEGRATION_ID
+    description: >-
+      FAM's own CSS integration id. Administering FAM is deciding who administers
+      every other application, so that integration is reserved to FAM_ADMIN.
+      Nothing in a CSS response marks it, so FAM has to be told. Left empty the
+      protection cannot be applied and startup logs a warning - deliberately not
+      required, so a PR preview without the variable still deploys.
+    required: false
+    value: ""
+  - name: CSS_IDP_ALIAS_IDIR
+    description: Keycloak's federated username suffix for IDIR
+    value: azureidir
+  - name: CSS_IDP_ALIAS_BCEID
+    description: Keycloak's federated username suffix for Business BCeID
+    value: bceidbusiness
   - name: FAM_DEPLOYMENT_ENVIRONMENT
     description: >-
       dev, test or prod. Only "prod" allows the PROD instances of the Forest
@@ -245,12 +266,58 @@ objects:
                   value: ${FAM_OIDC_CLIENT_ID}
                 - name: FAM_DEPLOYMENT_ENVIRONMENT
                   value: ${FAM_DEPLOYMENT_ENVIRONMENT}
+                # BC Gov Common Hosted Single Sign-On: applications, roles and
+                # role assignments. Credentials come from the secret created by
+                # common/openshift.init.yml; the URLs and aliases are not secret.
+                - name: CSS_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-css
+                      key: css-client-id
+                - name: CSS_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-css
+                      key: css-client-secret
+                - name: CSS_API_URL
+                  value: ${CSS_API_URL}
+                - name: CSS_TOKEN_URL
+                  value: ${CSS_TOKEN_URL}
+                - name: CSS_OWN_INTEGRATION_ID
+                  value: ${CSS_OWN_INTEGRATION_ID}
+                - name: CSS_IDP_ALIAS_IDIR
+                  value: ${CSS_IDP_ALIAS_IDIR}
+                - name: CSS_IDP_ALIAS_BCEID
+                  value: ${CSS_IDP_ALIAS_BCEID}
+                # nr-user-lookup-api. Every value comes from the secret created
+                # by common/openshift.init.yml, whose client id and secret CI
+                # provisions rather than a human configuring them.
+                - name: USER_LOOKUP_BASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-base-url
+                - name: USER_LOOKUP_TOKEN_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-token-url
+                - name: USER_LOOKUP_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-client-id
+                - name: USER_LOOKUP_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-client-secret
                   # Unused while Caddy proxies /api (same-origin), but kept
                   # correct so a future direct-route setup is not silently broken.
                 - name: ALLOW_ORIGIN
                   value: https://${NAME}-${ZONE}.${DOMAIN}
-              # Integration credentials (Forest Client API, IDIM proxy, GC Notify)
-              # and the CMENG shared secret. Created out of band, not by this repo.
+              # Integration credentials (Forest Client API, SMTP) and the CMENG
+              # shared secret. Created out of band, not by this repo.
               envFrom:
                 - secretRef:
                     name: ${NAME}-${ZONE}-integrations

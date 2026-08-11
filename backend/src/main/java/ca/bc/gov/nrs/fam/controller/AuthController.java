@@ -59,8 +59,7 @@ public class AuthController {
 
     FamUser famUser = userProvisioningService.provisionUser(identity);
 
-    List<String> accessRoles = accessRoleResolver.resolveAccessRoles(
-        identity.userGuid(), identity.userTypeCode(), claimsReader.appClientId(jwt));
+    List<String> accessRoles = accessRoleResolver.resolveAccessRoles(jwt);
 
     log.info("Login bootstrap for {} ({} role(s))", famUser.getUserName(), accessRoles.size());
 
@@ -70,8 +69,9 @@ public class AuthController {
   /**
    * The caller's current identity and roles, without provisioning.
    *
-   * <p>Roles are re-resolved from the database, so a revocation is reflected here
-   * without the user signing in again.
+   * <p>Roles are read from the presented token. A revocation in CSS therefore
+   * shows up here once the token is refreshed, not immediately - see
+   * {@link ca.bc.gov.nrs.fam.security.AccessRoleResolver}.
    */
   @GetMapping("/self")
   @Operation(operationId = "self", summary = "Current user's identity and effective access roles")

@@ -74,14 +74,8 @@ public class FamUser extends AuditedEntity {
   @Column(name = "email", length = 250)
   private String email;
 
-  @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
-  private List<FamUserRoleXref> userRoleXrefs = new ArrayList<>();
 
-  @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
-  private List<FamAccessControlPrivilege> accessControlPrivileges = new ArrayList<>();
 
-  @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
-  private List<FamUserTermsConditions> termsConditions = new ArrayList<>();
 
   /**
    * Port of the {@code full_name} hybrid property. A user with no first name

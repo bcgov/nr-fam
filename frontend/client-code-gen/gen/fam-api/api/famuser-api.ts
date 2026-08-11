@@ -31,7 +31,7 @@ export const FAMUserApiAxiosParamCreator = function (configuration?: Configurati
     return {
         /**
          * Guarded by the X-API-Key shared secret, not a bearer token.
-         * @summary Refresh stored user details from IDIM
+         * @summary Refresh stored user details from the identity directory
          * @param {string} [xAPIKey] 
          * @param {number} [page] 
          * @param {number} [perPage] 
@@ -39,7 +39,7 @@ export const FAMUserApiAxiosParamCreator = function (configuration?: Configurati
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        updateUserInformationFromIdimSource: async (xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        updateUserInformationFromDirectory: async (xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/users/users-information`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -94,7 +94,7 @@ export const FAMUserApiFp = function(configuration?: Configuration) {
     return {
         /**
          * Guarded by the X-API-Key shared secret, not a bearer token.
-         * @summary Refresh stored user details from IDIM
+         * @summary Refresh stored user details from the identity directory
          * @param {string} [xAPIKey] 
          * @param {number} [page] 
          * @param {number} [perPage] 
@@ -102,10 +102,10 @@ export const FAMUserApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async updateUserInformationFromIdimSource(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FamUserUpdateResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.updateUserInformationFromIdimSource(xAPIKey, page, perPage, usePagination, options);
+        async updateUserInformationFromDirectory(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<FamUserUpdateResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateUserInformationFromDirectory(xAPIKey, page, perPage, usePagination, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['FAMUserApi.updateUserInformationFromIdimSource']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['FAMUserApi.updateUserInformationFromDirectory']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -120,7 +120,7 @@ export const FAMUserApiFactory = function (configuration?: Configuration, basePa
     return {
         /**
          * Guarded by the X-API-Key shared secret, not a bearer token.
-         * @summary Refresh stored user details from IDIM
+         * @summary Refresh stored user details from the identity directory
          * @param {string} [xAPIKey] 
          * @param {number} [page] 
          * @param {number} [perPage] 
@@ -128,8 +128,8 @@ export const FAMUserApiFactory = function (configuration?: Configuration, basePa
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        updateUserInformationFromIdimSource(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: any): AxiosPromise<FamUserUpdateResponse> {
-            return localVarFp.updateUserInformationFromIdimSource(xAPIKey, page, perPage, usePagination, options).then((request) => request(axios, basePath));
+        updateUserInformationFromDirectory(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: any): AxiosPromise<FamUserUpdateResponse> {
+            return localVarFp.updateUserInformationFromDirectory(xAPIKey, page, perPage, usePagination, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -142,7 +142,7 @@ export const FAMUserApiFactory = function (configuration?: Configuration, basePa
 export interface FAMUserApiInterface {
     /**
      * Guarded by the X-API-Key shared secret, not a bearer token.
-     * @summary Refresh stored user details from IDIM
+     * @summary Refresh stored user details from the identity directory
      * @param {string} [xAPIKey] 
      * @param {number} [page] 
      * @param {number} [perPage] 
@@ -151,7 +151,7 @@ export interface FAMUserApiInterface {
      * @throws {RequiredError}
      * @memberof FAMUserApiInterface
      */
-    updateUserInformationFromIdimSource(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<FamUserUpdateResponse>;
+    updateUserInformationFromDirectory(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<FamUserUpdateResponse>;
 
 }
 
@@ -164,7 +164,7 @@ export interface FAMUserApiInterface {
 export class FAMUserApi extends BaseAPI implements FAMUserApiInterface {
     /**
      * Guarded by the X-API-Key shared secret, not a bearer token.
-     * @summary Refresh stored user details from IDIM
+     * @summary Refresh stored user details from the identity directory
      * @param {string} [xAPIKey] 
      * @param {number} [page] 
      * @param {number} [perPage] 
@@ -173,8 +173,8 @@ export class FAMUserApi extends BaseAPI implements FAMUserApiInterface {
      * @throws {RequiredError}
      * @memberof FAMUserApi
      */
-    public updateUserInformationFromIdimSource(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: RawAxiosRequestConfig) {
-        return FAMUserApiFp(this.configuration).updateUserInformationFromIdimSource(xAPIKey, page, perPage, usePagination, options).then((request) => request(this.axios, this.basePath));
+    public updateUserInformationFromDirectory(xAPIKey?: string, page?: number, perPage?: number, usePagination?: boolean, options?: RawAxiosRequestConfig) {
+        return FAMUserApiFp(this.configuration).updateUserInformationFromDirectory(xAPIKey, page, perPage, usePagination, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

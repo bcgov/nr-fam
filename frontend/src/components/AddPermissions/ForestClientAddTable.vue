@@ -20,7 +20,7 @@ import { HttpStatusCode } from "axios";
 import FCServiceUnavailableNotification from "../NotificationContent/ServiceUnavailableNtfnTemplate.vue";
 
 const props = defineProps<{
-    appId: number;
+    environment: string;
     fieldId: string;
     formValues: AppPermissionFormType;
     setFieldValue: (field: string, value: any) => void;
@@ -62,7 +62,7 @@ const clientSearchMutation = useMutation({
         "search",
         {
             client_number: props.formValues.forestClientInput.value,
-            application_id: props.appId,
+            application_id: props.environment,
         },
     ],
     mutationFn: (clientNumber: string) => {
@@ -70,7 +70,7 @@ const clientSearchMutation = useMutation({
             isVerifying: true,
         });
         return AppActlApiService.forestClientsApi
-            .search(clientNumber, props.appId)
+            .search(clientNumber, props.environment)
             .then((res) => res.data);
     },
     onSuccess: (data) => {

@@ -33,15 +33,15 @@ export const FAMForestClientsApiAxiosParamCreator = function (configuration?: Co
          * 
          * @summary Search forest clients by client number
          * @param {string} clientNumber 
-         * @param {number} applicationId 
+         * @param {string} environment 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        search: async (clientNumber: string, applicationId: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        search: async (clientNumber: string, environment: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'clientNumber' is not null or undefined
             assertParamExists('search', 'clientNumber', clientNumber)
-            // verify required parameter 'applicationId' is not null or undefined
-            assertParamExists('search', 'applicationId', applicationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('search', 'environment', environment)
             const localVarPath = `/forest-clients/search`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -62,8 +62,8 @@ export const FAMForestClientsApiAxiosParamCreator = function (configuration?: Co
                 localVarQueryParameter['clientNumber'] = clientNumber;
             }
 
-            if (applicationId !== undefined) {
-                localVarQueryParameter['applicationId'] = applicationId;
+            if (environment !== undefined) {
+                localVarQueryParameter['environment'] = environment;
             }
 
 
@@ -91,12 +91,12 @@ export const FAMForestClientsApiFp = function(configuration?: Configuration) {
          * 
          * @summary Search forest clients by client number
          * @param {string} clientNumber 
-         * @param {number} applicationId 
+         * @param {string} environment 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async search(clientNumber: string, applicationId: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FamForestClientDto>>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.search(clientNumber, applicationId, options);
+        async search(clientNumber: string, environment: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FamForestClientDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.search(clientNumber, environment, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['FAMForestClientsApi.search']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -115,12 +115,12 @@ export const FAMForestClientsApiFactory = function (configuration?: Configuratio
          * 
          * @summary Search forest clients by client number
          * @param {string} clientNumber 
-         * @param {number} applicationId 
+         * @param {string} environment 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        search(clientNumber: string, applicationId: number, options?: any): AxiosPromise<Array<FamForestClientDto>> {
-            return localVarFp.search(clientNumber, applicationId, options).then((request) => request(axios, basePath));
+        search(clientNumber: string, environment: string, options?: any): AxiosPromise<Array<FamForestClientDto>> {
+            return localVarFp.search(clientNumber, environment, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -135,12 +135,12 @@ export interface FAMForestClientsApiInterface {
      * 
      * @summary Search forest clients by client number
      * @param {string} clientNumber 
-     * @param {number} applicationId 
+     * @param {string} environment 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof FAMForestClientsApiInterface
      */
-    search(clientNumber: string, applicationId: number, options?: RawAxiosRequestConfig): AxiosPromise<Array<FamForestClientDto>>;
+    search(clientNumber: string, environment: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<FamForestClientDto>>;
 
 }
 
@@ -155,13 +155,13 @@ export class FAMForestClientsApi extends BaseAPI implements FAMForestClientsApiI
      * 
      * @summary Search forest clients by client number
      * @param {string} clientNumber 
-     * @param {number} applicationId 
+     * @param {string} environment 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof FAMForestClientsApi
      */
-    public search(clientNumber: string, applicationId: number, options?: RawAxiosRequestConfig) {
-        return FAMForestClientsApiFp(this.configuration).search(clientNumber, applicationId, options).then((request) => request(this.axios, this.basePath));
+    public search(clientNumber: string, environment: string, options?: RawAxiosRequestConfig) {
+        return FAMForestClientsApiFp(this.configuration).search(clientNumber, environment, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

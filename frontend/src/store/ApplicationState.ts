@@ -1,14 +1,14 @@
-import { type FamApplicationGrantDto } from "fam-api/model";
+import { type CssApplicationOptionDto } from "fam-api";
 import { ref } from "vue";
 
-export const selectedApp = ref<FamApplicationGrantDto>();
+/**
+ * The application being administered, sourced from CSS.
+ *
+ * Identified by the pair (integration_id, environment): a CSS integration spans
+ * environments, where what FAM calls an application does not.
+ */
+export const selectedApp = ref<CssApplicationOptionDto>();
 
-// Optional: Helper function to update selectedApp
-export const setSelectedApp = (app: FamApplicationGrantDto) => {
+export const setSelectedApp = (app: CssApplicationOptionDto) => {
     selectedApp.value = app;
 };
-
-/**
- * The active tab index under a selected app
- */
-export const activeTabIndex = ref(0);

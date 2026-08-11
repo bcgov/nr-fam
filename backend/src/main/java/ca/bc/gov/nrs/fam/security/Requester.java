@@ -1,7 +1,10 @@
 package ca.bc.gov.nrs.fam.security;
 
+import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
+import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import java.util.List;
+import java.util.Optional;
 import lombok.Builder;
 
 /**
@@ -55,15 +58,59 @@ public record Requester(
   }
 
   /**
-   * Whether this caller holds the admin role for the given application.
+   * Whether this caller administers everything.
    *
-   * <p>Port of {@code crud_utils.is_app_admin}: the token must carry
-   * {@code <APPLICATION_NAME>_ADMIN}, upper-cased.
+   * <p>{@code FAM_ADMIN} is the only role that is not scoped to an application.
    */
-  public boolean isAdminOf(String applicationName) {
-    if (accessRoles == null || applicationName == null) {
-      return false;
+  public boolean isFamAdmin() {
+    return holds(FamAdminRole.FAM_ADMIN);
+  }
+
+  /**
+   * Whether this caller may administer the given CSS application, and at what
+   * level.
+   *
+   * <p>Highest tier wins: a FAM administrator is treated as an application
+   * administrator everywhere, so callers can compare tiers without also having to
+   * special-case {@code FAM_ADMIN}.
+   *
+   * @return empty when the caller has no authority over this application at all
+   */
+  public Optional<AdminRoleAuthGroup> tierFor(int cssIntegrationId, String cssEnvironment) {
+    if (isFamAdmin()) {
+      return Optional.of(AdminRoleAuthGroup.FAM_ADMIN);
     }
-    return accessRoles.contains(applicationName.toUpperCase() + "_ADMIN");
+    if (holds(FamAdminRole.appAdmin(cssIntegrationId, cssEnvironment))) {
+      return Optional.of(AdminRoleAuthGroup.APP_ADMIN);
+    }
+    if (holds(FamAdminRole.delegatedAdmin(cssIntegrationId, cssEnvironment))) {
+      return Optional.of(AdminRoleAuthGroup.DELEGATED_ADMIN);
+    }
+    return Optional.empty();
+  }
+
+  /** May grant and revoke user access for this application. All three tiers may. */
+  public boolean canManageAccess(int cssIntegrationId, String cssEnvironment) {
+    return tierFor(cssIntegrationId, cssEnvironment).isPresent();
+  }
+
+  /**
+   * May appoint or remove delegated administrators for this application.
+   *
+   * <p>Deliberately not granted to a delegated administrator: that is the one
+   * thing separating the two tiers, and without it a delegated admin could
+   * promote themselves or anyone else and the distinction would be decorative.
+   */
+  public boolean canManageDelegatedAdmins(int cssIntegrationId, String cssEnvironment) {
+    return tierFor(cssIntegrationId, cssEnvironment)
+        .filter(tier -> tier == AdminRoleAuthGroup.FAM_ADMIN
+            || tier == AdminRoleAuthGroup.APP_ADMIN)
+        .isPresent();
+  }
+
+  /** Case-insensitive: CSS role names are free text and casing is easy to get wrong. */
+  private boolean holds(String roleName) {
+    return accessRoles != null
+        && accessRoles.stream().anyMatch(held -> held != null && held.equalsIgnoreCase(roleName));
   }
 }

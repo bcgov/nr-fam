@@ -13,5 +13,5 @@ export interface UserSearchParams {
     domain: UserType;
     searchType: UserSearchType;
     searchText: string;
-    appId: number;
+    environment: string;
 }

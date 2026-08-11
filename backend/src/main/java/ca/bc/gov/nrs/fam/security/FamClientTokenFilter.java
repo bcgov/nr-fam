@@ -86,8 +86,10 @@ public class FamClientTokenFilter extends OncePerRequestFilter {
     if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
       String tokenClientId = claimsReader.appClientId(jwt);
       if (!famClientId.equals(tokenClientId)) {
-        log.warn("Rejecting token issued to client '{}' on internal path {}",
-            tokenClientId, request.getServletPath());
+        log.warn("Rejecting token on internal path {}: azp is '{}' but fam.oidc.fam-client-id "
+                + "is '{}'. They must match exactly, or leave the property blank to skip "
+                + "this check.",
+            request.getServletPath(), tokenClientId, famClientId);
         writeUnauthorized(response);
         return;
       }

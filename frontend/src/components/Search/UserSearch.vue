@@ -41,7 +41,7 @@ interface SelectOption<T> {
 }
 
 interface Props {
-    appId: number;
+    environment: string;
     multiUserMode: boolean; // multi users (or single) selection
     availableDomains?: UserType[];
     disabled?: boolean;
@@ -410,7 +410,7 @@ const handleSearch = () => {
         domain: selectedDomainOption.value.value,
         searchType: selectedSearchTypeOption.value.value,
         searchText: searchText.value.trim(),
-        appId: props.appId,
+        environment: props.environment,
     });
 };
 </script>

@@ -55,9 +55,33 @@ jobs:
     outputs:
       triggered: ${{ steps.deploy.outputs.triggered }}
     runs-on: ubuntu-24.04
+    env:
+      # Job-level so the step `if:` below can read it - a step's own `env` is not
+      # available to that step's own `if`.
+      KC_SA_CLIENT_ID: ${{ secrets.keycloak_sa_client_id }}
     steps:
+      # The deployer action checks out internally, but the Keycloak script runs
+      # before it, so check out here to make ./.github/scripts available.
+      - uses: actions/checkout@v6
+
+      # Idempotently create FAM's user-lookup service-account client and assign
+      # the scopes nr-user-lookup-api enforces. Skipped when the admin
+      # credentials are absent (PR previews): the backend then has no user-lookup
+      # credentials and identity lookups fail loudly at call time.
+      - name: Ensure Keycloak service account
+        id: keycloak_sa
+        if: ${{ env.KC_SA_CLIENT_ID != '' }}
+        env:
+          KEYCLOAK_ISSUER_URI: ${{ vars.keycloak_issuer_uri }}
+          KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret }}
+        run: ./.github/scripts/ensure-keycloak-service-account.sh
+
       - uses: bcgov/action-deployer-openshift@27a85b7b157bfc9c3c9bf0aca53bcd288d4d2506 # v4.2.1
         id: deploy
+        env:
+          # A step output, so it cannot sit in the job-level env. Referenced as
+          # "$USER_LOOKUP_CLIENT_SECRET" below for a single bash expansion.
+          USER_LOOKUP_CLIENT_SECRET: ${{ steps.keycloak_sa.outputs.client_secret }}
         with:
           file: common/openshift.init.yml
           oc_namespace: ${{ secrets.oc_namespace }}
@@ -71,11 +95,21 @@ jobs:
             -p DB_PASSWORD="${{ secrets.db_password }}"
             -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
             -p KEYCLOAK_CLIENT_ID="${{ vars.keycloak_client_id }}"
+            -p CSS_CLIENT_ID="${{ secrets.css_client_id }}"
+            -p CSS_CLIENT_SECRET="${{ secrets.css_client_secret }}"
+            -p USER_LOOKUP_BASE_URL="${{ secrets.user_lookup_base_url }}"
+            -p USER_LOOKUP_TOKEN_URL="${{ vars.keycloak_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.keycloak_issuer_uri) || '' }}"
+            -p USER_LOOKUP_CLIENT_ID="${{ steps.keycloak_sa.outputs.client_id }}"
+            -p USER_LOOKUP_CLIENT_SECRET="$USER_LOOKUP_CLIENT_SECRET"
             -p TARGET_ENV="${{ inputs.environment || 'dev' }}"
             -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"
           triggers: ${{ inputs.triggers }}
-          debug: true
+          # debug is deliberately OFF. This template carries Secret stringData
+          # (database, CSS and user-lookup credentials); with debug on the
+          # deployer logs the processed template, and GitHub's secret masking
+          # misses values that contain JSON-special characters once re-encoded.
+          debug: false
 
   deploy:
     name: Deploy (${{ matrix.name }})
@@ -93,6 +127,11 @@ jobs:
               -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
               -p FAM_OIDC_CLIENT_ID="${{ vars.keycloak_client_id }}"
               -p FAM_DEPLOYMENT_ENVIRONMENT="${{ inputs.environment || 'dev' }}"
+              -p CSS_API_URL="${{ vars.css_api_url || 'https://api.loginproxy.gov.bc.ca/api/v1' }}"
+              -p CSS_TOKEN_URL="${{ vars.css_token_url || 'https://loginproxy.gov.bc.ca/auth/realms/standard/protocol/openid-connect/token' }}"
+              -p CSS_OWN_INTEGRATION_ID="${{ vars.css_own_integration_id }}"
+              -p CSS_IDP_ALIAS_IDIR="${{ vars.css_idp_alias_idir || 'azureidir' }}"
+              -p CSS_IDP_ALIAS_BCEID="${{ vars.css_idp_alias_bceid || 'bceidbusiness' }}"
           - name: frontend
             file: frontend/openshift.deploy.yml
             parameters: -p IMAGE_TAG="${{ inputs.tag }}"

@@ -1,164 +1,123 @@
 package ca.bc.gov.nrs.fam.service;
 
 import ca.bc.gov.nrs.fam.constants.EmailSendingStatus;
-import ca.bc.gov.nrs.fam.constants.UserType;
-import ca.bc.gov.nrs.fam.dto.FamAccessControlPrivilegeCreateResponse;
-import ca.bc.gov.nrs.fam.dto.FamForestClientDto;
-import ca.bc.gov.nrs.fam.dto.FamUserRoleAssignmentCreateResponse;
-import ca.bc.gov.nrs.fam.dto.GcNotifyGrantAccessEmailParams;
-import ca.bc.gov.nrs.fam.dto.TargetUser;
-import ca.bc.gov.nrs.fam.integration.GcNotifyEmailService;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
+import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
+import ca.bc.gov.nrs.fam.integration.EmailService;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Notifies users that they have been granted access.
+ * Tells a user they have been granted access.
  *
- * <p>Port of {@code send_users_access_granted_emails}. One email per user
- * summarising every role they were granted in the request, not one per
- * assignment.
+ * <p>Restores the notification upstream sent from {@code crud_user_role.py} and
+ * {@code access_control_privilege_service.py}, which went when the FAM grant path
+ * moved to CSS. The trigger is unchanged: after a grant, to the person who was
+ * granted, and only when at least one role actually succeeded.
  *
- * <p>Sending is <strong>best-effort</strong>: the access has already been granted
- * and committed, so a failure to notify is recorded on the response as
- * {@code SENT_TO_EMAIL_SERVICE_FAILURE} rather than raised. Failing the request
- * here would tell the administrator the grant did not happen when it did.
+ * <p>Upstream had two variants - one for an end-user grant, one for appointing a
+ * delegated administrator - because those were separate code paths. Under CSS
+ * both are a role assignment, so there is one message; what differs is the role
+ * named in it.
+ *
+ * <p>The body is composed here rather than in a template held by a third party,
+ * which is the substantive change from GC Notify: what a user receives is
+ * reviewable alongside the code that sends it.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccessGrantedEmailService {
 
-  private final GcNotifyEmailService gcNotifyEmailService;
+  private final EmailService emailService;
 
   /**
-   * @return the same responses, with {@code emailSendingStatus} set on those that
-   *     an email was attempted for
+   * Notify the target of a grant, and report what happened.
+   *
+   * <p>Never throws. A grant that succeeded is not undone by a notification that
+   * did not, so the outcome is recorded on each result instead - the same shape
+   * upstream used, so an administrator can see "granted, but not emailed".
+   *
+   * @param targetUserEmail supplied by the caller - see
+   *     {@code CssUserRoleAssignmentRequest.targetUserEmail} for why
+   * @return the results, each carrying its email outcome
    */
-  public List<FamUserRoleAssignmentCreateResponse> sendAccessGrantedEmails(
-      List<TargetUser> targetUsers, List<FamUserRoleAssignmentCreateResponse> responses) {
+  public List<CssUserRoleAssignmentResult> notifyGranted(
+      String targetUserEmail,
+      String applicationName,
+      List<CssUserRoleAssignmentResult> results) {
 
-    Map<String, TargetUser> targetUsersByName = targetUsers.stream()
-        .collect(Collectors.toMap(TargetUser::userName, Function.identity(), (a, b) -> a));
+    List<CssUserRoleAssignmentResult> assigned =
+        results.stream().filter(CssUserRoleAssignmentResult::assigned).toList();
 
-    // Group by the user each assignment belongs to, preserving request order.
-    Map<String, List<FamUserRoleAssignmentCreateResponse>> byUserName = new LinkedHashMap<>();
-    for (FamUserRoleAssignmentCreateResponse response : responses) {
-      if (response.detail() != null && response.detail().user() != null) {
-        byUserName
-            .computeIfAbsent(response.detail().user().userName(), k -> new ArrayList<>())
-            .add(response);
-      }
+    if (assigned.isEmpty()) {
+      // Nothing was granted, so there is nothing to announce.
+      return results;
     }
 
-    Map<FamUserRoleAssignmentCreateResponse, EmailSendingStatus> statuses = new LinkedHashMap<>();
-
-    byUserName.forEach((userName, userResponses) -> {
-      List<FamUserRoleAssignmentCreateResponse> successes = userResponses.stream()
-          .filter(FamUserRoleAssignmentCreateResponse::isSuccess)
-          .toList();
-
-      if (successes.isEmpty()) {
-        log.debug("No successful role assignments for {}; skipping email", userName);
-        return;
-      }
-
-      TargetUser targetUser = targetUsersByName.get(userName);
-      try {
-        gcNotifyEmailService.sendUserAccessGrantedEmail(buildParams(targetUser, successes));
-        log.debug("Access granted email sent for {}", userName);
-        successes.forEach(r ->
-            statuses.put(r, EmailSendingStatus.SENT_TO_EMAIL_SERVICE_SUCCESS));
-      } catch (Exception e) {
-        // The grant stands; only the notification failed.
-        log.warn("Failed to send email to user_name: {}. Reason: {}", userName, e.getMessage());
-        successes.forEach(r ->
-            statuses.put(r, EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE));
-      }
-    });
-
-    return responses.stream()
-        .map(r -> statuses.containsKey(r) ? r.withEmailStatus(statuses.get(r)) : r)
-        .toList();
-  }
-
-  /**
-   * Notify a new delegated administrator.
-   *
-   * <p>One email covering every role granted in the request, so the status is
-   * reported once rather than per assignment. Best-effort, like the end-user
-   * notification: the privilege is already committed.
-   *
-   * @return whether the hand-off to GC Notify succeeded
-   */
-  public EmailSendingStatus sendDelegatedAdminGrantedEmail(
-      TargetUser targetUser, List<FamAccessControlPrivilegeCreateResponse> assignments) {
-
-    List<FamAccessControlPrivilegeCreateResponse> successes = assignments.stream()
-        .filter(FamAccessControlPrivilegeCreateResponse::isSuccess)
-        .toList();
-
-    if (successes.isEmpty()) {
-      return EmailSendingStatus.NOT_REQUIRED;
+    if (!emailService.isConfigured()) {
+      return withStatus(results, EmailSendingStatus.NOT_REQUIRED);
     }
 
+    if (targetUserEmail == null || targetUserEmail.isBlank()) {
+      // No address to send to. Not a failure of the grant, and not something a
+      // retry would fix.
+      log.info("No email address on the grant request; no notification sent.");
+      return withStatus(results, EmailSendingStatus.NOT_REQUIRED);
+    }
+
+    EmailSendingStatus status;
     try {
-      var grantedRole = successes.get(0).detail().role();
-      boolean scoped = grantedRole.forestClient() != null;
-
-      List<FamForestClientDto> organizations = scoped
-          ? successes.stream().map(r -> r.detail().role().forestClient()).toList()
-          : null;
-
-      GcNotifyGrantAccessEmailParams params = new GcNotifyGrantAccessEmailParams(
-          targetUser.userName(),
-          targetUser.firstName(),
-          targetUser.lastName(),
-          grantedRole.application().applicationDescription(),
-          grantedRole.displayName(),
-          organizations,
-          null,
-          targetUser.email());
-
-      // Only BCeID delegated admins are asked to accept the terms of use.
-      boolean isBceid = UserType.BCEID.getCode().equals(targetUser.userTypeCode());
-      gcNotifyEmailService.sendDelegatedAdminGrantedEmail(params, isBceid);
-
-      return EmailSendingStatus.SENT_TO_EMAIL_SERVICE_SUCCESS;
-
+      boolean sent = emailService.send(
+          List.of(targetUserEmail), subject(applicationName), body(applicationName, assigned));
+      status = sent
+          ? EmailSendingStatus.SENT_TO_EMAIL_SERVICE_SUCCESS
+          : EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE;
     } catch (Exception e) {
-      log.warn("Failed to send delegated admin email to {}. Reason: {}",
-          targetUser.userName(), e.getMessage());
-      return EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE;
+      // The grant already happened; the notification is not worth undoing it.
+      log.warn("Could not notify the granted user: {}", e.getMessage());
+      status = EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE;
     }
+
+    return withStatus(results, status);
   }
 
-  private GcNotifyGrantAccessEmailParams buildParams(
-      TargetUser targetUser, List<FamUserRoleAssignmentCreateResponse> successes) {
+  private static String subject(String applicationName) {
+    return "You have been granted access to " + applicationName;
+  }
 
-    var grantedRole = successes.get(0).detail().role();
-    boolean scoped = grantedRole.forestClient() != null;
+  private static String body(
+      String applicationName, List<CssUserRoleAssignmentResult> assigned) {
 
-    // Null, not empty, for an unscoped role - the email template branches on it.
-    List<FamForestClientDto> organizations = scoped
-        ? successes.stream().map(r -> r.detail().role().forestClient()).toList()
-        : null;
+    StringBuilder body = new StringBuilder();
+    body.append("You have been granted access to ").append(applicationName).append(".\n\n");
 
-    return new GcNotifyGrantAccessEmailParams(
-        targetUser.userName(),
-        targetUser.firstName(),
-        targetUser.lastName(),
-        grantedRole.application().applicationDescription(),
-        grantedRole.displayName(),
-        organizations,
-        // Upstream TODO #1507: per-application contact address is not modelled yet.
-        null,
-        targetUser.email());
+    body.append(assigned.size() == 1 ? "Role granted:\n" : "Roles granted:\n");
+    for (CssUserRoleAssignmentResult result : assigned) {
+      CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(result.roleName());
+      body.append("  - ").append(parsed.baseRoleName());
+      if (parsed.scopeValue() != null) {
+        // The scope only exists in the generated role name, so it is read back
+        // out rather than passed alongside.
+        body.append(" (").append(parsed.scopeValue()).append(")");
+      }
+      body.append("\n");
+    }
+
+    body.append("\nThis is an automated message from Forest Access Management. ")
+        .append("If you were not expecting it, contact your application administrator.\n");
+    return body.toString();
+  }
+
+  private static List<CssUserRoleAssignmentResult> withStatus(
+      List<CssUserRoleAssignmentResult> results, EmailSendingStatus status) {
+
+    // Only assigned roles carry an email outcome; a role that failed to assign
+    // was never going to be announced.
+    return results.stream()
+        .map(result -> result.assigned() ? result.withEmailStatus(status) : result)
+        .toList();
   }
 }

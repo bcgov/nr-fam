@@ -42,7 +42,7 @@ class UserInfoRefreshControllerTest {
   private UserInfoRefreshController controller(String configuredKey) {
     FamProperties properties = new FamProperties("dev", null, null,
         new FamProperties.UpdateUserInfo(configuredKey, "CMENG"));
-    when(refreshService.refreshFromIdim(anyBoolean(), anyInt(), anyInt()))
+    when(refreshService.refreshFromDirectory(anyBoolean(), anyInt(), anyInt()))
         .thenReturn(new FamUserUpdateResponse(0, 1, 0, OffsetDateTime.now(), "0s",
             List.of(), List.of(), List.of(), List.of()));
     return new UserInfoRefreshController(refreshService, properties);
@@ -88,6 +88,6 @@ class UserInfoRefreshControllerTest {
         .extracting("status")
         .isEqualTo(HttpStatus.UNAUTHORIZED);
 
-    verify(refreshService, never()).refreshFromIdim(anyBoolean(), anyInt(), anyInt());
+    verify(refreshService, never()).refreshFromDirectory(anyBoolean(), anyInt(), anyInt());
   }
 }

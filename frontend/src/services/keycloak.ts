@@ -13,6 +13,7 @@
 import {
     UserManager,
     WebStorageStateStore,
+    type User,
     type UserManagerSettings,
 } from "oidc-client-ts";
 import { requireEnvData } from "@/utils/EnvUtils";
@@ -80,4 +81,37 @@ export const getUserManager = (): UserManager => {
 /** Only for tests, which build a fresh manager per case. */
 export const resetUserManager = (): void => {
     userManager = null;
+};
+
+/**
+ * The stored user, silently renewed if their access token has expired.
+ *
+ * Returns null when nobody is signed in, rather than attempting a renewal.
+ *
+ * That distinction matters more than it looks. `signinSilent` renews from the
+ * stored refresh token - no iframe, unaffected by third-party cookie rules - but
+ * only when there is a stored user to renew from. With nothing stored,
+ * oidc-client-ts falls back to a hidden-iframe flow, and since no
+ * `silent_redirect_uri` is configured that attempt cannot succeed: it runs until
+ * `silentRequestTimeoutInSeconds` expires, which defaults to 10.
+ *
+ * Every first-time visitor to the landing page has nothing stored, so calling it
+ * unconditionally held the page behind a loading spinner for ten seconds before
+ * the sign-in buttons appeared.
+ */
+export const loadStoredUser = async (
+    manager: Pick<UserManager, "getUser" | "signinSilent">
+): Promise<User | null> => {
+    const user = await manager.getUser();
+
+    // Never signed in: there is no session to restore and nothing to renew.
+    if (!user) {
+        return null;
+    }
+
+    if (!user.expired) {
+        return user;
+    }
+
+    return await manager.signinSilent();
 };

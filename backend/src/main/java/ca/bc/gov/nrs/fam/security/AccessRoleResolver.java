@@ -1,89 +1,62 @@
 package ca.bc.gov.nrs.fam.security;
 
-import ca.bc.gov.nrs.fam.constants.FamConstants;
-import ca.bc.gov.nrs.fam.entity.FamApplication;
-import ca.bc.gov.nrs.fam.repository.FamApplicationAdminRepository;
-import ca.bc.gov.nrs.fam.repository.FamApplicationRepository;
-import ca.bc.gov.nrs.fam.repository.FamRoleRepository;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Resolves a caller's effective access roles.
+ * Resolves a caller's effective access roles from their access token.
  *
- * <p>This is the half of the Cognito pre-token-generation Lambda
- * ({@code auth_function.access_token_groups_override}) that cannot move to
- * Keycloak. Cognito ran a database query at login and injected the result into
- * {@code cognito:groups}; a Keycloak realm cannot do that without a custom SPI, so
- * FAM resolves the same set per request instead.
+ * <p>Roles live in CSS now, not in {@code fam_role} and {@code fam_user_role_xref},
+ * and CSS assigns them as Keycloak roles - so they arrive on the token already.
+ * There is nothing left to look up.
  *
- * <p>The practical difference is that roles are now <strong>always current</strong>
- * rather than fixed at login. Revoking access takes effect on the next request
- * instead of when the token is refreshed - stricter than before, not looser.
+ * <p>This reverses a decision made earlier in the port. Cognito's
+ * pre-token-generation Lambda ran a database query at login and injected the
+ * result into {@code cognito:groups}; a Keycloak realm cannot do that without a
+ * custom SPI, so the port resolved the same set from the database per request
+ * instead. With CSS as the source of truth, the token is authoritative again.
  *
- * <p>Two kinds of role are produced, exactly as upstream:
+ * <h2>What this costs</h2>
  *
- * <ol>
- *   <li>Role names assigned to the user within the application the token was
- *       issued for, excluding expired assignments.
- *   <li>When - and only when - signing in through FAM itself,
- *       {@code <APPLICATION_NAME>_ADMIN} for every application the user
- *       administers. This is what {@link Requester#isAdminOf} matches on.
- * </ol>
+ * <p>Resolving per request meant a revocation took effect on the very next call.
+ * Reading from the token means it takes effect when the token is next refreshed -
+ * every three minutes, per {@code AuthProvider}'s refresh interval. That window
+ * is the price of removing the tables, and it is worth knowing about: a user
+ * whose access is pulled keeps it for up to one refresh cycle.
+ *
+ * <h2>Admin roles</h2>
+ *
+ * <p>{@link Requester#isAdminOf} matches {@code <APPLICATION_NAME>_ADMIN}, so
+ * FAM's own CSS integration must define a role of that shape for each
+ * application an admin may administer, plus {@code FAM_ADMIN} for FAM itself.
+ * Nothing derives these names - they are matched literally against the token.
+ *
+ * <p>The old "only add admin roles when signing in through FAM" rule is no longer
+ * a rule to enforce: a token issued to a downstream application carries only that
+ * application's roles, so FAM's admin roles cannot appear in it.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccessRoleResolver {
 
-  private static final String ADMIN_ROLE_SUFFIX = "_ADMIN";
-
-  private final FamRoleRepository roleRepository;
-  private final FamApplicationAdminRepository applicationAdminRepository;
-  private final FamApplicationRepository applicationRepository;
+  private final TokenClaimsReader claimsReader;
 
   /**
-   * @param oidcClientId the client the token was issued to, which identifies the
-   *     application being used. Null or unknown yields no roles rather than an
-   *     error - an unrecognised client is simply unauthorised everywhere.
+   * The caller's roles, as carried on the token.
+   *
+   * <p>A token with no roles claim yields none, which is simply unauthorised
+   * everywhere rather than an error.
    */
-  @Transactional(readOnly = true)
-  public List<String> resolveAccessRoles(
-      String userGuid, String userTypeCode, String oidcClientId) {
+  public List<String> resolveAccessRoles(Jwt jwt) {
+    List<String> roles = claimsReader.accessRoles(jwt);
 
-    if (oidcClientId == null || oidcClientId.isBlank()) {
-      log.debug("Token has no client id; resolving no access roles.");
-      return List.of();
-    }
+    log.debug("Resolved {} access role(s) from the token for client {}",
+        roles.size(), claimsReader.appClientId(jwt));
 
-    List<String> roles = new ArrayList<>(
-        roleRepository.findRoleNamesForUserAndClient(userGuid, userTypeCode, oidcClientId));
-
-    if (isSignedInThroughFam(oidcClientId)) {
-      // Application-admin authority is only meaningful inside FAM's own console;
-      // it must not leak into a downstream application's token.
-      applicationAdminRepository
-          .findAdministeredApplicationNames(userGuid, userTypeCode)
-          .forEach(applicationName ->
-              roles.add(applicationName.toUpperCase(Locale.ROOT) + ADMIN_ROLE_SUFFIX));
-    }
-
-    log.debug("Resolved {} access role(s) for client {}", roles.size(), oidcClientId);
-    return List.copyOf(roles);
-  }
-
-  /** Whether this OIDC client belongs to FAM's own application record. */
-  private boolean isSignedInThroughFam(String oidcClientId) {
-    Optional<FamApplication> application =
-        applicationRepository.findByOidcClientId(oidcClientId);
-    return application
-        .map(app -> FamConstants.APPLICATION_FAM.equals(app.getApplicationName()))
-        .orElse(false);
+    return roles;
   }
 }

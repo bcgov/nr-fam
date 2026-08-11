@@ -77,9 +77,104 @@ how the `fam_usr_uk` constraint matches them.
 3. **The claims above must be mapped into the access token**, not only the ID
    token. `identity_provider` and the provider-specific claims are what FAM keys
    on; a token missing the user GUID is rejected with `missing_key_attribute`.
+4. **Roles must reach the access token**, as either `client_roles` (what CSS
+   emits) or `resource_access.<client>.roles` (stock Keycloak). Both are read,
+   `client_roles` first.
 
-No Keycloak role or group mapping is needed. FAM does not read roles from the
-token.
+## Administrative roles
+
+FAM has three tiers. They are Keycloak roles read from the caller's access token,
+and they live on **FAM's own CSS integration** - not on the integration of the
+application being administered.
+
+That placement matters: a token carries `client_roles` for the client it was
+issued to, so a role sitting on another application's integration would never
+reach FAM. The application therefore has to be named *inside* the role.
+
+| Role | Grants |
+| ---- | ------ |
+| `FAM_ADMIN` | Everything, in every application and environment. |
+| `APP_ADMIN_<integrationId>_<ENV>` | Grant and revoke roles for that one application, **and** appoint delegated administrators for it. |
+| `DELEGATED_ADMIN_<integrationId>_<ENV>` | Grant and revoke roles for that one application. **May not** appoint administrators. |
+
+Examples, all created on FAM's integration:
+
+```
+FAM_ADMIN
+APP_ADMIN_22264_DEV
+DELEGATED_ADMIN_22264_DEV
+```
+
+### Why the integration id
+
+FAM identifies a CSS application as `(integrationId, environment)` and already
+holds both halves, so it can derive the expected role name without anything to
+configure. The project name was the alternative and was rejected: renaming a
+project in CSS would silently revoke everyone's access, and "Forests Stewardship
+Plan" does not slug to anything an administrator would recognise.
+
+**Environment is part of the name on purpose.** Administering DEV does not imply
+administering PROD; those are separate grants.
+
+### The line between APP_ADMIN and DELEGATED_ADMIN
+
+Both tiers grant and revoke ordinary user access. The only difference is that an
+application administrator may appoint delegated administrators and a delegated
+administrator may not.
+
+That single rule is what makes the tier real. Appointing an administrator happens
+through the same grant endpoint as any other role - the role being granted just
+happens to be one of FAM's own - so the endpoint checks whether the role being
+granted is administrative and applies the stricter rule when it is. Without that,
+a delegated administrator could grant themselves `APP_ADMIN_<app>_<env>` through
+the ordinary path and the distinction would be decorative.
+
+### How the checks are applied
+
+| Operation | Requires |
+| --------- | -------- |
+| List applications | any tier - the list is filtered to what the caller administers |
+| List an application's roles | any tier, for that application |
+| List an application's assignments | any tier, for that application |
+| Grant or revoke an application role | any tier, for that application |
+| Grant or revoke a FAM administrative role | `FAM_ADMIN` or `APP_ADMIN`, for that application |
+
+A caller holding no tier for an application cannot see it in the picker and
+cannot act on it, even if the CSS API account can see it - that account is team
+scoped and returns every integration the team owns, so the filtering is FAM's
+job.
+
+### FAM's own integration is FAM_ADMIN only
+
+Administering FAM is deciding who administers every other application, so FAM's
+own CSS integration is reserved to `FAM_ADMIN`. An `APP_ADMIN` or
+`DELEGATED_ADMIN` role naming FAM's integration grants nothing - the tier is
+overridden, not consulted.
+
+FAM has to be told which integration is its own; nothing in a CSS response marks
+it:
+
+```
+CSS_OWN_INTEGRATION_ID=22261
+```
+
+Left unset, the protection cannot be applied and startup logs a warning saying so.
+
+**The filtering is not the control.** The application list omits it for anyone
+below `FAM_ADMIN`, but the guard on every other endpoint is what actually stops a
+caller who knows the integration id from calling the roles, assignment or grant
+endpoints directly. Both use the same predicate so they cannot drift apart.
+
+A refusal on FAM's own integration returns the same message as any other
+insufficient-privilege refusal. Saying "this is FAM's own integration" would
+confirm which id it is to a caller who was guessing.
+
+### What this costs
+
+Resolving per request meant a revocation took effect on the next call. Reading
+from the token means it takes effect at the next refresh - every three minutes,
+per the frontend's refresh interval. A user whose access is pulled keeps it for
+up to one refresh cycle.
 
 ## Column names
 

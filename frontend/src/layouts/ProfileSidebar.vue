@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import Button from "primevue/button";
-import { AdminRoleAuthGroup } from "fam-api/model";
 import { default as FamButton } from "@/components/UI/Button.vue";
 import LogoutIcon from "@carbon/icons-vue/es/logout/16";
 import CloseIcon from "@carbon/icons-vue/es/close/16";
@@ -10,7 +9,6 @@ import { showTermsForRead } from "@/store/TermsAndConditionsState";
 import Avatar from "primevue/avatar";
 import { computed, ref } from "vue";
 import useAuth from "@/composables/useAuth";
-import { useQuery } from "@tanstack/vue-query";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import PSkeleton from "@/components/Skeletons/PSkeleton.vue";
 
@@ -37,24 +35,6 @@ const buttonLabel = computed(() => {
     return loading.value ? "Signing out..." : "Sign out";
 });
 
-const adminUserAccessQuery = useQuery({
-    queryKey: ["admin-user-access"],
-    queryFn: () =>
-        AdminMgmtApiService.adminUserAccessesApi
-            .adminUserAccessPrivilege()
-            .then((res) => res.data),
-    select: (data) => {
-        const accessList = data.access.map((grantDto) => grantDto.auth_key);
-
-        const famAdminIndex = accessList.indexOf(AdminRoleAuthGroup.FamAdmin);
-        if (famAdminIndex !== -1) {
-            const famAdmin = accessList.splice(famAdminIndex, 1)[0];
-            accessList.unshift(famAdmin);
-        }
-
-        return accessList.map((key) => key.replace("_", " ")).join(", ");
-    },
-});
 </script>
 
 <template>
@@ -111,25 +91,17 @@ const adminUserAccessQuery = useQuery({
                     <p class="profile-email">
                         Email: {{ famLoginUser?.email }}
                     </p>
-                    <p class="profile-admin-level">
-                        Granted:&nbsp;
-                        <PSkeleton
-                            v-if="adminUserAccessQuery.isLoading.value"
-                        />
-                        <strong v-else>
-                            {{ adminUserAccessQuery.data.value }}
-                        </strong>
-                    </p>
+                    <!--
+                        The granted-access line read from /admin-user-accesses,
+                        which went with the FAM admin tables. Admin rights are
+                        roles on the token now; showing them here would mean
+                        re-deriving the same list from authState, which is not
+                        what this sidebar is for.
+                    -->
                 </div>
             </div>
             <Divider class="profile-divider" />
             <Button
-                v-if="
-                    famLoginUser?.idpProvider === 'bceidbusiness' &&
-                    adminUserAccessQuery.data.value
-                        ?.toLowerCase()
-                        .includes('delegated admin')
-                "
                 class="profile-sidebar-btn"
                 title="Terms of use"
                 aria-expanded="false"

@@ -1,127 +1,89 @@
 package ca.bc.gov.nrs.fam.security;
 
-import ca.bc.gov.nrs.fam.constants.AppEnv;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
-import ca.bc.gov.nrs.fam.constants.FamConstants;
+import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.constants.UserType;
-import ca.bc.gov.nrs.fam.dto.TargetUser;
-import ca.bc.gov.nrs.fam.entity.FamApplication;
-import ca.bc.gov.nrs.fam.entity.FamRole;
+import jakarta.annotation.PostConstruct;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
-import ca.bc.gov.nrs.fam.repository.FamAccessControlPrivilegeRepository;
-import ca.bc.gov.nrs.fam.service.ApplicationService;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The endpoint guards from {@code router_guards.py}.
+ * The request guards.
  *
- * <p>These run before any handler logic, exactly as the FastAPI {@code Depends}
- * guards did. They are kept out of the service layer on purpose: services assume
- * authorisation has already been settled.
+ * <p>Reduced to what still has meaning once roles and role assignments moved to
+ * CSS. The guards that took a {@code FamRole} or a FAM application id are gone
+ * with the tables behind them; what remains is decided entirely from the
+ * requester's token.
  *
- * <p>Guards that only need the requester and the already-resolved target users
- * live here. {@code enforce_bceid_by_same_org_guard} does not: it has to call
- * IDIM to verify the target users before it can compare organisations, so it sits
- * in {@link ca.bc.gov.nrs.fam.service.TargetUserValidationService} alongside that
- * verification.
+ * <p>The self-grant guards went with them. They protected FAM's own grant path,
+ * which no longer exists: a grant is a CSS role assignment now. If self-grant is
+ * to be prevented, it has to be enforced on the CSS assignment endpoint - see the
+ * note on {@link #forbidSelfGrant}.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthorizationService {
 
-  private final ApplicationService applicationService;
-  private final FamAccessControlPrivilegeRepository accessControlPrivilegeRepository;
+  private final FamProperties famProperties;
+
+  @PostConstruct
+  void warnIfOwnIntegrationUnknown() {
+    if (ownIntegrationId() == null) {
+      log.warn("fam.integration.css.own-integration-id is not set. FAM's own CSS "
+          + "integration cannot be identified, so it is administrable by any "
+          + "APP_ADMIN or DELEGATED_ADMIN holding a role for it rather than by "
+          + "FAM_ADMIN alone. Set CSS_OWN_INTEGRATION_ID.");
+    }
+  }
+
+  private Integer ownIntegrationId() {
+    if (famProperties.integration() == null || famProperties.integration().css() == null) {
+      return null;
+    }
+    return famProperties.integration().css().ownIntegrationId();
+  }
 
   /**
-   * The general check used by the Forest Client and IDIM proxy endpoints: the
-   * caller must administer at least one application, in either capacity.
+   * Whether FAM's own integration is the one being administered.
    *
-   * <p>Port of {@code router_guards.authorize}.
+   * <p>Administering FAM means deciding who administers every other application,
+   * so it is not something an application administrator should reach.
+   */
+  private boolean isOwnIntegration(int cssIntegrationId) {
+    Integer own = ownIntegrationId();
+    return own != null && own == cssIntegrationId;
+  }
+
+  /**
+   * Whether this caller may administer this application at all.
+   *
+   * <p>The single predicate behind both the per-request guards and the filtering
+   * of the application list. They must not diverge: a list that offers an
+   * application the guards would refuse is confusing, and a list that hides one
+   * the guards would allow is a hole waiting to be found by anyone who knows the
+   * integration id.
+   */
+  public boolean canAdminister(Requester requester, int cssIntegrationId, String cssEnvironment) {
+    if (isOwnIntegration(cssIntegrationId)) {
+      return requester.isFamAdmin();
+    }
+    return requester.canManageAccess(cssIntegrationId, cssEnvironment);
+  }
+
+  /**
+   * The general check: the caller must administer something.
+   *
+   * <p>Port of {@code router_guards.authorize}. Admin rights are roles on the
+   * token now, so an empty role list means the caller administers nothing.
    */
   public void authorize(Requester requester) {
     boolean hasAdminGroups = requester.accessRoles() != null && !requester.accessRoles().isEmpty();
-    if (!hasAdminGroups && !requester.isDelegatedAdmin()) {
+    if (!hasAdminGroups) {
       throw FamHttpException.forbidden(
           ErrorCode.GROUPS_REQUIRED, "At least one access group is required.");
-    }
-  }
-
-  /**
-   * The caller must be an application admin or a delegated admin of this specific
-   * application.
-   *
-   * <p>Port of {@code router_guards.authorize_by_app_id}.
-   */
-  @Transactional(readOnly = true)
-  public void authorizeByAppId(Long applicationId, Requester requester) {
-    if (applicationService.isAppAdmin(applicationId, requester)) {
-      return;
-    }
-
-    boolean delegatedAdminOfApp = !accessControlPrivilegeRepository
-        .findManagedRoleIds(requester.userId(), applicationId).isEmpty();
-
-    if (!delegatedAdminOfApp) {
-      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
-          "Requester has no admin or delegated admin access to the application.");
-    }
-  }
-
-  /**
-   * Same check, but starting from a role rather than an application id.
-   *
-   * <p>Port of {@code router_guards.authorize_by_application_role}.
-   */
-  @Transactional(readOnly = true)
-  public void authorizeByApplicationRole(FamRole role, Requester requester) {
-    authorizeByAppId(role.getApplication().getApplicationId(), requester);
-  }
-
-  /**
-   * A delegated admin may only act on roles they have been granted privilege over.
-   * Application admins bypass this.
-   *
-   * <p>Port of the concrete-role branch of {@code router_guards.authorize_by_privilege}.
-   * The abstract-role branch, which resolves a forest-client-scoped child role
-   * first, is handled by the user-role assignment service where the requested
-   * client numbers are available.
-   */
-  @Transactional(readOnly = true)
-  public void authorizeByPrivilege(FamRole role, Requester requester) {
-    if (applicationService.isAppAdmin(role.getApplication().getApplicationId(), requester)) {
-      return;
-    }
-    requirePrivilegeOnRole(requester, role.getRoleId());
-  }
-
-  /** Throws unless the requester is a delegated admin for exactly this role. */
-  @Transactional(readOnly = true)
-  public void requirePrivilegeOnRole(Requester requester, Long roleId) {
-    boolean hasPrivilege = accessControlPrivilegeRepository
-        .findByUserUserIdAndRoleRoleId(requester.userId(), roleId).isPresent();
-    if (!hasPrivilege) {
-      throw FamHttpException.forbidden(
-          ErrorCode.PERMISSION_REQUIRED, "Requester has no privilege to grant this access.");
-    }
-  }
-
-  /**
-   * A Business BCeID delegated admin must have accepted the current terms before
-   * doing anything.
-   *
-   * <p>Port of {@code router_guards.enforce_bceid_terms_conditions_guard}. Note
-   * this returns HTTP 400, not 403 - the frontend keys off the error code to show
-   * the terms dialog.
-   */
-  public void enforceBceidTermsConditions(Requester requester) {
-    if (requester.requiresAcceptTc()) {
-      throw FamHttpException.badRequest(
-          ErrorCode.TERMS_CONDITIONS_REQUIRED, "Requires to accept terms and conditions.");
     }
   }
 
@@ -133,141 +95,100 @@ public class AuthorizationService {
     }
   }
 
-  /**
-   * Endpoints only a Business BCeID delegated admin should reach - accepting terms
-   * and conditions is meaningless for anyone else.
-   *
-   * <p>Port of {@code router_guards.external_delegated_admin_only_action}.
-   */
-  public void externalDelegatedAdminOnlyAction(Requester requester) {
-    if (!requester.isExternalDelegatedAdmin()) {
-      throw FamHttpException.forbidden(ErrorCode.INVALID_OPERATION, "Action is not needed");
-    }
-  }
-
-  /**
-   * Whether an app admin may alter their own access to this role.
-   *
-   * <p>Port of {@code router_guards._is_self_grant_exempt}. Fails closed three
-   * ways: never for FAM itself, never for an application whose environment is
-   * missing or unrecognised, and never for a delegated admin.
-   */
-  @Transactional(readOnly = true)
-  public boolean isSelfGrantExempt(FamRole role, Requester requester) {
-    FamApplication application = role.getApplication();
-
-    if (FamConstants.APPLICATION_FAM.equals(application.getApplicationName())) {
-      return false;
-    }
-
-    boolean envAllowsSelfGrant = AppEnv.fromCode(application.getAppEnvironment())
-        .map(AppEnv.SELF_GRANT_ALLOWED::contains)
-        .orElse(false);
-    if (!envAllowsSelfGrant) {
-      return false;
-    }
-
-    return requester.isAdminOf(application.getApplicationName());
-  }
-
-  /**
-   * Only a FAM administrator may pass.
-   *
-   * <p>Port of {@code admin_management/router_guards.authorize_by_fam_admin}.
-   * Administering <em>who administers an application</em> is FAM-wide authority,
-   * so an application admin is not sufficient.
-   */
+  /** The caller must be a FAM super administrator. */
   public void authorizeByFamAdmin(Requester requester) {
-    if (!requester.isAdminOf(FamConstants.APPLICATION_FAM)) {
+    if (!requester.isFamAdmin()) {
+      throw FamHttpException.forbidden(
+          ErrorCode.PERMISSION_REQUIRED, "Requires FAM administrator privilege.");
+    }
+  }
+
+  /**
+   * The caller must administer this application in some capacity.
+   *
+   * <p>Satisfied by any of the three tiers. This is the per-application check
+   * that {@link #authorize} deliberately is not: {@code authorize} only asks
+   * whether the caller administers <em>something</em>, which is not enough to
+   * decide whether they may act on <em>this</em> application.
+   */
+  public void requireApplicationAccess(
+      Requester requester, int cssIntegrationId, String cssEnvironment) {
+
+    if (!canAdminister(requester, cssIntegrationId, cssEnvironment)) {
+      // Deliberately the same message either way. Saying "this is FAM's own
+      // integration, you need FAM_ADMIN" would confirm which integration id is
+      // FAM's to a caller who was guessing.
       throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
-          "Requester has no FAM admin access.");
+          "Requires administrator privilege for this application.");
     }
   }
 
   /**
-   * Nobody may change their own access, unless they are an application admin
-   * acting on a DEV or TEST instance of another application.
+   * The caller must be able to appoint delegated administrators for this
+   * application - FAM administrator or application administrator only.
    *
-   * <p>Port of {@code router_guards.enforce_self_grant_guard}. Identity is matched
-   * on type plus GUID, never on user name.
-   *
-   * @throws FamHttpException 403 {@code self_grant_prohibited}
+   * <p>A delegated administrator is excluded on purpose. They may grant and
+   * revoke ordinary access, but not create more administrators; allowing it would
+   * let them promote themselves and erase the distinction between the tiers.
    */
-  @Transactional(readOnly = true)
-  public void enforceSelfGrant(
-      Requester requester, List<TargetUser> targetUsers, FamRole role) {
+  public void requireDelegatedAdminManagement(
+      Requester requester, int cssIntegrationId, String cssEnvironment) {
 
-    for (TargetUser targetUser : targetUsers) {
-      boolean isSelf = java.util.Objects.equals(
-              requester.userType() == null ? null : requester.userType().getCode(),
-              targetUser.userTypeCode())
-          && java.util.Objects.equals(requester.userGuid(), targetUser.userGuid());
+    boolean allowed = isOwnIntegration(cssIntegrationId)
+        ? requester.isFamAdmin()
+        : requester.canManageDelegatedAdmins(cssIntegrationId, cssEnvironment);
 
-      if (!isSelf) {
-        continue;
-      }
-
-      if (isSelfGrantExempt(role, requester)) {
-        log.info("Self-grant/revoke allowed: app admin '{}' acting on own access for "
-                + "dev/test app '{}', role '{}'.",
-            requester.userName(), role.getApplication().getApplicationName(), role.getRoleName());
-        return;
-      }
-
-      throw FamHttpException.forbidden(ErrorCode.SELF_GRANT_PROHIBITED,
-          "Altering permission privilege to self is not allowed.");
+    if (!allowed) {
+      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+          "Only a FAM or application administrator may manage delegated administrators.");
     }
   }
 
   /**
-   * Nobody may alter their own administrator privileges - with no exemption.
+   * A Business BCeID administrator may only read users from their own
+   * organisation.
    *
-   * <p>Port of the admin-management {@code enforce_self_grant_guard}, which is
-   * deliberately stricter than the end-user one. Self-granting an end-user role on
-   * a DEV or TEST application is a convenience; self-granting delegated-admin or
-   * app-admin authority is a trust escalation, so it is blocked everywhere,
-   * including on dev and test applications.
+   * <p>This used to live inside the IDIM integration, because the organisation is
+   * only known once the directory has answered - the check has to happen after
+   * the lookup, not before it. nr-user-lookup-api authenticates as FAM's own
+   * service account and receives no requester at all, so it cannot apply the rule
+   * on FAM's behalf the way IDIM could. Losing it silently would let a BCeID
+   * administrator enumerate users at other organisations, so it moved here.
    *
-   * @throws FamHttpException 403 {@code self_grant_prohibited}
+   * <p>An IDIR requester is unrestricted. A target with no organisation is
+   * refused for a BCeID requester rather than allowed: an unknown organisation is
+   * not the same as a matching one.
+   *
+   * @param targetBusinessGuid the organisation the looked-up user belongs to
    */
-  public void enforceSelfGrantUnconditional(Requester requester, List<TargetUser> targetUsers) {
-    for (TargetUser targetUser : targetUsers) {
-      boolean isSelf = java.util.Objects.equals(
-              requester.userType() == null ? null : requester.userType().getCode(),
-              targetUser.userTypeCode())
-          && java.util.Objects.equals(requester.userGuid(), targetUser.userGuid());
-
-      if (isSelf) {
-        throw FamHttpException.forbidden(ErrorCode.SELF_GRANT_PROHIBITED,
-            "Altering permission privilege to self is not allowed.");
-      }
-    }
-  }
-
-  /**
-   * A Business BCeID admin may not manage an IDIR user's access.
-   *
-   * <p>Port of {@code router_guards.authorize_by_user_type}. An IDIR requester is
-   * unrestricted; the rule is one-directional.
-   *
-   * @throws FamHttpException 500 if a target user has no identity type - that is a
-   *     data problem, not a permission problem, so it is not reported as 403
-   */
-  public void authorizeByUserType(Requester requester, List<TargetUser> targetUsers) {
+  public void enforceSameOrganization(Requester requester, String targetBusinessGuid) {
     if (requester.userType() != UserType.BCEID) {
       return;
     }
+    String own = requester.businessGuid();
+    if (own == null || targetBusinessGuid == null || !own.equalsIgnoreCase(targetBusinessGuid)) {
+      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+          "Operation requires business bceid users to be within the same organization");
+    }
+  }
 
-    for (TargetUser targetUser : targetUsers) {
-      String targetType = targetUser.userTypeCode();
-      if (targetType == null) {
-        throw FamHttpException.internalError(ErrorCode.MISSING_KEY_ATTRIBUTE,
-            "Operation encountered unexpected error. Target user user_type code is missing.");
-      }
-      if (UserType.IDIR.getCode().equals(targetType)) {
-        throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
-            "Business BCEID requester has no privilege to grant this access to IDIR user.");
-      }
+  /**
+   * Refuse a grant the requester is making to themselves.
+   *
+   * <p>Upstream had two variants of this, one of which allowed an application
+   * admin to self-grant on DEV or TEST of a <em>different</em> application. That
+   * exemption depended on FAM knowing an application's environment and the
+   * requester's admin grants from its own tables, neither of which it does now,
+   * so this is the unconditional form: a requester may never grant to themselves.
+   *
+   * <p>Not currently wired to the CSS assignment endpoint. Doing so needs the
+   * target user's GUID compared against the requester's, which the CSS grant
+   * request carries - see {@code CssUserRoleAssignmentRequest.userGuid}.
+   */
+  public void forbidSelfGrant(Requester requester, String targetUserGuid) {
+    if (requester.userGuid() != null && requester.userGuid().equalsIgnoreCase(targetUserGuid)) {
+      throw FamHttpException.forbidden(ErrorCode.SELF_GRANT_PROHIBITED,
+          "Altering permission privilege of self is not allowed.");
     }
   }
 }

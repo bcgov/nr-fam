@@ -1,120 +1,62 @@
 package ca.bc.gov.nrs.fam.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
-import ca.bc.gov.nrs.fam.constants.ErrorCode;
-import ca.bc.gov.nrs.fam.constants.UserType;
-import ca.bc.gov.nrs.fam.dto.FamApplicationDto;
-import ca.bc.gov.nrs.fam.dto.FamApplicationUserRoleAssignmentGetDto;
-import ca.bc.gov.nrs.fam.dto.FamForestClientDto;
-import ca.bc.gov.nrs.fam.dto.FamRoleWithClientDto;
-import ca.bc.gov.nrs.fam.dto.FamUserRoleAssignmentCreateResponse;
-import ca.bc.gov.nrs.fam.entity.FamApplication;
-import ca.bc.gov.nrs.fam.entity.FamForestClient;
+import ca.bc.gov.nrs.fam.constants.EmailSendingStatus;
+import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
-import ca.bc.gov.nrs.fam.entity.FamRole;
-import ca.bc.gov.nrs.fam.entity.FamUser;
-import ca.bc.gov.nrs.fam.entity.FamUserRoleXref;
-import ca.bc.gov.nrs.fam.exception.FamHttpException;
-import ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService;
+import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeType;
 import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository;
 import ca.bc.gov.nrs.fam.security.Requester;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import jakarta.persistence.EntityManager;
 import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+/**
+ * The audit trail is the one thing that stayed in FAM's own tables.
+ *
+ * <p>CSS keeps no history of who granted what to whom, so anything not written
+ * here is not recorded anywhere.
+ */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("PermissionAuditWriteService (port of permission_audit_service.py)")
+@DisplayName("PermissionAuditWriteService (CSS-sourced grants)")
 class PermissionAuditWriteServiceTest {
 
+  private static final String TARGET_GUID = "BBBBCCCCDDDDEEEEFFFF000011112222";
+
   @Mock private FamPrivilegeChangeAuditRepository auditRepository;
-  @Mock private ForestClientIntegrationService forestClientIntegrationService;
-  @Mock private ApiInstanceEnvResolver apiInstanceEnvResolver;
   @Mock private EntityManager entityManager;
+  @org.mockito.Spy private ObjectMapper objectMapper = new ObjectMapper();
 
-  /** Mirrors the application-wide snake_case strategy, since the JSON is persisted. */
-  private final ObjectMapper objectMapper = new ObjectMapper()
-      .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+  @InjectMocks private PermissionAuditWriteService service;
 
-  private PermissionAuditWriteService service;
-  private FamApplication application;
-  private FamUser targetUser;
+  private final Requester requester = Requester.builder()
+      .userId(1L).userName("JSMITH").userGuid("AAAA1111")
+      .firstName("Jane").lastName("Smith").email("jane@gov.bc.ca")
+      .build();
 
-  @BeforeEach
-  void setUp() {
-    service = new PermissionAuditWriteService(
-        auditRepository, forestClientIntegrationService, apiInstanceEnvResolver,
-        entityManager, objectMapper);
-
-    application = new FamApplication();
-    application.setApplicationId(1L);
-    application.setApplicationName("FOM_DEV");
-    application.setAppEnvironment("DEV");
-
-    targetUser = new FamUser();
-    targetUser.setUserId(100L);
-    targetUser.setUserName("JSMITH");
-
-    when(apiInstanceEnvResolver.resolve(any())).thenReturn(ApiInstanceEnv.TEST);
+  private static CssUserRoleAssignmentResult assigned(String roleName) {
+    return new CssUserRoleAssignmentResult(roleName, true, true, null,
+        EmailSendingStatus.NOT_REQUIRED);
   }
 
-  private static Requester requester() {
-    return Requester.builder()
-        .userId(1L).userName("ADMIN").firstName("Ada").lastName("Min")
-        .email("ada@gov.bc.ca").userType(UserType.IDIR).build();
-  }
-
-  private static FamUserRoleAssignmentCreateResponse granted(String forestClientNumber) {
-    FamForestClientDto forestClient = forestClientNumber == null
-        ? null
-        : new FamForestClientDto("ACME LTD.", forestClientNumber, null);
-
-    return FamUserRoleAssignmentCreateResponse.success(
-        new FamApplicationUserRoleAssignmentGetDto(1L, 100L, 10L, null,
-            new FamRoleWithClientDto(10L, "FOM_REVIEWER", "C", "Reviewer", null,
-                new FamApplicationDto(1L, "FOM_DEV", "Forest Operations Map"),
-                forestClient, null),
-            null, null));
-  }
-
-  private FamUserRoleXref revokedRecord(String forestClientNumber) {
-    FamRole role = new FamRole();
-    role.setRoleId(10L);
-    role.setRoleName("FOM_REVIEWER");
-    role.setDisplayName("Reviewer");
-    role.setApplication(application);
-
-    if (forestClientNumber != null) {
-      FamForestClient forestClient = new FamForestClient();
-      forestClient.setForestClientNumber(forestClientNumber);
-      role.setForestClient(forestClient);
-    }
-
-    FamUserRoleXref xref = new FamUserRoleXref();
-    xref.setUserRoleXrefId(500L);
-    xref.setUser(targetUser);
-    xref.setRole(role);
-    return xref;
+  private static CssUserRoleAssignmentResult failed(String roleName) {
+    return new CssUserRoleAssignmentResult(roleName, false, false, "boom",
+        EmailSendingStatus.NOT_REQUIRED);
   }
 
   private FamPrivilegeChangeAudit captureSaved() {
@@ -125,100 +67,117 @@ class PermissionAuditWriteServiceTest {
   }
 
   @Test
-  @DisplayName("writes nothing when no grant in the batch succeeded")
-  void writesNothingWithoutSuccesses() {
-    // The caller passes every outcome, including conflicts and rejections; the
-    // early return lives here rather than at the call site.
-    service.storeGranted(requester(), targetUser,
-        List.of(FamUserRoleAssignmentCreateResponse.failure(409, "already assigned")));
+  @DisplayName("records the CSS integration and environment, not a FAM application id")
+  void recordsCssIdentifiers() {
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    verify(auditRepository, never()).save(any());
+    service.storeCssGranted(requester, TARGET_GUID, "I", 6538, "dev",
+        "CHR_FREP_EDITOR", "DISTRICT", List.of(assigned("CHR_FREP_EDITOR_DISTRICT-DCC")));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
+    assertThat(saved.getCssEnvironment()).isEqualTo("dev");
+    assertThat(saved.getTargetUserGuid()).isEqualTo(TARGET_GUID);
+    assertThat(saved.getTargetUserTypeCode()).isEqualTo("I");
+    assertThat(saved.getPerformerUserGuid()).isEqualTo("AAAA1111");
   }
 
   @Test
-  @DisplayName("snapshots the performer so later edits cannot rewrite history")
-  void snapshotsPerformer() {
-    service.storeGranted(requester(), targetUser, List.of(granted(null)));
+  @DisplayName("records only the roles that were actually assigned")
+  void recordsOnlySuccesses() {
+    // A partly successful grant must not claim the failures, or the trail
+    // overstates what the user was given.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    assertThat(captureSaved().getChangePerformerUserDetails())
-        .contains("\"username\":\"ADMIN\"")
-        .contains("\"first_name\":\"Ada\"")
-        .contains("\"email\":\"ada@gov.bc.ca\"");
-  }
-
-  @Test
-  @DisplayName("puts the expiry on the role when the grant has no client scope")
-  void unscopedGrantRecordsRoleLevelExpiry() {
-    service.storeGranted(requester(), targetUser, List.of(granted(null)));
-
-    String details = captureSaved().getPrivilegeDetails();
-    assertThat(details)
-        .contains("\"permission_type\":\"End User\"")
-        .contains("\"role\":\"Reviewer\"")
-        // No scopes key content for an unscoped grant.
-        .contains("\"scopes\":null");
-  }
-
-  @Test
-  @DisplayName("records one scope per forest client when the grant is scoped")
-  void scopedGrantRecordsScopes() {
-    service.storeGranted(requester(), targetUser,
-        List.of(granted("00001011"), granted("00001012")));
-
-    String details = captureSaved().getPrivilegeDetails();
-    assertThat(details)
-        .contains("\"scope_type\":\"Client\"")
-        .contains("\"client_id\":\"00001011\"")
-        .contains("\"client_id\":\"00001012\"")
-        .contains("\"client_name\":\"ACME LTD.\"");
-  }
-
-  @Test
-  @DisplayName("resolves the client name for a scoped revocation")
-  void revokeResolvesClientName() {
-    when(forestClientIntegrationService.search(anyList(), any(), anyBoolean()))
-        .thenReturn(List.of(Map.of(
-            "clientNumber", "00001011", "clientName", "ACME LTD.", "clientStatusCode", "ACT")));
-
-    service.storeRevoked(requester(), revokedRecord("00001011"));
+    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+        "R", "DISTRICT",
+        List.of(assigned("R_DISTRICT-DCC"), failed("R_DISTRICT-DQU")));
 
     assertThat(captureSaved().getPrivilegeDetails())
-        .contains("\"client_id\":\"00001011\"")
-        .contains("\"client_name\":\"ACME LTD.\"");
+        .contains("DCC")
+        .doesNotContain("DQU");
   }
 
   @Test
-  @DisplayName("refuses to revoke when the scoped client cannot be named")
-  void revokeFailsWhenClientUnknown() {
-    // Unlike the read path, this does not soft-fail: an audit record that cannot
-    // name the client it describes is not worth writing.
-    when(forestClientIntegrationService.search(anyList(), any(), anyBoolean()))
-        .thenReturn(List.of());
-
-    assertThatThrownBy(() -> service.storeRevoked(requester(), revokedRecord("99999999")))
-        .isInstanceOf(FamHttpException.class)
-        .extracting("code")
-        .isEqualTo(ErrorCode.UNKNOWN_STATE);
+  @DisplayName("writes nothing when no assignment succeeded")
+  void writesNothingWhenAllFailed() {
+    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+        "R", "DISTRICT", List.of(failed("R_DISTRICT-DCC")));
 
     verify(auditRepository, never()).save(any());
   }
 
   @Test
-  @DisplayName("does not call the Forest Client API for an unscoped revocation")
-  void unscopedRevokeSkipsForestClientLookup() {
-    service.storeRevoked(requester(), revokedRecord(null));
+  @DisplayName("recovers the scope value from the generated role name")
+  void recoversScopeFromRoleName() {
+    // The role name is the only place CSS records the scope.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    verify(forestClientIntegrationService, never()).search(anyList(), any(), anyBoolean());
-    assertThat(captureSaved().getPrivilegeDetails()).contains("\"role\":\"Reviewer\"");
+    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+        "FOM_SUBMITTER", "FOREST_CLIENT",
+        List.of(assigned("FOM_SUBMITTER_FOREST_CLIENT-00001018")));
+
+    assertThat(captureSaved().getPrivilegeDetails()).contains("00001018");
   }
 
   @Test
-  @DisplayName("sets change_date explicitly rather than leaving it to be derived")
-  void setsChangeDate() {
-    // change_date and create_date differ for backfilled rows, so it is never
-    // inferred from the creation timestamp.
-    service.storeGranted(requester(), targetUser, List.of(granted(null)));
+  @DisplayName("an unscoped grant records the role with no scopes")
+  void unscopedGrantHasNoScopes() {
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    assertThat(captureSaved().getChangeDate()).isNotNull();
+    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+        "FREP_ADMINISTRATOR", null, List.of(assigned("FREP_ADMINISTRATOR")));
+
+    String details = captureSaved().getPrivilegeDetails();
+    assertThat(details).contains("FREP_ADMINISTRATOR");
+    assertThat(details).contains("\"scopes\":null");
+  }
+
+  @Test
+  @DisplayName("snapshots the performer rather than only their id")
+  void snapshotsPerformer() {
+    // So the trail stays readable after the user is renamed or removed.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+        "R", null, List.of(assigned("R")));
+
+    assertThat(captureSaved().getChangePerformerUserDetails())
+        .contains("JSMITH").contains("jane@gov.bc.ca");
+  }
+
+  @Test
+  @DisplayName("records a revocation from the role names as they were")
+  void recordsRevocation() {
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeCssRevoked(requester, TARGET_GUID, "I", 6538, "dev",
+        "CHR_FREP_EDITOR", "DISTRICT", List.of("CHR_FREP_EDITOR_DISTRICT-DCC"));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getPrivilegeDetails()).contains("DCC");
+    assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
+  }
+
+  @Test
+  @DisplayName("writes nothing when a revocation removed nothing")
+  void revocationOfNothingWritesNothing() {
+    service.storeCssRevoked(requester, TARGET_GUID, "I", 1, "dev", "R", null, List.of());
+
+    verify(auditRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("attributes a change with no requester to the system")
+  void systemChangeIsAttributedToSystem() {
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeCssGranted(null, TARGET_GUID, "I", 1, "dev",
+        "R", null, List.of(assigned("R")));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getCreateUser()).isEqualTo("system");
+    assertThat(saved.getPerformerUserGuid()).isNull();
+    assertThat(saved.getChangePerformerUserDetails()).contains("system");
   }
 }

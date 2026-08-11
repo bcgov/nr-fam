@@ -9,6 +9,7 @@ import { IdpProvider } from "@/enum/IdpEnum";
 import { EnvironmentSettings } from "@/services/EnvironmentSettings";
 import {
     getUserManager,
+    loadStoredUser,
     KC_IDP_HINT,
     AUTH_CALLBACK_PATH,
 } from "@/services/keycloak";
@@ -202,18 +203,13 @@ const applySession = (user: User) => {
 };
 
 /**
- * Loads the stored user, renewing silently when the access token has expired.
+ * Publishes the restored session, or throws when nobody is signed in.
  *
- * `signinSilent` uses the refresh token; it does not need a hidden iframe, so it
- * is unaffected by third-party cookie restrictions.
+ * The "should this renew at all" rule lives in {@link loadStoredUser} - see
+ * there for why an absent user must not trigger a silent renewal.
  */
 const loadUser = async (): Promise<void> => {
-    const manager = getUserManager();
-
-    let user = await manager.getUser();
-    if (!user || user.expired) {
-        user = await manager.signinSilent();
-    }
+    const user = await loadStoredUser(getUserManager());
 
     if (!user || !user.access_token) {
         throw new Error("The user is not authenticated");

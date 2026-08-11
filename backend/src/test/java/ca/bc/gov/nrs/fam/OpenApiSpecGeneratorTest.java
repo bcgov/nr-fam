@@ -57,49 +57,35 @@ class OpenApiSpecGeneratorTest {
 
     // Every controller must appear. A missing entry means the endpoint would be
     // absent from the generated client too.
-    assertThat(paths.fieldNames()).toIterable().anySatisfy(path ->
-        assertThat(path).startsWith("/fam-applications"));
-    assertThat(paths.has("/user-role-assignment")).isTrue();
-    assertThat(paths.has("/permission-audit-history")).isTrue();
-    assertThat(paths.has("/user-terms-conditions")).isTrue();
-    assertThat(paths.has("/forest-clients/search")).isTrue();
-    assertThat(paths.has("/identity-lookup/idir")).isTrue();
+    //
+    // Applications, roles and role assignments moved to CSS in V94, so the
+    // endpoints that served them from FAM's own tables are gone.
     assertThat(paths.has("/auth/login")).isTrue();
     assertThat(paths.has("/auth/self")).isTrue();
-    // Admin-management surface, merged in from the second upstream API.
-    assertThat(paths.has("/application-admins")).isTrue();
-    assertThat(paths.has("/access-control-privileges")).isTrue();
-    assertThat(paths.has("/admin-user-accesses")).isTrue();
-    // External API - a published contract for downstream applications.
-    assertThat(paths.has("/external/v1/users")).isTrue();
-    assertThat(paths.has("/external/v1/users/me/role-metadata")).isTrue();
+    assertThat(paths.has("/identity-lookup/idir")).isTrue();
+    assertThat(paths.has("/permission-audit-history")).isTrue();
+    assertThat(paths.has("/districts")).isTrue();
     assertThat(paths.has("/users/users-information")).isTrue();
+
+    // CSS-sourced applications, roles and assignments.
+    assertThat(paths.has("/css-applications")).isTrue();
+    assertThat(paths.has("/css-applications/{integrationId}/{environment}/roles")).isTrue();
+    assertThat(paths.has(
+        "/css-applications/{integrationId}/{environment}/user-role-assignments")).isTrue();
+
+    // Retired with the tables behind them.
+    assertThat(paths.has("/user-role-assignment")).isFalse();
+    assertThat(paths.has("/access-control-privileges")).isFalse();
+    assertThat(paths.has("/application-admins")).isFalse();
+    assertThat(paths.has("/user-terms-conditions")).isFalse();
+    // The external API read from fam_role and fam_user_role_xref, so it went
+    // with them. Downstream applications read their roles from the token now.
+    assertThat(paths.has("/external/v1/users")).isFalse();
 
     // Pretty-printed so the committed spec diffs readably.
     Files.createDirectories(SPEC_PATH.getParent());
     Files.writeString(SPEC_PATH,
         objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(document) + "\n");
-  }
-
-  @Test
-  @DisplayName("exposes the admin models the frontend imports")
-  void specCoversAdminModels() throws Exception {
-    // These are exactly the models the Vue app still imports from the legacy
-    // admin-management client. Their presence is what unblocks the switch to the
-    // single generated client.
-    String spec = restTemplate.getForObject("/v3/api-docs", String.class);
-    JsonNode schemas = objectMapper.readTree(spec).get("components").get("schemas");
-
-    assertThat(schemas.fieldNames()).toIterable().contains(
-        "AdminUserAccessResponse",
-        "FamAuthGrantDto",
-        "FamGrantDetailDto",
-        "FamApplicationGrantDto",
-        "FamRoleGrantDto",
-        "FamForestClientBase",
-        "FamAccessControlPrivilegeCreateRequest",
-        "FamAppAdminCreateRequest",
-        "FamAppAdminGetResponse");
   }
 
   @Test
@@ -119,32 +105,16 @@ class OpenApiSpecGeneratorTest {
   }
 
   @Test
-  @DisplayName("keeps the external API camelCase, unlike the internal one")
-  void externalApiStaysCamelCase() throws Exception {
-    // The external API is a published contract for other applications and was
-    // camelCase under FastAPI. Only the internal API is snake_case.
-    String spec = restTemplate.getForObject("/v3/api-docs", String.class);
-    JsonNode schemas = objectMapper.readTree(spec).get("components").get("schemas");
-
-    assertThat(schemas.get("ExtApplicationUserSearchGetDto").get("properties").fieldNames())
-        .toIterable().contains("firstName", "lastName", "idpUsername", "idpUserGuid", "idpType");
-    assertThat(schemas.get("ExtRoleWithScopeDto").get("properties").fieldNames())
-        .toIterable().contains("applicationName", "roleName", "roleDisplayName", "scopeType");
-    assertThat(schemas.get("ExtPageResultMeta").get("properties").fieldNames())
-        .toIterable().contains("pageCount");
-  }
-
-  @Test
   @DisplayName("serialises DTO properties as snake_case, as the frontend expects")
   void specUsesSnakeCase() throws Exception {
     String spec = restTemplate.getForObject("/v3/api-docs", String.class);
     JsonNode schemas = objectMapper.readTree(spec).get("components").get("schemas");
 
-    JsonNode userInfo = schemas.get("FamUserInfoDto");
-    assertThat(userInfo).as("FamUserInfoDto missing from spec").isNotNull();
+    JsonNode row = schemas.get("CssUserRoleRowDto");
+    assertThat(row).as("CssUserRoleRowDto missing from spec").isNotNull();
 
     // camelCase here would mean the whole generated client mismatches the API.
-    assertThat(userInfo.get("properties").fieldNames()).toIterable()
-        .contains("user_name", "user_type", "first_name", "last_name");
+    assertThat(row.get("properties").fieldNames()).toIterable()
+        .contains("first_name", "last_name", "role_name", "scope_type", "scope_value");
   }
 }

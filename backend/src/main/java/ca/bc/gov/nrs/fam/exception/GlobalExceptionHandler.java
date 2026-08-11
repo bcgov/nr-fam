@@ -35,8 +35,10 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(FamHttpException.class)
   public ResponseEntity<Map<String, Object>> handleFamHttp(
       FamHttpException ex, HttpServletRequest request) {
-    log.debug("{} {} -> {} {}", request.getMethod(), request.getRequestURI(), ex.getStatus(),
-        ex.getCode());
+    // The description says which claim, which client, which rule - the code alone
+    // sends you back to the source to find out.
+    log.debug("{} {} -> {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getStatus(),
+        ex.getCode(), ex.getDescription());
     return ResponseEntity.status(ex.getStatus())
         .body(Map.of("detail", Map.of("code", ex.getCode(), "description", ex.getDescription())));
   }

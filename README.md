@@ -26,7 +26,7 @@ from AWS serverless to OpenShift. What changed:
 | `backend/`                  | Spring Boot API (Java 21, Maven). See `backend/docs/`.         |
 | `frontend/`                 | Vue 3 SPA, served by Caddy.                                    |
 | `frontend/client-code-gen/` | The generated API client and its spec. See its README.         |
-| `migrations/`               | Flyway migrations V1-V93, plus DBA-owned scripts.              |
+| `migrations/`               | Flyway migrations V1-V94, plus DBA-owned scripts.              |
 | `common/`                   | Shared OpenShift template (secret, ConfigMap, NetworkPolicy).  |
 | `monitoring/`               | Sysdig alert definitions.                                      |
 
@@ -38,6 +38,11 @@ deploy connects to the on-prem host using credentials from a secret.
 
 Role creation and privilege grants are the DBA team's responsibility and live in
 `migrations/dba/`, not in the migrations themselves. See `migrations/README.md`.
+
+Since V94 the database holds very little: applications, roles and role
+assignments moved to CSS, and what remains is `fam_user` and the privilege change
+audit. The audit deliberately keeps no foreign keys - an audit row that
+references mutable operational tables is only as durable as those rows.
 
 ## Running locally
 
@@ -76,7 +81,7 @@ cd frontend && npm run type-check && npm run test:cov
 ```
 
 `SchemaValidationIT` is the one check that the JPA entities match the real
-schema: Testcontainers starts a throwaway PostgreSQL, Flyway applies V1-V93, and
+schema: Testcontainers starts a throwaway PostgreSQL, Flyway applies V1-V94, and
 Hibernate validates every mapping against the result. It needs a Docker daemon,
 so it fails on machines without one - CI always runs it.
 
@@ -102,33 +107,55 @@ GitHub Actions deploys to OpenShift per pull request, then to test and prod on
 merge. Each environment needs:
 
 **Secrets** - `db_host`, `db_name`, `db_user`, `db_password`, `oc_namespace`,
-`oc_token`
+`oc_token`, `css_client_id`, `css_client_secret`, `user_lookup_base_url`,
+`keycloak_sa_client_id`, `keycloak_sa_client_secret`
 
 **Variables** - `oc_server`, `keycloak_issuer_uri`, `keycloak_client_id`
+
+**Variables you should set** - `css_own_integration_id`: FAM's own CSS
+integration id, e.g. `22261`. Administering FAM means deciding who administers
+every other application, so that integration is reserved to `FAM_ADMIN`. Nothing
+in a CSS response marks it, so FAM has to be told. Left unset the protection
+cannot be applied and startup logs a warning; it is not required, so a PR preview
+without it still deploys.
+
+Optional variables, all defaulted - set only to override: `db_port`,
+`css_api_url`, `css_token_url`, `css_idp_alias_idir`, `css_idp_alias_bceid`.
+
+`css_idp_alias_idir` is the one worth knowing about. It is Keycloak's federated
+username suffix for IDIR, and the standard realm carries two IDIR integrations:
+`azureidir` (Entra-backed, what BC Gov staff actually sign in through) and the
+legacy `idir`. CSS has no user search, so FAM constructs the username exactly -
+and assigning a role to a username that does not exist is accepted silently, so
+the wrong value makes every IDIR grant appear to succeed while doing nothing.
+
+### The user-lookup service account
+
+FAM resolves IDIR and Business BCeID identities from **nr-user-lookup-api**,
+which replaced the IDIM proxy. Its client id and secret are **not** configured by
+hand: `.github/scripts/ensure-keycloak-service-account.sh` runs on deploy and
+idempotently creates a confidential client (`nr-fam-backend`), assigns the three
+scopes that API enforces, reads the secret back, and emits both as masked step
+outputs. The deploy then stores them in a Secret.
+
+That needs an admin service-account client with the realm-management
+`manage-clients` role - `keycloak_sa_client_id` / `keycloak_sa_client_secret`.
+Without them the step is skipped, which is what lets a PR preview deploy; the
+backend then fails identity lookups loudly rather than returning empty results.
+
+The scopes (`user-lookup:idir:search`, `user-lookup:idir:read`,
+`user-lookup:business-bceid:read`) are owned by nr-user-lookup-api and must
+already exist in the realm. The script errors rather than creating them.
 
 **Created out of band** - a secret named `oidc-clients` holding the
 per-application Keycloak client ids as
 `FLYWAY_PLACEHOLDERS_CLIENT_ID_<ENV>_<APP>_OIDC_CLIENT` (see
 `migrations/README.md`), and `<name>-<zone>-integrations` holding the Forest
-Client API, IDIM proxy and GC Notify credentials.
+Client API credentials and the SMTP relay settings
+(`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`).
 
 Only the frontend has a Route. The backend is reached through it at `/api`.
 
-## The external API
-
-`/external/v1/users` is a published contract for downstream applications, and
-differs from the rest of the API in two deliberate ways:
-
-- it is **camelCase**, where the internal API is snake_case;
-- it is exempt from the FAM-client token check, and authorised instead by
-  `call_api_flag` on the caller's roles.
-
-An application can only ever see its own users: the token's client id both
-authorises the call and scopes it.
-
-`/external/v1/users/me/role-metadata` lets an application ask FAM what the
-signed-in user may do. It is intentionally not gated on `call_api_flag` — a user
-asking about their own access should not need a special role to get an answer.
 
 ## Before this can run
 
@@ -140,6 +167,10 @@ asking about their own access should not need a special role to get an answer.
 - `PUT /users/users-information` needs `FAM_UPDATE_USER_INFO_API_KEY` set, and a
   `fam_user` row for the configured requester (`CMENG` by default) — IDIM audits
   every lookup against a real user. It fails closed if either is missing.
+- **FAM's own CSS integration needs its admin roles.** Admin rights are read from
+  the caller's token, so `FAM_ADMIN` and `<APPLICATION_NAME>_ADMIN` have to exist
+  in CSS and be assigned. Without them `authorize()` rejects every request. See
+  `backend/docs/authentication.md`.
 
 ## Not carried over
 
