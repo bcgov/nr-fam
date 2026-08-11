@@ -21,18 +21,31 @@
 
 	root * /srv
 	encode zstd gzip
-	file_server
-	@spa_router {
-		not path /api*
-		file {
-			try_files {path} /index.html
+
+	# API requests are proxied to the backend Service in-cluster. handle_path
+	# STRIPS the /api prefix: the backend serves its paths at the root, so
+	# /api/fam-applications must reach it as /fam-applications.
+	#
+	# Proxying rather than calling the backend directly keeps the API same-origin.
+	# That means no CORS, no second OpenShift Route, and the frontend's strict
+	# connect-src 'self' CSP is satisfied without listing another host.
+	handle_path /api/* {
+		reverse_proxy {$BACKEND_URL} {
+			header_up Host {http.reverse_proxy.upstream.hostport}
+			header_up X-Real-IP {remote_host}
 		}
 	}
-	rewrite @spa_router {http.matchers.file.relative}
-	# Proxy requests to API service
-	reverse_proxy /api* {$BACKEND_URL} {
-		header_up Host {http.reverse_proxy.upstream.hostport}
-		header_up X-Real-IP {remote_host}
+
+	# Everything else is the SPA: serve the file if it exists, otherwise
+	# index.html so client-side routing works on a deep link or refresh.
+	handle {
+		@spa_router {
+			file {
+				try_files {path} /index.html
+			}
+		}
+		rewrite @spa_router {http.matchers.file.relative}
+		file_server
 	}
 	header {
 		-Server

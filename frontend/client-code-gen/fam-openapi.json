@@ -1,0 +1,998 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "Forest Access Management - FAM - API",
+    "description" : "Forest Access Management API. Defines who has access to which applications, and the roles they operate under once access is granted.\n\nCovers both the app-access-control and admin-management surfaces that upstream FAM served from two separate APIs.",
+    "contact" : {
+      "name" : "Team Heartwood",
+      "url" : "https://apps.nrs.gov.bc.ca/int/confluence/display/FSAST1/Team+Heartwood",
+      "email" : "SIBIFSAF@Victoria1.gov.bc.ca"
+    },
+    "license" : {
+      "name" : "Apache 2.0",
+      "url" : "https://www.apache.org/licenses/LICENSE-2.0.html"
+    },
+    "version" : "1.0.0"
+  },
+  "servers" : [ {
+    "url" : "/",
+    "description" : "Relative to the host serving this document"
+  } ],
+  "security" : [ {
+    "bearerAuth" : [ ]
+  } ],
+  "paths" : {
+    "/users/users-information" : {
+      "put" : {
+        "tags" : [ "FAM User" ],
+        "summary" : "Refresh stored user details from the identity directory",
+        "description" : "Guarded by the X-API-Key shared secret, not a bearer token.",
+        "operationId" : "update_user_information_from_directory",
+        "parameters" : [ {
+          "name" : "X-API-Key",
+          "in" : "header",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "name" : "perPage",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 100
+          }
+        }, {
+          "name" : "usePagination",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean",
+            "default" : false
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FamUserUpdateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "apiKey" : [ ]
+        } ]
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/user-role-assignments" : {
+      "get" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "List every user/role assignment in a CSS integration environment",
+        "operationId" : "get_css_user_role_assignments",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssUserRoleRowDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Grant a role, creating a scope-specific role if needed",
+        "operationId" : "create_css_user_role_assignment",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssUserRoleAssignmentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssUserRoleAssignmentResult"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Provision the signed-in user and return their access",
+        "description" : "Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.",
+        "operationId" : "login",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/smoke_test" : {
+      "get" : {
+        "tags" : [ "Smoke Test" ],
+        "summary" : "Verify database connectivity and seeded application data",
+        "operationId" : "smoke_test",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/permission-audit-history" : {
+      "get" : {
+        "tags" : [ "Permission Audit" ],
+        "summary" : "Permission audit history for a user within an application",
+        "operationId" : "get_permission_audit_history_by_user_and_application",
+        "parameters" : [ {
+          "name" : "targetUserGuid",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "cssIntegrationId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "cssEnvironment",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/PermissionAuditHistoryDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity-lookup/users/idir/search" : {
+      "get" : {
+        "tags" : [ "IDIR/BCeID Proxy" ],
+        "summary" : "Search IDIR users",
+        "description" : "Search for IDIR users.",
+        "operationId" : "search_idir_users",
+        "parameters" : [ {
+          "name" : "firstName",
+          "in" : "query",
+          "description" : "IDIR first name search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR first name search value (min 2 chars)",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "lastName",
+          "in" : "query",
+          "description" : "IDIR last name search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR last name search value (min 2 chars)",
+            "maxLength" : 50,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "userId",
+          "in" : "query",
+          "description" : "IDIR user id search value (min 2 chars)",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "IDIR user id search value (min 2 chars)",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        }, {
+          "name" : "pageSize",
+          "in" : "query",
+          "description" : "Number of records to return",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Number of records to return",
+            "maximum" : 500,
+            "minimum" : 10
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserLookupIdirSearchResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity-lookup/idir" : {
+      "get" : {
+        "tags" : [ "IDIR/BCeID Proxy" ],
+        "summary" : "Lookup IDIR user",
+        "description" : "Lookup an IDIR user by user ID.",
+        "operationId" : "idir_lookup",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserLookupIdirUserDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity-lookup/bceid" : {
+      "get" : {
+        "tags" : [ "IDIR/BCeID Proxy" ],
+        "summary" : "Lookup BCEID user",
+        "description" : "Lookup a BCeID Business user by user ID.",
+        "operationId" : "bceid_lookup",
+        "parameters" : [ {
+          "name" : "userId",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "minLength" : 0
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserLookupBceidUserDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/forest-clients/search" : {
+      "get" : {
+        "tags" : [ "FAM Forest Clients" ],
+        "summary" : "Search forest clients by client number",
+        "operationId" : "search",
+        "parameters" : [ {
+          "name" : "clientNumber",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 8,
+            "minLength" : 3
+          }
+        }, {
+          "name" : "environment",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/FamForestClientDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/districts" : {
+      "get" : {
+        "tags" : [ "FAM Districts" ],
+        "summary" : "List the BC natural resource districts available for scoping roles",
+        "operationId" : "get_districts",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/FamDistrictDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/css-applications" : {
+      "get" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "List applications sourced from CSS integrations",
+        "operationId" : "get_css_applications",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssApplicationOptionDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/roles" : {
+      "get" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "List the selectable roles of a CSS integration environment",
+        "operationId" : "get_css_application_roles",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssRoleOptionDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/self" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Current user's identity and effective access roles",
+        "operationId" : "self",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "FamUserUpdateEntryDto" : {
+        "properties" : {
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_name" : {
+            "type" : "string"
+          },
+          "user_type" : {
+            "type" : "string"
+          },
+          "user_guid" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FamUserUpdateResponse" : {
+        "properties" : {
+          "total_db_users_count" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "current_page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "users_count_on_page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "run_on" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "elapsed" : {
+            "type" : "string"
+          },
+          "success_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          },
+          "failed_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          },
+          "ignored_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          },
+          "mismatch_user_update_list" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamUserUpdateEntryDto"
+            }
+          }
+        }
+      },
+      "CssUserRoleAssignmentRequest" : {
+        "properties" : {
+          "user_guid" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "user_type" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "role_name" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "target_user_email" : {
+            "type" : "string",
+            "format" : "email"
+          },
+          "scope_type" : {
+            "type" : "string"
+          },
+          "scope_values" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "role_name", "user_guid", "user_type" ]
+      },
+      "UserType" : {
+        "type" : "string",
+        "enum" : [ "I", "B", "CD", "CT", "CP" ]
+      },
+      "CssUserRoleAssignmentResult" : {
+        "properties" : {
+          "role_name" : {
+            "type" : "string"
+          },
+          "role_created" : {
+            "type" : "boolean"
+          },
+          "assigned" : {
+            "type" : "boolean"
+          },
+          "error_message" : {
+            "type" : "string"
+          },
+          "email_sending_status" : {
+            "$ref" : "#/components/schemas/EmailSendingStatus"
+          }
+        },
+        "required" : [ "assigned", "email_sending_status", "role_created", "role_name" ]
+      },
+      "EmailSendingStatus" : {
+        "type" : "string",
+        "enum" : [ "NOT_REQUIRED", "SENT_TO_EMAIL_SERVICE_SUCCESS", "SENT_TO_EMAIL_SERVICE_FAILURE" ]
+      },
+      "SelfDto" : {
+        "properties" : {
+          "user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "user_name" : {
+            "type" : "string"
+          },
+          "user_type_code" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "access_roles" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "is_delegated_admin" : {
+            "type" : "boolean"
+          },
+          "requires_accept_tc" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "PermissionAuditHistoryDto" : {
+        "properties" : {
+          "privilege_change_audit_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "create_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "create_user" : {
+            "type" : "string"
+          },
+          "change_date" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "change_performer_user_details" : {
+            "$ref" : "#/components/schemas/PrivilegeChangePerformerDto"
+          },
+          "change_performer_user_id" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "privilege_change_type_code" : {
+            "$ref" : "#/components/schemas/PrivilegeChangeType"
+          },
+          "privilege_change_type_description" : {
+            "type" : "string"
+          },
+          "privilege_details" : {
+            "$ref" : "#/components/schemas/PrivilegeDetailsDto"
+          }
+        },
+        "required" : [ "change_date", "change_performer_user_details", "change_performer_user_id", "create_date", "create_user", "privilege_change_audit_id", "privilege_change_type_code", "privilege_change_type_description", "privilege_details" ]
+      },
+      "PrivilegeChangePerformerDto" : {
+        "properties" : {
+          "username" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "username" ]
+      },
+      "PrivilegeChangeType" : {
+        "type" : "string",
+        "enum" : [ "GRANT", "REVOKE", "UPDATE" ]
+      },
+      "PrivilegeDetailsDto" : {
+        "properties" : {
+          "permission_type" : {
+            "$ref" : "#/components/schemas/PrivilegeDetailsPermissionType"
+          },
+          "roles" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PrivilegeDetailsRoleDto"
+            }
+          },
+          "consistent" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "permission_type" ]
+      },
+      "PrivilegeDetailsPermissionType" : {
+        "type" : "string",
+        "enum" : [ "End User", "Delegated Admin", "Application Admin" ]
+      },
+      "PrivilegeDetailsRoleDto" : {
+        "properties" : {
+          "role" : {
+            "type" : "string"
+          },
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PrivilegeDetailsScopeDto"
+            }
+          },
+          "role_assignment_expiry_date" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "role" ]
+      },
+      "PrivilegeDetailsScopeDto" : {
+        "properties" : {
+          "scope_type" : {
+            "$ref" : "#/components/schemas/PrivilegeDetailsScopeType"
+          },
+          "client_id" : {
+            "type" : "string"
+          },
+          "client_name" : {
+            "type" : "string"
+          },
+          "role_assignment_expiry_date" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "scope_type" ]
+      },
+      "PrivilegeDetailsScopeType" : {
+        "type" : "string",
+        "enum" : [ "Client", "District" ]
+      },
+      "UserLookupIdirSearchResult" : {
+        "properties" : {
+          "totalItems" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pageSize" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/UserLookupIdirUserDto"
+            }
+          }
+        },
+        "required" : [ "items", "pageSize", "totalItems" ]
+      },
+      "UserLookupIdirUserDto" : {
+        "properties" : {
+          "found" : {
+            "type" : "boolean"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "guid" : {
+            "type" : "string"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "found" ]
+      },
+      "UserLookupBceidUserDto" : {
+        "properties" : {
+          "found" : {
+            "type" : "boolean"
+          },
+          "userId" : {
+            "type" : "string"
+          },
+          "guid" : {
+            "type" : "string"
+          },
+          "businessGuid" : {
+            "type" : "string"
+          },
+          "businessLegalName" : {
+            "type" : "string"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "found" ]
+      },
+      "FamForestClientDto" : {
+        "properties" : {
+          "client_name" : {
+            "type" : "string"
+          },
+          "forest_client_number" : {
+            "type" : "string"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusDto"
+          }
+        },
+        "required" : [ "forest_client_number" ]
+      },
+      "FamForestClientStatusDto" : {
+        "properties" : {
+          "status_code" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusType"
+          },
+          "description" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FamForestClientStatusType" : {
+        "type" : "string",
+        "enum" : [ "A", "I" ]
+      },
+      "FamDistrictDto" : {
+        "properties" : {
+          "org_unit_code" : {
+            "type" : "string"
+          },
+          "org_unit_name" : {
+            "type" : "string"
+          },
+          "expired" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "expired", "org_unit_code", "org_unit_name" ]
+      },
+      "CssApplicationOptionDto" : {
+        "properties" : {
+          "integration_id" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "environment" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "description", "environment", "integration_id", "name" ]
+      },
+      "CssUserRoleRowDto" : {
+        "properties" : {
+          "username" : {
+            "type" : "string"
+          },
+          "domain" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "role_name" : {
+            "type" : "string"
+          },
+          "scope_type" : {
+            "type" : "string"
+          },
+          "scope_value" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "role_name", "username" ]
+      },
+      "CssRoleOptionDto" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "display_name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "role_code" : {
+            "type" : "string"
+          },
+          "composite" : {
+            "type" : "boolean"
+          },
+          "composites" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "role_type_district" : {
+            "type" : "boolean"
+          },
+          "role_type_client" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district" ]
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "type" : "http",
+        "description" : "Access token issued by BC Gov SSO (Keycloak).",
+        "scheme" : "bearer",
+        "bearerFormat" : "JWT"
+      },
+      "apiKey" : {
+        "type" : "apiKey",
+        "description" : "Shared secret for the scheduled user-information refresh.",
+        "name" : "X-API-Key",
+        "in" : "header"
+      }
+    }
+  }
+}

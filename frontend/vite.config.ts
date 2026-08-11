@@ -1,54 +1,64 @@
-import { defineConfig } from 'vite'
-import { fileURLToPath, URL } from 'node:url'
-import react from '@vitejs/plugin-react'
-import { tanstackRouter } from '@tanstack/router-plugin/vite'
+/// <reference types="vitest" />
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    tanstackRouter({
-      target: 'react',
-      autoCodeSplitting: true,
-    }),
-    react(),
-  ],
-  server: {
-    port: parseInt(process.env.PORT),
-    fs: {
-      // Allow serving files from one level up to the project root
-      allow: ['..'],
-    },
-    proxy: {
-      // Proxy API requests to the backend
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-    },
-  },
-  resolve: {
-    // https://vitejs.dev/config/shared-options.html#resolve-alias
-    tsconfigPaths: true,
-    alias: {
-      '~bootstrap': fileURLToPath(new URL('./node_modules/bootstrap', import.meta.url)),
-    },
-    extensions: ['.js', '.json', '.jsx', '.mjs', '.ts', '.tsx', '.vue'],
-  },
-  build: {
-    // Build Target
-    // https://vitejs.dev/config/build-options.html#build-target
-    target: 'esnext',
-    // Rollup Options
-    // https://vitejs.dev/config/build-options.html#build-rollupoptions
-    rollupOptions: {},
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        // Silence deprecation warnings caused by Bootstrap SCSS
-        // which is out of our control.
-        silenceDeprecations: ['color-functions', 'global-builtin', 'import'],
-      },
-    },
-  },
-})
+import { defineConfig, loadEnv } from "vite";
+import vue from "@vitejs/plugin-vue";
+import Components from "unplugin-vue-components/vite";
+import { BootstrapVueNextResolver } from "unplugin-vue-components/resolvers";
+import { fileURLToPath, URL } from "url";
+import path from "path";
+
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), "");
+    const port = parseInt(env.VITE_PORT || "3000");
+
+    return {
+        plugins: [
+            vue(),
+            Components({
+                resolvers: [BootstrapVueNextResolver()],
+            }),
+        ],
+        test: {
+            globals: true,
+            environment: "jsdom",
+            coverage: {
+                reporter: ["text", "lcov"],
+            },
+        },
+        build: {
+            chunkSizeWarningLimit: 1600,
+        },
+        resolve: {
+            alias: {
+                "@": fileURLToPath(new URL("./src", import.meta.url)),
+                "~bootstrap": path.resolve(__dirname, "node_modules/bootstrap"),
+                vue: "vue/dist/vue.esm-bundler.js",
+            },
+            extensions: [".js", ".ts", ".jsx", ".tsx", ".vue"],
+        },
+        server: {
+            port: port,
+            // Mirrors the Caddy config the deployed frontend runs behind: /api is
+            // proxied to the backend and the prefix is stripped, so the API is
+            // same-origin in development too. Without this, local dev would need
+            // CORS and an absolute base URL that production does not use.
+            proxy: {
+                "/api": {
+                    target: env.VITE_BACKEND_URL || "http://localhost:8080",
+                    changeOrigin: true,
+                    rewrite: (path) => path.replace(/^\/api/, ""),
+                },
+            },
+        },
+        css: {
+            preprocessorOptions: {
+                scss: {
+                    additionalData: `
+            @use '@bcgov-nr/nr-theme/design-tokens/colors.scss' as colors;
+            @use '@carbon/type' as type;
+          `,
+                },
+            },
+        },
+    };
+});

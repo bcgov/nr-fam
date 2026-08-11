@@ -1,0 +1,236 @@
+server:
+  port: 8080
+  shutdown: graceful
+  # Behind the Caddy frontend / OpenShift route.
+  forward-headers-strategy: framework
+  error:
+    include-message: always
+    include-stacktrace: never
+
+spring:
+  application:
+    name: nr-fam-backend
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  # The whole API is snake_case in both directions, as it was under FastAPI and
+  # Pydantic. The generated frontend client depends on it.
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+
+  # ---------------------------------------------------------------------------
+  # On-prem PostgreSQL. This repo does not deploy a database; the connection
+  # details come from the ${NAME}-${ZONE}-database secret created by
+  # common/openshift.init.yml.
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DATABASE:postgres}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:default}
+    hikari:
+      pool-name: fam-pool
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN:2}
+      connection-timeout: 10000
+      # Keep well under any on-prem idle-session reaper.
+      max-lifetime: 900000
+
+  # Outbound email through an SMTP relay, replacing GC Notify. No host means no
+  # mail is sent - the local default, so running FAM against real data cannot
+  # accidentally send to real people.
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:25}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SMTP_AUTH:false}
+          starttls:
+            enable: ${SMTP_STARTTLS:false}
+          connectiontimeout: 5000
+          timeout: 10000
+          writetimeout: 10000
+
+  jpa:
+    open-in-view: false
+    # Schema is owned by Flyway (migrations/sql), never by Hibernate.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: ${POSTGRES_SCHEMA:app_fam}
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+    show-sql: false
+
+  # ---------------------------------------------------------------------------
+  # BC Gov SSO (Keycloak). Replaces the AWS Cognito user pool that upstream FAM
+  # authenticated against. This service is a resource server only - it validates
+  # access tokens, it does not perform the login redirect.
+  # ---------------------------------------------------------------------------
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # No default realm. A baked-in issuer is worse than none: it points at
+          # whichever realm happened to be current when it was written, and a
+          # wrong realm fails as "invalid token" rather than as configuration.
+          # Supplied by KEYCLOAK_ISSUER_URI in every environment, and by
+          # application-local.yml for local work.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:}
+          # Derived from the issuer unless overridden - they are always the same
+          # realm, and letting them drift apart is its own failure mode.
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_ISSUER_URI:}/protocol/openid-connect/certs}
+
+  threads:
+    virtual:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /docs
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    ca.bc.gov.nrs.fam: ${LOG_LEVEL:INFO}
+
+fam:
+  # Which FAM deployment this is: dev, test or prod. Replaces the TARGET_ENV
+  # variable the AWS platform injected. Only "prod" permits the PROD instances of
+  # the Forest Client API and IDIM proxy to be reached; anything else, including
+  # an unrecognised value, uses their TEST instances.
+  deployment-environment: ${FAM_DEPLOYMENT_ENVIRONMENT:dev}
+
+  oidc:
+    # FAM's own Keycloak client. Tokens on the internal API must carry this as
+    # their authorized party (azp); the external API under /external is exempt,
+    # since it exists for other applications' clients to call.
+    #
+    # Replaces jwt_validation.enforce_fam_client_token. Left blank the check is
+    # skipped, which is the local-development default - deployed environments set
+    # it.
+    fam-client-id: ${FAM_OIDC_CLIENT_ID:}
+
+  # Origins allowed to call this API. Upstream read a single ALLOW_ORIGIN env var
+  # on AWS and fell back to "*" locally.
+  cors:
+    allowed-origins: ${ALLOW_ORIGIN:http://localhost:3000}
+
+  # Outbound integrations. Base URLs and keys are per-environment; there are no
+  # production defaults here on purpose.
+  #
+  # Timeouts are carried over from the Python services rather than normalised:
+  # the IDIM search is materially slower than the lookups, which is why it gets
+  # 20s of read budget where the others get 10s. Exceeding them surfaces as
+  # HTTP 504 with failureCode UPSTREAM_TIMEOUT.
+  integration:
+    forest-client:
+      test:
+        base-url: ${FC_API_BASE_URL_TEST:https://nr-forest-client-api-test.api.gov.bc.ca}
+        api-token: ${FC_API_TOKEN_TEST:}
+      prod:
+        base-url: ${FC_API_BASE_URL_PROD:}
+        api-token: ${FC_API_TOKEN_PROD:}
+      timeouts:
+        connect: 5s
+        read: 20s
+      retry:
+        max-attempts: 2
+        delay: 2s
+    # BC Gov Common Hosted Single Sign-On. Source of applications, roles and role
+    # assignments. A confidential client: client_credentials, secret is
+    # backend-only and never reaches the browser.
+    css:
+      # No defaults: the production CSS endpoints are not the right answer for a
+      # sandbox, and a default that is silently wrong reads as "no applications"
+      # rather than as misconfiguration. The deployment template supplies both.
+      api-base-url: ${CSS_API_URL:}
+      token-url: ${CSS_TOKEN_URL:}
+      client-id: ${CSS_CLIENT_ID:}
+      client-secret: ${CSS_CLIENT_SECRET:}
+      # FAM's own CSS integration. Administering FAM is administering who
+      # administers everything else, so only FAM_ADMIN may see or act on it.
+      # Unset, that protection cannot be applied and startup says so.
+      own-integration-id: ${CSS_OWN_INTEGRATION_ID:}
+      # Keycloak's federated username suffix, per provider. The standard realm
+      # carries two IDIR integrations and BC Gov users sign in through the
+      # Entra-backed one, so azureidir is the default.
+      idp-aliases:
+        idir: ${CSS_IDP_ALIAS_IDIR:azureidir}
+        bceid-business: ${CSS_IDP_ALIAS_BCEID:bceidbusiness}
+      timeouts:
+        connect: 5s
+        read: 20s
+
+    # Envelope settings for outbound mail. The relay itself is configured under
+    # spring.mail; these are the addresses FAM puts on the message.
+    smtp:
+      from: ${SMTP_FROM:}
+      reply-to: ${SMTP_REPLY_TO:}
+
+    # nr-user-lookup-api - the shared BC Gov identity directory, replacing the
+    # IDIM proxy. One instance, not partitioned by environment.
+    #
+    # Leaving all three credential values blank disables authentication and calls
+    # go out unauthenticated; setting only some of them is rejected at startup,
+    # because a half-configured directory reads as "no results" rather than as a
+    # misconfiguration.
+    user-lookup:
+      base-url: ${USER_LOOKUP_BASE_URL:}
+      token-url: ${USER_LOOKUP_TOKEN_URL:}
+      client-id: ${USER_LOOKUP_CLIENT_ID:}
+      client-secret: ${USER_LOOKUP_CLIENT_SECRET:}
+      scope: ${USER_LOOKUP_SCOPE:}
+      timeouts:
+        connect: 5s
+        read: 20s
+
+
+  # Shared-secret API used by CMENG to push user info updates.
+  update-user-info:
+    api-key: ${FAM_UPDATE_USER_INFO_API_KEY:}
+    requester-name: ${FAM_UPDATE_USER_INFO_REQUESTER_NAME:CMENG}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  jpa:
+    show-sql: true
+logging:
+  level:
+    ca.bc.gov.nrs.fam: DEBUG

@@ -1,0 +1,214 @@
+// Import dependencies
+@use "sass:map";
+@use "@bcgov-nr/nr-theme/design-tokens/type-family.scss" as typeFamily;
+@use "@bcgov-nr/nr-theme/design-tokens/body-types.scss" as bodyTypes;
+@use "@carbon/type" as type;
+@use "@bcgov-nr/nr-theme/design-tokens/colors.scss" as colors;
+
+// Import all of Bootstrap's CSS
+@use "bootstrap" as *;
+
+// Import FAM design tokens as CSS custom properties
+@import "@/assets/generated/css/fam-custom-tokens.css";
+
+// Root styles
+:root {
+    --font-family: map.get(typeFamily.$type-family, "sans");
+    --primevue-striped-row-color: rgba(0, 0, 0, 0.05);
+}
+
+/*
+    Note:
+    FAM uses @bcgov-nr/nr-theme for design tokens and PrimeVue for UI components.
+    This @bcgov-nr/nr-theme package contains global styles and overrides for PrimeVue components.
+    As of today, the package uses "@bcgov-nr/nr-theme": "~1.8.9".
+    The nr-theme package after and including version 1.9.0 introduces "BC Sans 2.0" and some other changes.
+    Ref: https://github.com/bcgov/nr-theme/issues/185?reload=1
+    That will result in visual look and feel differences in FAM on fonts and will require to adjust
+    font-weight and font-size globally at "body { }" selector below or specifically in components/pages
+    to match the look and feel of the existing FAM. For example, even with "font-weight: normal" at both
+    BC Sans and BC Sans 2.0, the font-weight looks different.
+    We currently decided to keep using ~1.8.9 version of nr-theme package.
+*/
+// Global styles
+body {
+    padding: 0;
+    margin: 0;
+    font-family: map.get(typeFamily.$type-family, "sans");
+}
+
+p {
+    margin: 0;
+}
+
+// Utility classes
+.bold {
+    font-weight: bold;
+}
+
+.no-padding {
+    padding: 0;
+}
+
+// PrimeVue component styles
+.p-component,
+.p-inputtext {
+    font-family: inherit;
+}
+
+.p-tooltip-text {
+    @include type.type-style("body-compact-01");
+}
+
+
+
+.invalid-feedback {
+    font-size: map.get(bodyTypes.$label-01, "font-size");
+    font-style: map.get(bodyTypes.$label-01, "font-style");
+    font-weight: map.get(bodyTypes.$label-01, "font-weight");
+    line-height: map.get(bodyTypes.$label-01, "line-height");
+    letter-spacing: map.get(bodyTypes.$label-01, "letter-spacing");
+    color: var(--semantic-color-text-error);
+}
+
+// Helper text and validation
+.helper-text {
+    font-size: 0.75rem;
+    color: var(--semantic-color-text-secondary);
+}
+
+.invalid {
+    font-size: 0.875em;
+    color: var(--semantic-color-text-error);
+    display: flex;
+    align-items: center;
+}
+
+// Input styles
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+// Layout styles
+.main {
+    position: absolute;
+    display: block;
+    height: calc(100vh - 3rem);
+    width: 100vw;
+    bottom: 0;
+    padding: 1.06rem 1rem 0 1rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    top: 3rem;
+}
+
+.page-body {
+    margin-top: 1.5rem;
+    width: 100%;
+}
+
+// Form container styles
+.input-with-verify-button {
+    padding: 0;
+    width: 100%;
+    display: inline-grid;
+    grid-template-columns: auto min-content;
+}
+
+.custom-height {
+    max-height: 2.5rem;
+}
+
+.button-stack {
+    padding: 0;
+    margin: 2.5rem 0;
+    gap: 1rem;
+    width: 100%;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+
+    Button {
+        width: auto;
+    }
+}
+
+// Table styles
+.fam-table {
+    background: var(--semantic-color-surface-layer-2);
+    border-radius: 0.25rem;
+    border: 0.0625rem solid var(--semantic-color-border-subtle);
+
+    p {
+        margin: 0;
+    }
+
+    .p-datatable-thead {
+        .p-column-title {
+            color: var(--semantic-color-text-primary);
+        }
+        svg {
+            margin: 0;
+        }
+    }
+
+    .p-datatable-tbody {
+        @include type.type-style("body-01");
+        color: var(--semantic-color-text-primary);
+    }
+}
+
+// Error styles
+.error-icon {
+    fill: var(--semantic-color-support-error);
+}
+
+// Media queries
+@media (min-width: 768px) {
+    .main {
+        padding: 2.5rem 2.5rem 0 2.5rem;
+        width: 100vw;
+    }
+
+    .form-container {
+        width: 38rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .main {
+        left: 16rem;
+        width: calc(100vw - 16rem);
+    }
+
+    .page-body {
+        width: 100%;
+    }
+
+    .button-stack {
+        justify-content: start;
+        grid-template-columns: auto auto;
+        width: 38rem;
+
+        Button {
+            width: 15rem;
+            gap: 2rem;
+            white-space: nowrap;
+        }
+    }
+
+    .p-dialog {
+        max-width: 40rem;
+    }
+}
+
+@media (max-width: 390px) {
+    .input-with-verify-button {
+        display: block;
+    }
+}
