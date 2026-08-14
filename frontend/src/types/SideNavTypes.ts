@@ -15,6 +15,11 @@ import type { RouteRecordName } from "vue-router";
  *                                     (e.g., `link` is `/a/` and a sub-route is `/a/apple`),
  *                                     the parent link (`/a/`) will be considered active.
  * @property {boolean} [disabled=false] - Optional flag to disable the navigation item. Default is false.
+ * @property {() => boolean} [isVisible] - Optional predicate deciding whether to offer the item
+ *                                         at all. Evaluated on render rather than at module load,
+ *                                         so an item gated on the caller's roles appears once
+ *                                         those are known. Presentation only: the route guard and
+ *                                         the backend both re-check.
  */
 export type SideNavItemType = {
     name: string;
@@ -23,4 +28,5 @@ export type SideNavItemType = {
     subMenuItems?: SideNavItemType[];
     subRoutes?: RouteRecordName[];
     disabled?: boolean;
+    isVisible?: () => boolean;
 };

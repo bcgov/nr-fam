@@ -16,7 +16,8 @@ import java.util.List;
  * Administrator    ->  FREP_ADMINISTRATOR
  * </pre>
  *
- * <p>{@code description} is always null: there is nowhere in CSS to put one.
+ * <p>{@code description} comes from the role's sidecar - see
+ * {@link CssRoleNaming#LABEL_PREFIX} - and is null for a role that has none.
  */
 public record CssRoleOptionDto(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String name,
@@ -24,7 +25,7 @@ public record CssRoleOptionDto(
     /** The outermost, human-readable role. Same as {@link #name}. */
     String displayName,
 
-    /** Always null - CSS has no field for it. Present so the shape is stable. */
+    /** From the role's sidecar. Null for a role defined without one. */
     String description,
 
     /** The machine role beneath the display role, or null if there is none. */

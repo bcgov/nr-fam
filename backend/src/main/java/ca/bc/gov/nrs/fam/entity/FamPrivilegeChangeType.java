@@ -9,8 +9,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * GRANT, REVOKE or UPDATE - the kind of change recorded in
+ * GRANT, REVOKE, UPDATE or CREATE_ROLE - the kind of change recorded in
  * {@link FamPrivilegeChangeAudit}.
+ *
+ * <p>The code column is 20 characters as of V95, widened from 10 to fit
+ * {@code CREATE_ROLE}.
  *
  * <p>The SQLAlchemy model declared these timestamps as naive {@code TIMESTAMP},
  * but a later migration converted the table to {@code timestamptz}; the
@@ -24,7 +27,7 @@ import lombok.Setter;
 public class FamPrivilegeChangeType extends CodeTableEntity {
 
   @Id
-  @Column(name = "privilege_change_type_code", length = 10, nullable = false)
+  @Column(name = "privilege_change_type_code", length = 20, nullable = false)
   private String privilegeChangeTypeCode;
 
   @Column(name = "description", length = 100, nullable = false)

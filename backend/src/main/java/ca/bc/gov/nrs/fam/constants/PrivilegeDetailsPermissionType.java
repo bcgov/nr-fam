@@ -8,7 +8,13 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum PrivilegeDetailsPermissionType {
   END_USER("End User"),
   DELEGATED_ADMIN("Delegated Admin"),
-  APPLICATION_ADMIN("Application Admin");
+  APPLICATION_ADMIN("Application Admin"),
+
+  /**
+   * Not a permission somebody holds, but the definition of one - see
+   * {@link PrivilegeChangeType#CREATE_ROLE}.
+   */
+  ROLE_DEFINITION("Role Definition");
 
   private final String value;
 

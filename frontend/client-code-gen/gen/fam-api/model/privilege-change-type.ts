@@ -23,7 +23,8 @@
 export const PrivilegeChangeType = {
     Grant: 'GRANT',
     Revoke: 'REVOKE',
-    Update: 'UPDATE'
+    Update: 'UPDATE',
+    CreateRole: 'CREATE_ROLE'
 } as const;
 
 export type PrivilegeChangeType = typeof PrivilegeChangeType[keyof typeof PrivilegeChangeType];

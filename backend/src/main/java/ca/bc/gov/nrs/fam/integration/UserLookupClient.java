@@ -148,13 +148,32 @@ public class UserLookupClient {
 
   /** Exact IDIR match by user id. Empty when the directory reports no match. */
   public Optional<UserLookupIdirUserDto> getIdirDetail(String userId) {
-    String user = normalize(userId);
-    if (user == null) {
+    return getIdirDetail("userId", userId);
+  }
+
+  /**
+   * Exact IDIR match by GUID.
+   *
+   * <p>Needed because CSS identifies a user only as {@code <guid>@azureidir}, and
+   * carries no name or email for anyone who has not yet signed in. Without this
+   * there is no way to turn such a row back into a person.
+   *
+   * <p>Same endpoint and the same {@code idir:read} scope as the userId form -
+   * the directory takes either key.
+   */
+  public Optional<UserLookupIdirUserDto> getIdirDetailByGuid(String userGuid) {
+    return getIdirDetail("userGuid", userGuid);
+  }
+
+  private Optional<UserLookupIdirUserDto> getIdirDetail(String parameter, String value) {
+    String normalized = normalize(value);
+    if (normalized == null) {
       return Optional.empty();
     }
 
     UserLookupIdirUserDto result = exchange(() -> http.get()
-        .uri(builder -> builder.path(IDIR_DETAIL_PATH).queryParam("userId", user).build())
+        .uri(builder -> builder.path(IDIR_DETAIL_PATH)
+            .queryParam(parameter, normalized).build())
         .headers(this::applyAuth)
         .retrieve()
         .body(UserLookupIdirUserDto.class));

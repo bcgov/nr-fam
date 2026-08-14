@@ -103,6 +103,7 @@ const logout = async () => {
         isAuthenticated: false,
         famLoginUser: null,
         isAuthRestored: true,
+        accessRoles: [],
     };
 
     await getUserManager().signoutRedirect();
@@ -143,7 +144,7 @@ const handlePostLogin = async () => {
 
         // Replaces the Cognito pre-token trigger: creates the fam_user row and
         // resolves roles. Must happen before any other API call.
-        await bootstrapLogin();
+        applyAccessRoles((await bootstrapLogin()).access_roles ?? []);
 
         startSilentRefresh();
         resetInactivityTimeout();
@@ -183,6 +184,7 @@ const restoreSession = async () => {
             isAuthenticated: false,
             famLoginUser: null,
             isAuthRestored: true,
+            accessRoles: [],
         };
     } finally {
         isLoading.value = false;
@@ -198,8 +200,23 @@ const applySession = (user: User) => {
         isAuthenticated: true,
         famLoginUser: getFamLoginUser(user),
         isAuthRestored: true,
+        // Carried across rather than cleared: this runs on every silent refresh,
+        // and blanking the roles until /auth/self answers again would make
+        // admin-only navigation flicker out every few minutes.
+        accessRoles: authState.value.accessRoles,
     };
     setAxiosAuthorizationHeader(user.access_token);
+};
+
+/**
+ * Publishes the roles the backend resolved for this caller.
+ *
+ * They decide what the UI offers. They are not what makes an action allowed -
+ * every endpoint re-checks on its own, so a tampered value changes what the
+ * screen shows and nothing else.
+ */
+const applyAccessRoles = (accessRoles: string[]) => {
+    authState.value = { ...authState.value, accessRoles };
 };
 
 /**
@@ -219,7 +236,7 @@ const loadUser = async (): Promise<void> => {
 
     // Re-read identity and roles so a permission change is picked up without a
     // fresh sign-in. Roles live in the database now, not in the token.
-    await fetchSelf();
+    applyAccessRoles((await fetchSelf()).access_roles ?? []);
 };
 
 /**

@@ -24,11 +24,15 @@ import { BASE_PATH, COLLECTION_FORMATS, RequestArgs, BaseAPI, RequiredError, ope
 // @ts-ignore
 import { CssApplicationOptionDto } from '../model';
 // @ts-ignore
+import { CssRoleCreateRequest } from '../model';
+// @ts-ignore
 import { CssRoleOptionDto } from '../model';
 // @ts-ignore
 import { CssUserRoleAssignmentRequest } from '../model';
 // @ts-ignore
 import { CssUserRoleAssignmentResult } from '../model';
+// @ts-ignore
+import { CssUserRoleRevokeRequest } from '../model';
 // @ts-ignore
 import { CssUserRoleRowDto } from '../model';
 /**
@@ -37,6 +41,54 @@ import { CssUserRoleRowDto } from '../model';
  */
 export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         * 
+         * @summary Define a new role on a CSS integration environment
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssApplicationRole: async (integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('createCssApplicationRole', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('createCssApplicationRole', 'environment', environment)
+            // verify required parameter 'cssRoleCreateRequest' is not null or undefined
+            assertParamExists('createCssApplicationRole', 'cssRoleCreateRequest', cssRoleCreateRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/roles`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssRoleCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          * 
          * @summary Grant a role, creating a scope-specific role if needed
@@ -79,6 +131,54 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(cssUserRoleAssignmentRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Revoke a role from a user
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssUserRoleRevokeRequest} cssUserRoleRevokeRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssUserRoleAssignment: async (integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('deleteCssUserRoleAssignment', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('deleteCssUserRoleAssignment', 'environment', environment)
+            // verify required parameter 'cssUserRoleRevokeRequest' is not null or undefined
+            assertParamExists('deleteCssUserRoleAssignment', 'cssUserRoleRevokeRequest', cssUserRoleRevokeRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/user-role-assignments`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssUserRoleRevokeRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -215,6 +315,21 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
+         * @summary Define a new role on a CSS integration environment
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssRoleOptionDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createCssApplicationRole(integrationId, environment, cssRoleCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssApplicationRole']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Grant a role, creating a scope-specific role if needed
          * @param {number} integrationId 
          * @param {string} environment 
@@ -226,6 +341,21 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createCssUserRoleAssignment(integrationId, environment, cssUserRoleAssignmentRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssUserRoleAssignment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Revoke a role from a user
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssUserRoleRevokeRequest} cssUserRoleRevokeRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteCssUserRoleAssignment(integrationId, environment, cssUserRoleRevokeRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.deleteCssUserRoleAssignment']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -280,6 +410,18 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
     return {
         /**
          * 
+         * @summary Define a new role on a CSS integration environment
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: any): AxiosPromise<CssRoleOptionDto> {
+            return localVarFp.createCssApplicationRole(integrationId, environment, cssRoleCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Grant a role, creating a scope-specific role if needed
          * @param {number} integrationId 
          * @param {string} environment 
@@ -289,6 +431,18 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
          */
         createCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleAssignmentRequest: CssUserRoleAssignmentRequest, options?: any): AxiosPromise<Array<CssUserRoleAssignmentResult>> {
             return localVarFp.createCssUserRoleAssignment(integrationId, environment, cssUserRoleAssignmentRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Revoke a role from a user
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssUserRoleRevokeRequest} cssUserRoleRevokeRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: any): AxiosPromise<void> {
+            return localVarFp.deleteCssUserRoleAssignment(integrationId, environment, cssUserRoleRevokeRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -332,6 +486,18 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
 export interface CSSIntegrationsApiInterface {
     /**
      * 
+     * @summary Define a new role on a CSS integration environment
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleOptionDto>;
+
+    /**
+     * 
      * @summary Grant a role, creating a scope-specific role if needed
      * @param {number} integrationId 
      * @param {string} environment 
@@ -341,6 +507,18 @@ export interface CSSIntegrationsApiInterface {
      * @memberof CSSIntegrationsApiInterface
      */
     createCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleAssignmentRequest: CssUserRoleAssignmentRequest, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssUserRoleAssignmentResult>>;
+
+    /**
+     * 
+     * @summary Revoke a role from a user
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssUserRoleRevokeRequest} cssUserRoleRevokeRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: RawAxiosRequestConfig): AxiosPromise<void>;
 
     /**
      * 
@@ -384,6 +562,20 @@ export interface CSSIntegrationsApiInterface {
 export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInterface {
     /**
      * 
+     * @summary Define a new role on a CSS integration environment
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).createCssApplicationRole(integrationId, environment, cssRoleCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary Grant a role, creating a scope-specific role if needed
      * @param {number} integrationId 
      * @param {string} environment 
@@ -394,6 +586,20 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
      */
     public createCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleAssignmentRequest: CssUserRoleAssignmentRequest, options?: RawAxiosRequestConfig) {
         return CSSIntegrationsApiFp(this.configuration).createCssUserRoleAssignment(integrationId, environment, cssUserRoleAssignmentRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Revoke a role from a user
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssUserRoleRevokeRequest} cssUserRoleRevokeRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).deleteCssUserRoleAssignment(integrationId, environment, cssUserRoleRevokeRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

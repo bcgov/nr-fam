@@ -54,6 +54,17 @@ const isMenuItemHighlighted = (
     );
 };
 
+/**
+ * The items this caller is offered.
+ *
+ * Computed rather than filtered once at module load: roles arrive from
+ * `/auth/self` after the component may already have rendered, and a `computed`
+ * re-evaluates when they land.
+ */
+const visibleNavItems = computed(() =>
+    sideNavItems.filter((item) => item.isVisible?.() ?? true)
+);
+
 const navigateOnClick = (routeName: RouteRecordName) => {
     router.push({ name: routeName });
     sideNavState.toggleVisible();
@@ -68,7 +79,7 @@ const navigateOnClick = (routeName: RouteRecordName) => {
         <nav class="sidenav">
             <div class="content">
                 <ul>
-                    <template v-for="item in sideNavItems" :key="item.routeName">
+                    <template v-for="item in visibleNavItems" :key="item.routeName">
                         <li
                             :class="{
                                 'sidenav-selected': isMenuItemHighlighted(

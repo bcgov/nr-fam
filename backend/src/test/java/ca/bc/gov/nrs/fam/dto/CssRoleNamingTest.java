@@ -143,4 +143,99 @@ class CssRoleNamingTest {
   void unknownDomainIsEmpty(String username) {
     assertThat(CssRoleNaming.domainFromUsername(username)).isEmpty();
   }
+
+  // --------------------------------------------------------------- descriptions
+
+  @Test
+  @DisplayName("round-trips a code and its description through a sidecar name")
+  void roundTripsLabel() {
+    String name = CssRoleNaming.buildLabelRoleName("FREP_ADMINISTRATOR", "FREP Administrator");
+
+    assertThat(name).isEqualTo("FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator");
+    assertThat(CssRoleNaming.parseLabel(name)).hasValueSatisfying(label -> {
+      assertThat(label.roleCode()).isEqualTo("FREP_ADMINISTRATOR");
+      assertThat(label.description()).isEqualTo("FREP Administrator");
+    });
+  }
+
+  @Test
+  @DisplayName("keeps a description that contains a colon whole")
+  void keepsColonInDescription() {
+    // Only the separator after the code is structural. Truncating somebody's
+    // description at the next colon would silently lose half of it.
+    String name = CssRoleNaming.buildLabelRoleName("FOM_SUBMITTER", "Submitter: FOM only");
+
+    assertThat(CssRoleNaming.parseLabel(name))
+        .hasValueSatisfying(label ->
+            assertThat(label.description()).isEqualTo("Submitter: FOM only"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "FAM:LABEL:",                 // nothing at all
+      "FAM:LABEL:FREP_ADMIN",       // a code but no description
+      "FAM:LABEL:FREP_ADMIN:",      // an empty description
+      "FAM:LABEL::A description",   // no code
+  })
+  @DisplayName("ignores a malformed sidecar rather than half-reading it")
+  void ignoresMalformedLabel(String roleName) {
+    assertThat(CssRoleNaming.parseLabel(roleName)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("an ordinary role is not a sidecar")
+  void ordinaryRoleIsNotALabel() {
+    assertThat(CssRoleNaming.isLabelRole("FREP_ADMINISTRATOR")).isFalse();
+    assertThat(CssRoleNaming.parseLabel("FREP_ADMINISTRATOR")).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"FREP_ADMINISTRATOR", "FOM_SUBMITTER", "AB", "R2D2_ROLE"})
+  @DisplayName("accepts a code that can be a role name, a scope prefix and a sidecar key")
+  void acceptsValidCodes(String roleCode) {
+    assertThat(CssRoleNaming.isValidRoleCode(roleCode)).isTrue();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "Submitter (SLR)",   // spaces and parens - CSS allows them, the code may not
+      "frep_admin",        // lower case
+      "FREP-ADMIN",        // a hyphen would collide with the scope value separator
+      "FREP:ADMIN",        // a colon would collide with the sidecar separator
+      "1_FREP",            // must start with a letter
+      "F",                 // too short to mean anything
+      "",
+  })
+  @DisplayName("rejects a code that would break one of the naming conventions")
+  void rejectsInvalidCodes(String roleCode) {
+    assertThat(CssRoleNaming.isValidRoleCode(roleCode)).isFalse();
+  }
+
+  @Test
+  @DisplayName("a sidecar never parses as a scoped role name")
+  void sidecarIsNotMistakenForAScopedRole() {
+    // Both conventions live in the same namespace, so they must not overlap: a
+    // description ending in "...-something" must not read as a scope value.
+    String name = CssRoleNaming.buildLabelRoleName("FOM_SUBMITTER", "Submitter - district");
+
+    assertThat(CssRoleNaming.parse(name).scopeValue()).isNull();
+  }
+
+  @ParameterizedTest(name = "{0} -> {1}")
+  @CsvSource({
+      "DISTRICT,       HAS_DISTRICT_ROLE",
+      "district,       HAS_DISTRICT_ROLE",
+      "FOREST_CLIENT,  HAS_FOREST_CLIENT",
+  })
+  @DisplayName("maps a scope type onto its marker role")
+  void mapsScopeTypeToMarker(String scopeType, String expected) {
+    assertThat(CssRoleNaming.markerFor(scopeType)).contains(expected);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "  ", "SOMETHING_ELSE"})
+  @DisplayName("has no marker for an unscoped or unknown scope type")
+  void noMarkerForUnknownScope(String scopeType) {
+    assertThat(CssRoleNaming.markerFor(scopeType)).isEmpty();
+  }
 }

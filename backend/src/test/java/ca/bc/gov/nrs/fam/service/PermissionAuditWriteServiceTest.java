@@ -1,19 +1,24 @@
 package ca.bc.gov.nrs.fam.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.fam.constants.EmailSendingStatus;
+import ca.bc.gov.nrs.fam.constants.PrivilegeDetailsPermissionType;
+import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeType;
 import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository;
 import ca.bc.gov.nrs.fam.security.Requester;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,7 +45,14 @@ class PermissionAuditWriteServiceTest {
 
   @Mock private FamPrivilegeChangeAuditRepository auditRepository;
   @Mock private EntityManager entityManager;
-  @org.mockito.Spy private ObjectMapper objectMapper = new ObjectMapper();
+  /**
+   * Configured the way the application configures it
+   * ({@code spring.jackson.property-naming-strategy: SNAKE_CASE}). A default
+   * mapper would write camelCase here and pass assertions that production JSON
+   * would fail.
+   */
+  @org.mockito.Spy private ObjectMapper objectMapper = new ObjectMapper()
+      .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
   @InjectMocks private PermissionAuditWriteService service;
 
@@ -179,5 +191,96 @@ class PermissionAuditWriteServiceTest {
     assertThat(saved.getCreateUser()).isEqualTo("system");
     assertThat(saved.getPerformerUserGuid()).isNull();
     assertThat(saved.getChangePerformerUserDetails()).contains("system");
+  }
+
+  // ---------------------------------------------------------- role definitions
+
+  @Test
+  @DisplayName("records who defined a role, and on which application")
+  void recordsRoleDefinition() {
+    // CSS keeps no history of role definitions, so this row is the only record.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeRoleCreated(requester, 6538, "dev",
+        "FREP_ADMINISTRATOR", "FREP Administrator", null);
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
+    assertThat(saved.getCssEnvironment()).isEqualTo("dev");
+    assertThat(saved.getPerformerUserGuid()).isEqualTo("AAAA1111");
+    assertThat(saved.getPrivilegeDetails())
+        .contains("FREP_ADMINISTRATOR")
+        .contains("FREP Administrator");
+  }
+
+  @Test
+  @DisplayName("leaves the target user empty, because there is not one")
+  void roleDefinitionHasNoTargetUser() {
+    // Pointing it at the performer would read as somebody granting themselves
+    // something.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null);
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getTargetUserGuid()).isNull();
+    assertThat(saved.getTargetUserTypeCode()).isNull();
+  }
+
+  @Test
+  @DisplayName("records the scope a role will require")
+  void recordsRequiredScope() {
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", "DISTRICT");
+
+    assertThat(captureSaved().getPrivilegeDetails()).contains("District");
+  }
+
+  @Test
+  @DisplayName("an unscoped role records no required scope, rather than defaulting to one")
+  void unscopedRoleHasNullRequiredScope() {
+    // The grant path defaults an unrecognised scope to CLIENT because there a
+    // role is always scoped by something. Here "none" is a real answer, and
+    // recording it as CLIENT would misstate what was created.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null);
+
+    assertThat(captureSaved().getPrivilegeDetails())
+        .contains("\"required_scope_type\":null")
+        .doesNotContain("Client");
+  }
+
+  @Test
+  @DisplayName("the definition document still reads as an ordinary privilege detail")
+  void definitionDocumentIsBackwardsReadable() {
+    // The history reader parses every row it returns as a PrivilegeDetailsDto.
+    // This row cannot reach it today - history is keyed on a target user GUID and
+    // this one has none - but the document outlives the code that wrote it, so
+    // reading it the old way has to yield a coherent record rather than an error.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+
+    service.storeRoleCreated(requester, 1, "dev",
+        "FREP_ADMINISTRATOR", "FREP Administrator", "DISTRICT");
+
+    String json = captureSaved().getPrivilegeDetails();
+
+    assertThatCode(() -> {
+      // Built the way Spring Boot builds the application's mapper, rather than
+      // with the tolerance switched on by hand - the point is that the real
+      // reader copes, not that a specially configured one does.
+      PrivilegeDetailsDto asOldShape =
+          Jackson2ObjectMapperBuilder.json()
+              .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+              .build()
+              .readValue(json, PrivilegeDetailsDto.class);
+
+      assertThat(asOldShape.permissionType())
+          .isEqualTo(PrivilegeDetailsPermissionType.ROLE_DEFINITION);
+      assertThat(asOldShape.roles()).singleElement()
+          .satisfies(role -> assertThat(role.role()).isEqualTo("FREP_ADMINISTRATOR"));
+      assertThat(asOldShape.isConsistent()).isTrue();
+    }).doesNotThrowAnyException();
   }
 }

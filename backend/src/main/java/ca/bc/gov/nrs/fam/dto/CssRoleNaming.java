@@ -12,7 +12,7 @@ import java.util.Optional;
  * display name, so anything FAM needs to know about a role has to be either
  * encoded into the name or expressed through composite membership.
  *
- * <p>Two conventions carry the load:
+ * <p>Three conventions carry the load:
  *
  * <ul>
  *   <li><b>Scope type</b> - a marker role in the composite chain
@@ -20,7 +20,13 @@ import java.util.Optional;
  *   <li><b>Scope value</b> - appended to the role name at grant time,
  *       {@code <role>_<SCOPE_TYPE>-<value>}, because the name is the only part
  *       of a role that reaches the token.
+ *   <li><b>Description</b> - a sidecar role that exists only to hold text,
+ *       {@link #LABEL_PREFIX}. See {@link #buildLabelRoleName}.
  * </ul>
+ *
+ * <p>That CSS holds nothing but a name is not an assumption - posting a role with
+ * a {@code description} is refused outright with {@code "only name is
+ * supported"}.
  */
 public final class CssRoleNaming {
 
@@ -48,7 +54,98 @@ public final class CssRoleNaming {
    */
   private static final List<String> SCOPE_TYPES = List.of("FOREST_CLIENT", "DISTRICT");
 
+  /**
+   * Marks a role as a description carrier rather than something grantable.
+   *
+   * <p>{@code FAM:LABEL:<CODE>:<free text>}.
+   *
+   * <p>The description is held on a role of its own rather than as a composite
+   * child of the role it describes, because <b>composite children propagate into
+   * the access token</b>. A child would put "FREP Administrator" into every
+   * holder's token as though it were a role, leaving every downstream application
+   * to filter it out. A sidecar is assigned to nobody and composed into nothing,
+   * so it is visible only where FAM reads it: the role listing.
+   *
+   * <p>It also keeps the code and the description independent. Correcting a
+   * description rewrites one sidecar; it does not touch the role that people hold,
+   * so no assignment is disturbed. The alternative convention - naming the outer
+   * composite role for the description, which is how the roles inherited from FSP
+   * are shaped - means the display text is what gets assigned and scope-suffixed,
+   * so a token carries {@code Submitter (SLR)_DISTRICT-DCC} and a reworded
+   * description orphans every existing assignment.
+   */
+  public static final String LABEL_PREFIX = "FAM:LABEL:";
+
+  /**
+   * A role code FAM will create: upper case, starting with a letter.
+   *
+   * <p>Deliberately narrower than what CSS accepts (which is close to anything,
+   * spaces included). The code reaches the token and is what applications
+   * authorise on, and it is the left-hand side of both the scope suffix and the
+   * sidecar, so it must not contain a delimiter. Excluding {@code :} and {@code -}
+   * is what makes both parseable without ambiguity.
+   */
+  private static final java.util.regex.Pattern ROLE_CODE =
+      java.util.regex.Pattern.compile("^[A-Z][A-Z0-9_]{1,58}$");
+
   private CssRoleNaming() {}
+
+  /** Whether a code is one FAM is willing to create. */
+  public static boolean isValidRoleCode(String roleCode) {
+    return roleCode != null && ROLE_CODE.matcher(roleCode).matches();
+  }
+
+  /**
+   * Name of the sidecar role holding a description.
+   *
+   * <pre>FREP_ADMINISTRATOR + "FREP Administrator"
+   *   -> FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator</pre>
+   */
+  public static String buildLabelRoleName(String roleCode, String description) {
+    return "%s%s:%s".formatted(LABEL_PREFIX, roleCode, description);
+  }
+
+  /** Whether this role is a description carrier rather than a grantable role. */
+  public static boolean isLabelRole(String roleName) {
+    return roleName != null && roleName.startsWith(LABEL_PREFIX);
+  }
+
+  /**
+   * Read a sidecar back into the code it describes and its text.
+   *
+   * <p>Empty for any name that is not a well-formed sidecar, so a hand-made role
+   * that merely starts with the prefix is ignored rather than half-read.
+   *
+   * <p>Splits on the first colon after the prefix only: a code cannot contain one
+   * (see {@link #isValidRoleCode}) but a description may, and truncating someone's
+   * description at a colon would be worse than keeping it whole.
+   */
+  public static Optional<RoleLabel> parseLabel(String roleName) {
+    if (!isLabelRole(roleName)) {
+      return Optional.empty();
+    }
+    String rest = roleName.substring(LABEL_PREFIX.length());
+    int separator = rest.indexOf(':');
+    if (separator <= 0 || separator == rest.length() - 1) {
+      return Optional.empty();
+    }
+    return Optional.of(new RoleLabel(rest.substring(0, separator), rest.substring(separator + 1)));
+  }
+
+  /** The marker role expressing a scope type, or empty when there is no scope. */
+  public static Optional<String> markerFor(String scopeType) {
+    if (scopeType == null || scopeType.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(switch (scopeType.toUpperCase(Locale.ROOT)) {
+      case "DISTRICT" -> MARKER_DISTRICT;
+      case "FOREST_CLIENT" -> MARKER_FOREST_CLIENT;
+      default -> null;
+    });
+  }
+
+  /** A description and the role code it belongs to. */
+  public record RoleLabel(String roleCode, String description) {}
 
   /**
    * Name for the scope-specific role created on demand at grant time.
@@ -101,9 +198,13 @@ public final class CssRoleNaming {
    *
    * <p>The alias is supplied rather than assumed. The standard realm carries two
    * IDIR integrations - {@code azureidir} and the legacy {@code idir} - and CSS
-   * offers no user search to check which one a person exists under. Assigning to
-   * the wrong alias targets a username that does not exist, which CSS accepts
-   * without complaint, so the grant silently does nothing.
+   * offers no user search to check which one a person exists under.
+   *
+   * <p>The wrong alias no longer fails silently: assignment goes through
+   * {@code roles-new}, which verifies the username against the upstream identity
+   * provider and refuses one it cannot resolve. {@code idir} in particular is
+   * rejected outright as an unsupported provider. Getting it wrong is now a
+   * visible error rather than a grant that appears to work and does nothing.
    *
    * @param idpAlias the realm's suffix for this user's provider
    */
@@ -129,6 +230,28 @@ public final class CssRoleNaming {
       case BCSC_DEV, BCSC_TEST, BCSC_PROD -> throw new IllegalArgumentException(
           "No CSS identity provider mapping for user type " + userType.getCode());
     };
+  }
+
+  /**
+   * {@code <guid>@azureidir -> <GUID>}.
+   *
+   * <p>Upper cased: CSS reports the username in lower case while FAM and the
+   * directory hold GUIDs upper case, and normalising is what lets callers use it
+   * as a map key without resolving the same user twice.
+   *
+   * <p>Empty when the username is not in that form, which is the case for anyone
+   * CSS could report by name instead.
+   */
+  public static Optional<String> guidFromUsername(String username) {
+    if (username == null) {
+      return Optional.empty();
+    }
+    int at = username.indexOf('@');
+    if (at <= 0) {
+      return Optional.empty();
+    }
+    String guid = username.substring(0, at);
+    return guid.isBlank() ? Optional.empty() : Optional.of(guid.toUpperCase(Locale.ROOT));
   }
 
   /**

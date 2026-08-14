@@ -9,6 +9,7 @@ import ca.bc.gov.nrs.fam.dto.PrivilegeChangePerformerDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsRoleDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsScopeDto;
+import ca.bc.gov.nrs.fam.dto.RoleDefinitionDetailsDto;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeType;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
@@ -110,6 +111,53 @@ public class PermissionAuditWriteService {
         toCssDetails(roleName, scopeType, asResults));
   }
 
+  /**
+   * Record the definition of a role.
+   *
+   * <p>Wider than the other two: a grant changes what one person can do, this
+   * changes what the application's roles mean. CSS keeps no history of either, so
+   * without this row nothing anywhere records who introduced a role.
+   *
+   * <p><b>No target user</b>, which is what makes this row shaped differently -
+   * there is nobody it was done to. Those columns are left null rather than
+   * pointed at the performer, which would read as somebody granting themselves
+   * something.
+   *
+   * <p>Not swallowed on failure. If this write fails the role already exists in
+   * CSS and the caller is told the operation failed, which is the same bargain the
+   * grant path makes: an unrecorded change is worse than a confusing one, and the
+   * code is left free for a retry that does get recorded.
+   *
+   * @param scopeType {@code DISTRICT}, {@code FOREST_CLIENT} or null
+   */
+  @Transactional
+  public void storeRoleCreated(
+      Requester requester,
+      int cssIntegrationId,
+      String cssEnvironment,
+      String roleCode,
+      String description,
+      String scopeType) {
+
+    save(requester, null, null, cssIntegrationId, cssEnvironment,
+        PrivilegeChangeType.CREATE_ROLE,
+        RoleDefinitionDetailsDto.of(
+            roleCode, description, toRequiredScopeType(scopeType)));
+  }
+
+  /**
+   * Null for an unscoped role, rather than the CLIENT default the grant path
+   * uses: there, a role is always scoped by something and CLIENT is the older of
+   * the two. Here "no scope required" is a real answer and must not read as
+   * "scoped by forest client".
+   */
+  private static PrivilegeDetailsScopeType toRequiredScopeType(String scopeType) {
+    if (scopeType == null || scopeType.isBlank()) {
+      return null;
+    }
+    return toDetailScopeType(scopeType);
+  }
+
   /** Persist one audit row. */
   @Transactional
   void save(
@@ -119,7 +167,9 @@ public class PermissionAuditWriteService {
       Integer cssIntegrationId,
       String cssEnvironment,
       PrivilegeChangeType changeType,
-      PrivilegeDetailsDto privilegeDetails) {
+      // Typed as Object because the document's shape follows the change type: a
+      // grant records privileges, a role definition records a role.
+      Object privilegeDetails) {
 
     FamPrivilegeChangeAudit audit = new FamPrivilegeChangeAudit();
     audit.setCssIntegrationId(cssIntegrationId);

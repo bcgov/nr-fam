@@ -6,6 +6,7 @@ const currentAuthState: AuthState = {
     isAuthenticated: false,
     famLoginUser: null,
     isAuthRestored: false,
+    accessRoles: [],
 };
 
 // Export the ref-wrapped state for use across components

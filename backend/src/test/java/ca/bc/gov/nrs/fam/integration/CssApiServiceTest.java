@@ -197,12 +197,45 @@ class CssApiServiceTest {
     enqueueToken();
     enqueueJson("{\"data\":[]}");
 
-    service.assignUserRoles(1, "dev", "abc@idir", List.of("R1", "R2"));
+    service.assignUserRoles(1, "dev", "abc@azureidir", List.of("R1", "R2"));
 
     server.takeRequest();
     RecordedRequest request = server.takeRequest();
-    assertThat(request.getPath()).isEqualTo("/api/v1/integrations/1/dev/users/abc%40idir/roles");
+    assertThat(request.getPath())
+        .isEqualTo("/api/v1/integrations/1/dev/users/abc%40azureidir/roles-new");
     assertThat(request.getBody().readUtf8()).isEqualTo("[{\"name\":\"R1\"},{\"name\":\"R2\"}]");
+  }
+
+  @Test
+  @DisplayName("assigns through roles-new, so a user who has never signed in is created")
+  void assignsThroughRolesNew() throws Exception {
+    // The older /roles endpoint answers 404 for a user Keycloak has not seen,
+    // which is every new starter - they cannot sign in to be created because
+    // they have no access yet, and cannot be granted access because they have
+    // not signed in.
+    enqueueToken();
+    enqueueJson("{\"data\":[{\"name\":\"R1\"}]}");
+
+    service.assignUserRoles(1, "dev", "abc@azureidir", List.of("R1"));
+
+    server.takeRequest();
+    assertThat(server.takeRequest().getPath()).endsWith("/roles-new");
+  }
+
+  @Test
+  @DisplayName("surfaces the reason a username could not be verified")
+  void surfacesUnverifiableUsername() {
+    // roles-new checks the username against the upstream directory. The message
+    // is the only thing telling an administrator they picked somebody CSS cannot
+    // resolve, so it has to reach them rather than becoming a generic failure.
+    enqueueToken();
+    server.enqueue(new MockResponse().setResponseCode(400).setBody(
+        "{\"message\":\"could not verify user abc@azureidir with the upstream identity provider\"}"));
+
+    assertThatThrownBy(() ->
+        service.assignUserRoles(1, "dev", "abc@azureidir", List.of("R1")))
+        .isInstanceOf(UpstreamException.class)
+        .hasMessageContaining("could not verify user");
   }
 
   @Test

@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import { routeItems } from "@/router/routes";
-import { authGuard, landingGuard } from "@/router/RouteGuards";
+import { authGuard, famAdminGuard, landingGuard } from "@/router/RouteGuards";
 
 // Hash-based router for the main app routes
 export const router = createRouter({
@@ -8,6 +8,9 @@ export const router = createRouter({
     routes: routeItems.map((route) => {
         if (route.name === "Landing") {
             return { ...route, beforeEnter: landingGuard }; // Apply landing guard
+        } else if (route.name === "ManageRoles") {
+            // Authenticated *and* a FAM administrator.
+            return { ...route, beforeEnter: famAdminGuard };
         } else {
             return { ...route, beforeEnter: authGuard }; // Apply auth guard to all other routes
         }

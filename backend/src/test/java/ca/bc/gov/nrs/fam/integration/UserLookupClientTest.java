@@ -78,6 +78,39 @@ class UserLookupClientTest {
   }
 
   @Test
+  @DisplayName("looks a user up by GUID, not by user id")
+  void looksUpByGuid() throws Exception {
+    // The two forms share an endpoint and differ only by parameter name. Sent as
+    // userId, a GUID would be looked up as a login name and match nobody - a
+    // silent empty result rather than an error.
+    enqueueJson("""
+        {"found":true,"userId":"JSMITH","guid":"AABB",
+         "firstName":"Jane","lastName":"Smith","email":"jane@gov.bc.ca"}""");
+
+    assertThat(unauthenticatedClient().getIdirDetailByGuid("AABB"))
+        .hasValueSatisfying(user -> assertThat(user.userId()).isEqualTo("JSMITH"));
+
+    RecordedRequest request = server.takeRequest();
+    assertThat(request.getPath()).contains("userGuid=AABB");
+    assertThat(request.getPath()).doesNotContain("userId=");
+  }
+
+  @Test
+  @DisplayName("treats an unknown GUID as no match rather than a failure")
+  void unknownGuidIsEmpty() {
+    // The directory answers 200 with found=false and echoes the GUID back.
+    enqueueJson("{\"found\":false,\"guid\":\"AABB\"}");
+
+    assertThat(unauthenticatedClient().getIdirDetailByGuid("AABB")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("does not call out for a blank GUID")
+  void blankGuidIsEmpty() {
+    assertThat(unauthenticatedClient().getIdirDetailByGuid("  ")).isEmpty();
+  }
+
+  @Test
   @DisplayName("treats found=false as no match rather than a result")
   void notFoundIsEmpty() {
     enqueueJson("{\"found\":false}");

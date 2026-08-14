@@ -161,6 +161,123 @@
             }
           }
         }
+      },
+      "delete" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Revoke a role from a user",
+        "operationId" : "delete_css_user_role_assignment",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssUserRoleRevokeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/roles" : {
+      "get" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "List the selectable roles of a CSS integration environment",
+        "operationId" : "get_css_application_roles",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssRoleOptionDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Define a new role on a CSS integration environment",
+        "operationId" : "create_css_application_role",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssRoleCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssRoleOptionDto"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/auth/login" : {
@@ -449,44 +566,6 @@
         }
       }
     },
-    "/css-applications/{integrationId}/{environment}/roles" : {
-      "get" : {
-        "tags" : [ "CSS Integrations" ],
-        "summary" : "List the selectable roles of a CSS integration environment",
-        "operationId" : "get_css_application_roles",
-        "parameters" : [ {
-          "name" : "integrationId",
-          "in" : "path",
-          "required" : true,
-          "schema" : {
-            "type" : "integer",
-            "format" : "int32"
-          }
-        }, {
-          "name" : "environment",
-          "in" : "path",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "OK",
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/CssRoleOptionDto"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/auth/self" : {
       "get" : {
         "tags" : [ "Authentication" ],
@@ -633,6 +712,60 @@
         "type" : "string",
         "enum" : [ "NOT_REQUIRED", "SENT_TO_EMAIL_SERVICE_SUCCESS", "SENT_TO_EMAIL_SERVICE_FAILURE" ]
       },
+      "CssRoleCreateRequest" : {
+        "properties" : {
+          "role_code" : {
+            "type" : "string",
+            "example" : "FREP_ADMINISTRATOR",
+            "minLength" : 1
+          },
+          "description" : {
+            "type" : "string",
+            "example" : "FREP Administrator",
+            "maxLength" : 150,
+            "minLength" : 0
+          },
+          "requires_district" : {
+            "type" : "boolean"
+          },
+          "requires_forest_client" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "description", "role_code" ]
+      },
+      "CssRoleOptionDto" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "display_name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "role_code" : {
+            "type" : "string"
+          },
+          "composite" : {
+            "type" : "boolean"
+          },
+          "composites" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "role_type_district" : {
+            "type" : "boolean"
+          },
+          "role_type_client" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district" ]
+      },
       "SelfDto" : {
         "properties" : {
           "user_id" : {
@@ -723,7 +856,7 @@
       },
       "PrivilegeChangeType" : {
         "type" : "string",
-        "enum" : [ "GRANT", "REVOKE", "UPDATE" ]
+        "enum" : [ "GRANT", "REVOKE", "UPDATE", "CREATE_ROLE" ]
       },
       "PrivilegeDetailsDto" : {
         "properties" : {
@@ -744,7 +877,7 @@
       },
       "PrivilegeDetailsPermissionType" : {
         "type" : "string",
-        "enum" : [ "End User", "Delegated Admin", "Application Admin" ]
+        "enum" : [ "End User", "Delegated Admin", "Application Admin", "Role Definition" ]
       },
       "PrivilegeDetailsRoleDto" : {
         "properties" : {
@@ -923,6 +1056,9 @@
           "username" : {
             "type" : "string"
           },
+          "user_guid" : {
+            "type" : "string"
+          },
           "domain" : {
             "type" : "string"
           },
@@ -938,6 +1074,9 @@
           "role_name" : {
             "type" : "string"
           },
+          "role_description" : {
+            "type" : "string"
+          },
           "scope_type" : {
             "type" : "string"
           },
@@ -947,37 +1086,27 @@
         },
         "required" : [ "role_name", "username" ]
       },
-      "CssRoleOptionDto" : {
+      "CssUserRoleRevokeRequest" : {
         "properties" : {
-          "name" : {
+          "user_guid" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "user_type" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "role_name" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "scope_type" : {
             "type" : "string"
           },
-          "display_name" : {
+          "scope_value" : {
             "type" : "string"
-          },
-          "description" : {
-            "type" : "string"
-          },
-          "role_code" : {
-            "type" : "string"
-          },
-          "composite" : {
-            "type" : "boolean"
-          },
-          "composites" : {
-            "type" : "array",
-            "items" : {
-              "type" : "string"
-            }
-          },
-          "role_type_district" : {
-            "type" : "boolean"
-          },
-          "role_type_client" : {
-            "type" : "boolean"
           }
         },
-        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district" ]
+        "required" : [ "role_name", "user_guid", "user_type" ]
       }
     },
     "securitySchemes" : {

@@ -1,4 +1,5 @@
 import { authState } from "@/providers/authState";
+import { isFamAdmin } from "@/utils/AdminRoleUtils";
 import type { RouteLocationNormalized, NavigationGuardNext } from "vue-router";
 
 /**
@@ -41,6 +42,32 @@ export const authGuard = async (
         next();
     } else {
         next({ path: "/" });
+    }
+};
+
+/**
+ * Guard for the screens only a FAM administrator may open.
+ *
+ * A convenience, not a control: it stops somebody who typed the URL from landing
+ * on a screen whose every call would fail. What actually protects the operation
+ * is the backend, which re-checks the caller's roles on the request itself.
+ *
+ * Sends a signed-in non-administrator to `/no-access` rather than the landing
+ * page, which would bounce them back here through `landingGuard`.
+ */
+export const famAdminGuard = async (
+    _to: RouteLocationNormalized,
+    _from: RouteLocationNormalized,
+    next: NavigationGuardNext
+) => {
+    await waitForAuthRestoration();
+
+    if (!isAuthenticated()) {
+        next({ path: "/" });
+    } else if (isFamAdmin()) {
+        next();
+    } else {
+        next({ path: "/no-access" });
     }
 };
 

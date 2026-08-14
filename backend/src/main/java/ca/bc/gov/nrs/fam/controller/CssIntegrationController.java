@@ -2,9 +2,11 @@ package ca.bc.gov.nrs.fam.controller;
 
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.dto.CssApplicationOptionDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleOptionDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
+import ca.bc.gov.nrs.fam.dto.CssUserRoleRevokeRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
@@ -15,11 +17,14 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -79,6 +84,31 @@ public class CssIntegrationController {
   }
 
   /**
+   * Define a new role on an application.
+   *
+   * <p><b>FAM administrators only</b>, and deliberately stricter than the rest of
+   * this controller. Everything else here decides who holds an existing role;
+   * this decides what roles exist at all, which is a change to the application's
+   * own authorisation model rather than to one person's access. An application
+   * administrator can hand out what the application already defines without also
+   * being able to invent something new for it to mean.
+   *
+   * <p>Not restricted per application: a FAM administrator administers every one.
+   */
+  @PostMapping("/{integrationId}/{environment}/roles")
+  @Operation(operationId = "create_css_application_role",
+      summary = "Define a new role on a CSS integration environment")
+  public CssRoleOptionDto createCssApplicationRole(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @Valid @RequestBody CssRoleCreateRequest request,
+      Requester requester) {
+
+    authorizationService.authorizeByFamAdmin(requester);
+    return cssIntegrationService.createRole(integrationId, environment, request, requester);
+  }
+
+  /**
    * Grant a role to a user, creating a scope-specific role on demand.
    *
    * <p>Returns one result per role. A scoped grant can partly succeed, so the
@@ -114,9 +144,40 @@ public class CssIntegrationController {
   }
 
   /**
+   * Take a role away from a user.
+   *
+   * <p>Same tier rules as granting, including the stricter one for FAM's own
+   * administrative roles: removing somebody's {@code APP_ADMIN} is as much an
+   * act of administration as granting it.
+   */
+  @DeleteMapping("/{integrationId}/{environment}/user-role-assignments")
+  @Operation(operationId = "delete_css_user_role_assignment",
+      summary = "Revoke a role from a user")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteCssUserRoleAssignment(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @Valid @RequestBody CssUserRoleRevokeRequest request,
+      Requester requester) {
+
+    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+
+    FamAdminRole.tierOf(request.roleName()).ifPresent(tier ->
+        authorizationService.requireDelegatedAdminManagement(
+            requester, integrationId, environment));
+
+    cssIntegrationService.revokeUserRole(integrationId, environment, request, requester);
+  }
+
+  /**
    * Every user/role assignment in an integration.
    *
    * <p>Costs one request per role upstream; see {@link CssIntegrationService}.
+   *
+   * <p>Filtered to what this requester may see: a Business BCeID administrator
+   * gets only their own organisation's BCeID users. That filtering happens in the
+   * service rather than the browser - the response must not carry users the
+   * caller may not see.
    */
   @GetMapping("/{integrationId}/{environment}/user-role-assignments")
   @Operation(operationId = "get_css_user_role_assignments",
@@ -127,6 +188,6 @@ public class CssIntegrationController {
       Requester requester) {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
-    return cssIntegrationService.getUserRoleAssignments(integrationId, environment);
+    return cssIntegrationService.getUserRoleAssignments(integrationId, environment, requester);
   }
 }
