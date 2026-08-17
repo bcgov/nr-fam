@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * User details safe to return to an admin.
  *
  * <p>Deliberately omits {@code user_guid}, {@code business_guid},
- * {@code cognito_user_id} and the audit columns, matching upstream's
+ * {@code oidc_user_id} and the audit columns, matching upstream's
  * {@code FamUserInfoSchema} exclusions.
  *
  * <p>The user-type object is serialised as {@code user_type} even though the

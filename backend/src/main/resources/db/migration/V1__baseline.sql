@@ -26,6 +26,14 @@
 -- (`ddl-auto: validate`), so a mismatch fails the application at boot rather
 -- than at the first write. Any change here needs the matching entity change.
 
+-- Normally a no-op: dba/01_create_roles.sql creates the schema with
+-- AUTHORIZATION fam_owner, and this migration runs afterwards. It is here so a
+-- throwaway database works without the DBA scripts.
+--
+-- If the schema does NOT already exist, it is created owned by whoever runs
+-- Flyway. That matters: dba/02 attaches ALTER DEFAULT PRIVILEGES FOR ROLE
+-- fam_owner, which only covers tables fam_owner creates. Run the DBA scripts
+-- first in any environment that has them.
 CREATE SCHEMA IF NOT EXISTS app_fam;
 
 -- ---------------------------------------------------------------------------

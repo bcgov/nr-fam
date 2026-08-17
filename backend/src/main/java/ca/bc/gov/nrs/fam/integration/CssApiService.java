@@ -476,7 +476,7 @@ public class CssApiService {
   private ResponseEntity<byte[]> call(CssCall call) {
     if (!isConfigured()) {
       throw new UpstreamException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.INVALID_OPERATION,
-          "CSS API credentials are not configured (CSS_CLIENT_ID / CSS_CLIENT_SECRET).",
+          "CSS API credentials are not configured (CSS_API_CLIENT_ID / CSS_API_CLIENT_SECRET).",
           UPSTREAM);
     }
     try {

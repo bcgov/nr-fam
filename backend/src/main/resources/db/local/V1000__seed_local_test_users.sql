@@ -1,6 +1,6 @@
--- Local-development seed users. Never runs in a deployed environment: only
--- docker-compose adds local_sql to FLYWAY_LOCATIONS, and migrations/Dockerfile
--- copies ./sql alone.
+-- Local-development seed users. Only the `local` profile adds classpath:db/local
+-- to spring.flyway.locations, so this never runs anywhere else - it ships in the
+-- jar unused.
 --
 -- Runs after the V1 baseline. Only fam_user is worth seeding - applications,
 -- roles and role assignments live in CSS, and there is no local way to make

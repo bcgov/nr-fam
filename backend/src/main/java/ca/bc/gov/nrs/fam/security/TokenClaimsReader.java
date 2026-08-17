@@ -59,7 +59,7 @@ public class TokenClaimsReader {
   private static final String CLAIM_BCEID_BUSINESS_GUID = "bceid_business_guid";
 
   /**
-   * The value stored in {@code fam_user.cognito_user_id}.
+   * The value stored in {@code fam_user.oidc_user_id}.
    *
    * <p>Keycloak's {@code preferred_username} is {@code <guid>@idir} or
    * {@code <guid>@bceidbusiness} - the same shape Cognito produced, and stable

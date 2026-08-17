@@ -34,8 +34,8 @@ jobs:
           cache: maven
 
       # Runs the full suite, including SchemaValidationIT: Testcontainers starts a
-      # throwaway PostgreSQL, Flyway applies migrations/sql V1..V93, and Hibernate
-      # validates every entity against the result. That is the only place the
+      # throwaway PostgreSQL, the application's own Flyway configuration applies
+      # db/migration, and Hibernate validates every entity against the result. That is the only place the
       # entity mappings are checked against the real schema, so it must run here -
       # Docker is unavailable on most developer machines.
       - name: Test

@@ -34,10 +34,10 @@ parameters:
   # which the browser fetches. The non-secret CSS settings (URLs, IdP aliases)
   # live on backend/openshift.deploy.yml, which is what reads them.
   # ---------------------------------------------------------------------------
-  - name: CSS_CLIENT_ID
+  - name: CSS_API_CLIENT_ID
     description: CSS API account client id (CSS app -> My Teams -> CSS API Account)
     required: true
-  - name: CSS_CLIENT_SECRET
+  - name: CSS_API_CLIENT_SECRET
     description: CSS API account client secret
     required: true
   # ---------------------------------------------------------------------------
@@ -104,8 +104,8 @@ objects:
       labels:
         app: ${NAME}-${ZONE}
     stringData:
-      css-client-id: ${CSS_CLIENT_ID}
-      css-client-secret: ${CSS_CLIENT_SECRET}
+      css-api-client-id: ${CSS_API_CLIENT_ID}
+      css-api-client-secret: ${CSS_API_CLIENT_SECRET}
   - apiVersion: v1
     kind: Secret
     metadata:

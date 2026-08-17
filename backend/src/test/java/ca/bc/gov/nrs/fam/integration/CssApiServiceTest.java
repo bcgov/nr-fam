@@ -258,7 +258,7 @@ class CssApiServiceTest {
     assertThat(unconfigured.isConfigured()).isFalse();
     assertThatThrownBy(unconfigured::getIntegrations)
         .isInstanceOf(UpstreamException.class)
-        .hasMessageContaining("CSS_CLIENT_ID");
+        .hasMessageContaining("CSS_API_CLIENT_ID");
 
     // Nothing was attempted over the wire.
     assertThat(server.getRequestCount()).isZero();

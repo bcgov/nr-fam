@@ -28,6 +28,9 @@ on:
       db_name:
         description: Database name on the on-prem instance
         required: true
+      db_port:
+        description: Port of the on-prem PostgreSQL instance
+        required: false
       db_user:
         description: Runtime application role (created by the DBA team)
         required: true
@@ -40,6 +43,24 @@ on:
       oc_token:
         description: OpenShift token
         required: true
+      css_api_client_id:
+        description: CSS API service account client id
+        required: false
+      css_api_client_secret:
+        description: CSS API service account client secret
+        required: false
+      keycloak_sa_client_id:
+        description: >-
+          Keycloak admin client used to provision FAM's user-lookup service
+          account. Absent on PR previews, which then have no user-lookup
+          credentials.
+        required: false
+      keycloak_sa_client_secret:
+        description: Secret for the Keycloak admin client above
+        required: false
+      user_lookup_base_url:
+        description: Base URL of nr-user-lookup-api
+        required: false
 
     outputs:
       triggered:
@@ -89,14 +110,14 @@ jobs:
           oc_token: ${{ secrets.oc_token }}
           overwrite: true
           parameters: -p DB_HOST="${{ secrets.db_host }}"
-            -p DB_PORT="${{ vars.db_port || '5432' }}"
+            -p DB_PORT="${{ secrets.db_port || '5432' }}"
             -p DB_NAME="${{ secrets.db_name }}"
             -p DB_USER="${{ secrets.db_user }}"
             -p DB_PASSWORD="${{ secrets.db_password }}"
             -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
             -p KEYCLOAK_CLIENT_ID="${{ vars.keycloak_client_id }}"
-            -p CSS_CLIENT_ID="${{ secrets.css_client_id }}"
-            -p CSS_CLIENT_SECRET="${{ secrets.css_client_secret }}"
+            -p CSS_API_CLIENT_ID="${{ secrets.css_api_client_id }}"
+            -p CSS_API_CLIENT_SECRET="${{ secrets.css_api_client_secret }}"
             -p USER_LOOKUP_BASE_URL="${{ secrets.user_lookup_base_url }}"
             -p USER_LOOKUP_TOKEN_URL="${{ vars.keycloak_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.keycloak_issuer_uri) || '' }}"
             -p USER_LOOKUP_CLIENT_ID="${{ steps.keycloak_sa.outputs.client_id }}"
@@ -130,8 +151,8 @@ jobs:
               -p CSS_API_URL="${{ vars.css_api_url || 'https://api.loginproxy.gov.bc.ca/api/v1' }}"
               -p CSS_TOKEN_URL="${{ vars.css_token_url || 'https://loginproxy.gov.bc.ca/auth/realms/standard/protocol/openid-connect/token' }}"
               -p CSS_OWN_INTEGRATION_ID="${{ vars.css_own_integration_id }}"
-              -p CSS_IDP_ALIAS_IDIR="${{ vars.css_idp_alias_idir || 'azureidir' }}"
-              -p CSS_IDP_ALIAS_BCEID="${{ vars.css_idp_alias_bceid || 'bceidbusiness' }}"
+              -p SMTP_HOST="${{ vars.smtp_host }}"
+              -p SMTP_FROM="${{ vars.smtp_from }}"
           - name: frontend
             file: frontend/openshift.deploy.yml
             parameters: -p IMAGE_TAG="${{ inputs.tag }}"

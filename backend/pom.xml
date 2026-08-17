@@ -159,17 +159,15 @@
       <scope>test</scope>
     </dependency>
     <!-- Integration tests migrate a throwaway Postgres with the real
-         migrations/sql files, so the entities are verified against the
+         db/migration on the classpath, so the entities are verified against the
          production schema rather than a Hibernate-generated one. -->
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-core</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-database-postgresql</artifactId>
-      <scope>test</scope>
     </dependency>
     <!-- Boots the context without PostgreSQL so the OpenAPI spec can be
          generated from the running app. See OpenApiSpecGeneratorTest. -->
