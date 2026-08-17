@@ -31,29 +31,9 @@ services:
       retries: 10
     ports: ["5432:5432"]
 
-  # Applies migrations/sql V1..V93 plus the local-only seed data in local_sql.
-  # conf/flyway.local.conf supplies dummy values for the 51 OIDC client-id
-  # placeholders; deployed environments supply real Keycloak client ids and have
-  # no defaults, so a missing one fails loudly there.
-  migrations:
-    image: flyway/flyway:13-alpine
-    container_name: fam-migrations
-    command: -configFiles=/flyway/conf/flyway.local.conf info migrate info
-    volumes:
-      - ./migrations/sql:/flyway/sql:ro
-      - ./migrations/local_sql:/flyway/local_sql:ro
-      - ./migrations/conf:/flyway/conf:ro
-    environment:
-      FLYWAY_URL: jdbc:postgresql://database:5432/postgres
-      FLYWAY_USER: *POSTGRES_USER
-      FLYWAY_PASSWORD: *POSTGRES_PASSWORD
-      FLYWAY_SCHEMAS: app_fam
-      FLYWAY_LOCATIONS: filesystem:/flyway/sql,filesystem:/flyway/local_sql
-      FLYWAY_BASELINE_ON_MIGRATE: "false"
-    depends_on:
-      database:
-        condition: service_healthy
-
+  # Applies its own migrations on start-up: the SQL ships inside the jar, so
+  # there is no separate migrations container to sequence before this one. The
+  # local profile also applies the seed users in db/local.
   backend:
     container_name: fam-backend
     build:
@@ -78,8 +58,8 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      migrations:
-        condition: service_completed_successfully
+      database:
+        condition: service_healthy
 
   frontend:
     container_name: fam-frontend

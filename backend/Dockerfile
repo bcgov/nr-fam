@@ -14,7 +14,12 @@ RUN ./mvnw -B -ntp clean package -DskipTests
 
 # Explode the jar so the runtime image can use Spring Boot's layered layout,
 # keeping dependency layers stable across application-only rebuilds.
-RUN java -Djarmode=tools -jar target/*.jar extract --layers --destination extracted
+#
+# --application-filename fixes the name the ENTRYPOINT below launches. Without
+# it the extracted jar keeps the uber-jar's name, which carries the version -
+# so the image would only start until the next version bump.
+RUN java -Djarmode=tools -jar target/*.jar extract --layers \
+      --application-filename app.jar --destination extracted
 
 ### Deploy
 FROM gcr.io/distroless/java21-debian12:nonroot AS deploy

@@ -1,17 +1,16 @@
 {
-    "name": "client-code-gen",
-    "version": "1.0.0",
-    "description": "OpenAPI generation for the FAM API clients",
-    "scripts": {
-        "gen-api-client": "rm -rf gen/fam-api && openapi-generator-cli generate -i fam-openapi.json --generator-name typescript-axios -o gen/fam-api --config api.json && npm run postgen-fix-axios-peer",
-        "dockergen-api-client-bash": "docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli:v7.5.0 generate -i local/fam-openapi.json -g typescript-axios --config local/api.json -o /local/gen/fam-api",
-        "postgen-fix-axios-peer": "node -e \"const f='gen/fam-api/package.json',p=require('./'+f);p.peerDependencies={axios:p.dependencies.axios};delete p.dependencies;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\\n')\""
-    },
-    "dependencies": {
-        "@openapitools/openapi-generator-cli": "^2.39.1"
-    },
-    "overrides": {
-        "form-data": "4.0.6",
-        "brace-expansion": "5.0.6"
-    }
+  "name": "client-code-gen",
+  "version": "1.0.0",
+  "description": "OpenAPI generation for the FAM API clients",
+  "scripts": {
+    "gen-api-client": "rm -rf gen/fam-api && openapi-generator-cli generate -i fam-openapi.json --generator-name typescript-axios -o gen/fam-api --config api.json && node postgen.mjs",
+    "dockergen-api-client-bash": "docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli:v7.5.0 generate -i local/fam-openapi.json -g typescript-axios --config local/api.json -o /local/gen/fam-api"
+  },
+  "dependencies": {
+    "@openapitools/openapi-generator-cli": "^2.39.1"
+  },
+  "overrides": {
+    "form-data": "4.0.6",
+    "brace-expansion": "5.0.6"
+  }
 }

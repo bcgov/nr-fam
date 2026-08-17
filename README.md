@@ -26,7 +26,7 @@ from AWS serverless to OpenShift. What changed:
 | `backend/`                  | Spring Boot API (Java 21, Maven). See `backend/docs/`.         |
 | `frontend/`                 | Vue 3 SPA, served by Caddy.                                    |
 | `frontend/client-code-gen/` | The generated API client and its spec. See its README.         |
-| `migrations/`               | Flyway migrations V1-V94, plus DBA-owned scripts.              |
+| `migrations/`               | DBA-owned role and grant scripts. The migrations themselves ship in the backend jar. |
 | `common/`                   | Shared OpenShift template (secret, ConfigMap, NetworkPolicy).  |
 | `monitoring/`               | Sysdig alert definitions.                                      |
 
@@ -39,10 +39,18 @@ deploy connects to the on-prem host using credentials from a secret.
 Role creation and privilege grants are the DBA team's responsibility and live in
 `migrations/dba/`, not in the migrations themselves. See `migrations/README.md`.
 
-Since V94 the database holds very little: applications, roles and role
-assignments moved to CSS, and what remains is `fam_user` and the privilege change
-audit. The audit deliberately keeps no foreign keys - an audit row that
-references mutable operational tables is only as durable as those rows.
+The database holds four tables: `fam_user` and `fam_user_type_code` (who has
+signed in) and `fam_privilege_change_audit` with `fam_privilege_change_type` (who
+granted what to whom, which CSS does not record). Applications, roles and role
+assignments are CSS's. The audit deliberately keeps no foreign keys - an audit
+row that references mutable operational tables is only as durable as those rows.
+
+**Migrations run inside the application.** `backend/src/main/resources/db/migration`
+ships in the jar and Flyway applies it at start-up, before Hibernate validates
+the schema, so the schema a build expects and the code that expects it are one
+artefact. There is no migrations image and no init container. The consequence is
+that the runtime database role needs `CREATE` on `app_fam` - it creates tables,
+not just rows. See `migrations/README.md`.
 
 ## Running locally
 
@@ -50,9 +58,9 @@ references mutable operational tables is only as durable as those rows.
 docker compose up
 ```
 
-That starts PostgreSQL, applies the migrations (with dummy OIDC client ids from
-`migrations/conf/flyway.local.conf`), runs the backend on `:8080` and the
-frontend on `:3000`.
+That starts PostgreSQL, then the backend on `:8080` and the frontend on `:3000`.
+The backend migrates the database itself on start-up; under the `local` profile
+it also applies the seed users in `db/local`.
 
 The frontend is the one you open. It proxies `/api` to the backend and strips
 the prefix, mirroring the Caddy config the deployed frontend runs behind, so the
@@ -81,9 +89,11 @@ cd frontend && npm run type-check && npm run test:cov
 ```
 
 `SchemaValidationIT` is the one check that the JPA entities match the real
-schema: Testcontainers starts a throwaway PostgreSQL, Flyway applies V1-V94, and
-Hibernate validates every mapping against the result. It needs a Docker daemon,
-so it fails on machines without one - CI always runs it.
+schema: Testcontainers starts a throwaway PostgreSQL, the application's own
+Flyway configuration applies `db/migration`, and Hibernate validates every
+mapping against the result - the same path a deployment takes. H2 cannot stand
+in for it, because the schema uses `JSONB` and identity columns. It needs a
+Docker daemon, so it fails on machines without one - CI always runs it.
 
 ## Changing the API
 
@@ -104,30 +114,66 @@ that are easy to break - property naming, enum schema names, and parameter order
 ## Deployment
 
 GitHub Actions deploys to OpenShift per pull request, then to test and prod on
-merge. Each environment needs:
+merge. Set these on the repository, or per **environment** (`test`, `prod`) where
+they differ - the CSS credentials, `css_own_integration_id` and `smtp_from`
+usually do.
 
-**Secrets** - `db_host`, `db_name`, `db_user`, `db_password`, `oc_namespace`,
-`oc_token`, `css_client_id`, `css_client_secret`, `user_lookup_base_url`,
-`keycloak_sa_client_id`, `keycloak_sa_client_secret`
+### Secrets
 
-**Variables** - `oc_server`, `keycloak_issuer_uri`, `keycloak_client_id`
+| Secret | Required | What it is |
+| ------ | -------- | ---------- |
+| `oc_namespace` | yes | OpenShift namespace |
+| `oc_token` | yes | OpenShift token |
+| `db_host` | yes | On-prem PostgreSQL host |
+| `db_port` | if not 5432 | Port. Defaults to `5432`. |
+| `db_name` | yes | Database name |
+| `db_user` | yes | Runtime role. **Needs `CREATE` on `app_fam`** - the application runs Flyway at start-up. |
+| `db_password` | yes | Password for that role |
+| `css_api_client_id` | in practice | CSS API account (CSS app -> My Teams -> CSS API Account) |
+| `css_api_client_secret` | in practice | As above |
+| `user_lookup_base_url` | in practice | Base URL of nr-user-lookup-api |
+| `fc_api_token` | in practice | Forest Client API key. One key for all environments - see below. |
+| `keycloak_sa_client_id` | optional | Keycloak admin client that provisions FAM's user-lookup service account. See below. |
+| `keycloak_sa_client_secret` | optional | Secret for that admin client |
 
-**Variables you should set** - `css_own_integration_id`: FAM's own CSS
-integration id, e.g. `22261`. Administering FAM means deciding who administers
-every other application, so that integration is reserved to `FAM_ADMIN`. Nothing
-in a CSS response marks it, so FAM has to be told. Left unset the protection
-cannot be applied and startup logs a warning; it is not required, so a PR preview
-without it still deploys.
+Not used by the deploy: `sonar_token_backend` and `sonar_token_frontend` (code
+analysis, one project each) and `SYSDIG_API_TOKEN` (`analysis.yml` and
+`scheduled.yml`). Absent, those jobs fail but no deployment is affected.
+`GITHUB_TOKEN` is supplied automatically.
 
-Optional variables, all defaulted - set only to override: `db_port`,
-`css_api_url`, `css_token_url`, `css_idp_alias_idir`, `css_idp_alias_bceid`.
+"In practice" means the deploy succeeds without them and the application starts,
+but every CSS-backed screen then fails at call time - the credentials are checked
+when they are used, not at boot.
 
-`css_idp_alias_idir` is the one worth knowing about. It is Keycloak's federated
-username suffix for IDIR, and the standard realm carries two IDIR integrations:
-`azureidir` (Entra-backed, what BC Gov staff actually sign in through) and the
-legacy `idir`. CSS has no user search, so FAM constructs the username exactly -
-and assigning a role to a username that does not exist is accepted silently, so
-the wrong value makes every IDIR grant appear to succeed while doing nothing.
+### Variables
+
+| Variable | Required | What it is |
+| -------- | -------- | ---------- |
+| `oc_server` | yes | OpenShift API URL. No default. |
+| `keycloak_issuer_uri` | yes | Realm users **sign in** to, e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/standard`. |
+| `user_lookup_issuer_uri` | with the SA secrets | Realm the **user-lookup service account** lives in - a different one, e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/forests`. See below. |
+| `keycloak_client_id` | yes | FAM's browser client. Also becomes `FAM_OIDC_CLIENT_ID`. |
+| `css_own_integration_id` | should | FAM's own CSS integration id, e.g. `22261`. See below. |
+| `smtp_host` | for email | Mail relay. **Blank disables sending entirely.** |
+| `smtp_from` | for email | Envelope sender. Required, or nothing is sent. |
+| `css_api_url` | optional | Defaults to the production CSS API. |
+| `css_token_url` | optional | Defaults to the production token endpoint. |
+
+### Two worth understanding
+
+**`css_own_integration_id`.** Administering FAM means deciding who administers
+every other application, so FAM's own integration is reserved to `FAM_ADMIN`.
+Nothing in a CSS response marks which integration is FAM's, so it has to be told.
+Left unset the protection cannot be applied and start-up logs a warning; the
+deploy still succeeds, which is what lets a PR preview run without it.
+
+**Email needs both `smtp_host` and `smtp_from`.** Host blank and the application
+logs "No SMTP host configured" once at start-up, and grants complete without
+notifying anyone. Host set but `from` blank and nothing sends either, because a
+relay rejects a message with no envelope sender - so the application refuses up
+front rather than failing per message. No credentials are configured: the BC Gov
+relay accepts unauthenticated mail from inside the network, so the mail client
+keeps its defaults of port 25, no auth and no STARTTLS.
 
 ### The user-lookup service account
 
@@ -143,16 +189,51 @@ That needs an admin service-account client with the realm-management
 Without them the step is skipped, which is what lets a PR preview deploy; the
 backend then fails identity lookups loudly rather than returning empty results.
 
+**It is not the login realm.** Users sign in through `standard`, but
+nr-user-lookup-api validates its callers against its own realm - `forests` - and
+that is the only realm where the user-lookup client scopes are defined. So the
+service account is created there, against `user_lookup_issuer_uri`, and the
+backend requests its token from that realm too. The admin client has to live in
+the same realm, because `manage-clients` is realm-scoped. Point this at the
+login realm and the client lands where the scopes do not exist; if it got a
+token at all, the API would reject it as issued by the wrong issuer.
+
 The scopes (`user-lookup:idir:search`, `user-lookup:idir:read`,
 `user-lookup:business-bceid:read`) are owned by nr-user-lookup-api and must
 already exist in the realm. The script errors rather than creating them.
 
-**Created out of band** - a secret named `oidc-clients` holding the
-per-application Keycloak client ids as
-`FLYWAY_PLACEHOLDERS_CLIENT_ID_<ENV>_<APP>_OIDC_CLIENT` (see
-`migrations/README.md`), and `<name>-<zone>-integrations` holding the Forest
-Client API credentials and the SMTP relay settings
-(`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`).
+### The Forest Client API
+
+Forest-client-scoped roles need client numbers resolved to names, which comes
+from the Forest Client API.
+
+**Every environment uses the PROD instance**, so there is one key,
+`fc_api_token`, and one endpoint. The API publishes a TEST instance too, and the
+AWS deployment used it for dev and test, but this one does not. The consequence
+is that non-prod FAM reads production forest-client data. That data is read-only
+reference material - client numbers and names - so a dev deployment cannot change
+anything upstream, but it is real data.
+
+The application still has two instance slots, TEST and PROD, picked per request
+by `ApiInstanceEnvResolver` (**both** the deployment and the target application
+must be prod before PROD is chosen). That machinery stays, because it governs
+other integrations; `backend/openshift.deploy.yml` simply points both slots at
+the same endpoint and the same key, which makes the choice a no-op here.
+
+The base URL is public and is a template default rather than a deployment
+variable. Only the key is secret; it is sent as `X-API-KEY`.
+
+The two failure modes differ, which is worth knowing when reading logs. A blank
+**base URL** disables an instance at start-up and logs `Forest Client API PROD
+instance not configured`; a blank **key** does not, so the instance initialises
+and the first search fails with a 401. A missing key is therefore silent until
+someone uses the screen.
+
+**Created out of band** - `<name>-<zone>-integrations`, now holding only the CMENG
+shared secret (`FAM_UPDATE_USER_INFO_API_KEY`); it is mounted `optional: true`, so
+a deployment without it still starts. Everything else the deploy creates itself:
+the database, CSS, user-lookup and Forest Client secrets all come from
+`common/openshift.init.yml`, and SMTP is two plain template parameters.
 
 Only the frontend has a Route. The backend is reached through it at `/api`.
 
@@ -162,8 +243,10 @@ Only the frontend has a Route. The backend is reached through it at `/api`.
 - The Keycloak realm must map the claims listed in
   `backend/docs/authentication.md` into the **access** token, not just the ID
   token.
-- The `oidc-clients` secret needs real per-application Keycloak client ids before
-  migrations can run against a deployed database (see `migrations/README.md`).
+- **The runtime database role needs `CREATE` on `app_fam`.** The application
+  runs Flyway on start-up, so it creates tables rather than only reading and
+  writing rows. `migrations/dba/02_app_user_grants.sql` grants it; a DBA runs
+  that before the first deploy.
 - `PUT /users/users-information` needs `FAM_UPDATE_USER_INFO_API_KEY` set, and a
   `fam_user` row for the configured requester (`CMENG` by default) — IDIM audits
   every lookup against a real user. It fails closed if either is missing.

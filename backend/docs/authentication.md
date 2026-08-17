@@ -51,7 +51,7 @@ All reading is confined to `TokenClaimsReader`.
 | user name                       | `idir_username`   | `bceid_username`      |
 | user GUID                       | `idir_user_guid`  | `bceid_user_guid`     |
 | business GUID                   | —                 | `bceid_business_guid` |
-| `fam_user.cognito_user_id`      | `preferred_username` (`<guid>@idir`) | `preferred_username` (`<guid>@bceidbusiness`) |
+| `fam_user.oidc_user_id`         | `preferred_username` (`<guid>@idir`) | `preferred_username` (`<guid>@bceidbusiness`) |
 | calling application             | `azp`             | `azp`                 |
 | identity provider               | `identity_provider` | `identity_provider` |
 
@@ -71,9 +71,10 @@ how the `fam_usr_uk` constraint matches them.
    internal API must carry it as `azp`; `/external/**` is exempt, since that
    surface exists for other applications' clients and is authorised separately by
    `call_api_flag`.
-2. **A client per downstream application**, per environment. Their ids are seeded
-   into `app_fam.fam_application_client` by the migrations — see
-   `migrations/README.md` for the 51 `FLYWAY_PLACEHOLDERS_CLIENT_ID_*` values.
+2. **A client per downstream application**, per environment — owned by CSS, not
+   by FAM. FAM used to seed their ids into `app_fam.fam_application_client`; that
+   table and the 51 Flyway placeholders that filled it went with the move to CSS,
+   and nothing here records them any more.
 3. **The claims above must be mapped into the access token**, not only the ID
    token. `identity_provider` and the provider-specific claims are what FAM keys
    on; a token missing the user GUID is rejected with `missing_key_attribute`.
@@ -228,10 +229,11 @@ up to one refresh cycle.
 
 ## Column names
 
-`fam_user.cognito_user_id` and `fam_application_client.cognito_client_id` keep
-their names despite no longer having anything to do with Cognito. They are seeded
-by 50+ migrations, and renaming them would mean rewriting that history. In Java
-they are mapped as `oidcUserId` and `oidcClientId`.
+`fam_user.oidc_user_id` holds the OIDC subject claim. It was called
+`cognito_user_id` until the baseline migration replaced the inherited history:
+the reason for keeping the old name - that renaming it meant rewriting 50+
+migrations of seed data - went with them. `fam_application_client.cognito_client_id`
+is gone entirely, along with the table.
 
 ## Dropped
 

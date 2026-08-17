@@ -3,7 +3,7 @@ package ca.bc.gov.nrs.fam.constants;
 /**
  * Ported from {@code server/backend/api/app/constants.py} (schema constants
  * section). Field-length constants mirror the column widths in
- * {@code migrations/sql} and are used by bean validation on the DTOs.
+ * {@code db/migration} and are used by bean validation on the DTOs.
  */
 public final class FamConstants {
 

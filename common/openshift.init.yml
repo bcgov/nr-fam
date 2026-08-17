@@ -34,10 +34,10 @@ parameters:
   # which the browser fetches. The non-secret CSS settings (URLs, IdP aliases)
   # live on backend/openshift.deploy.yml, which is what reads them.
   # ---------------------------------------------------------------------------
-  - name: CSS_CLIENT_ID
+  - name: CSS_API_CLIENT_ID
     description: CSS API account client id (CSS app -> My Teams -> CSS API Account)
     required: true
-  - name: CSS_CLIENT_SECRET
+  - name: CSS_API_CLIENT_SECRET
     description: CSS API account client secret
     required: true
   # ---------------------------------------------------------------------------
@@ -68,6 +68,19 @@ parameters:
     value: ""
 
   # ---------------------------------------------------------------------------
+  # Forest Client API key, sent as X-API-KEY. One key, because every environment
+  # uses the same (PROD) instance - see backend/openshift.deploy.yml.
+  #
+  # Optional, and blank fails late rather than at startup: the instance still
+  # initialises and the first forest-client search returns 401. Only a blank
+  # base URL disables an instance outright.
+  # ---------------------------------------------------------------------------
+  - name: FC_API_TOKEN
+    description: Forest Client API key, used by every environment
+    required: false
+    value: ""
+
+  # ---------------------------------------------------------------------------
   # Frontend runtime configuration. The SPA fetches /env.json into localStorage
   # before it mounts (public/env.js), so one built image can be promoted between
   # environments. The image ships a local-development env.json; this ConfigMap
@@ -83,7 +96,7 @@ parameters:
     description: dev, test or prod. Drives the environment banner in the UI.
     value: dev
   - name: DOMAIN
-    value: apps.silver.devops.gov.bc.ca
+    value: apps.gold.devops.gov.bc.ca
 objects:
   - apiVersion: v1
     kind: Secret
@@ -104,8 +117,8 @@ objects:
       labels:
         app: ${NAME}-${ZONE}
     stringData:
-      css-client-id: ${CSS_CLIENT_ID}
-      css-client-secret: ${CSS_CLIENT_SECRET}
+      css-api-client-id: ${CSS_API_CLIENT_ID}
+      css-api-client-secret: ${CSS_API_CLIENT_SECRET}
   - apiVersion: v1
     kind: Secret
     metadata:
@@ -117,6 +130,14 @@ objects:
       user-lookup-token-url: ${USER_LOOKUP_TOKEN_URL}
       user-lookup-client-id: ${USER_LOOKUP_CLIENT_ID}
       user-lookup-client-secret: ${USER_LOOKUP_CLIENT_SECRET}
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: ${NAME}-${ZONE}-forest-client
+      labels:
+        app: ${NAME}-${ZONE}
+    stringData:
+      fc-api-token: ${FC_API_TOKEN}
   - apiVersion: v1
     kind: ConfigMap
     metadata:

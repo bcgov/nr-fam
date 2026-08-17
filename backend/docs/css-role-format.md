@@ -146,8 +146,10 @@ a role assigned to a username that does not exist is a grant that silently does
 nothing.
 
 **Only `azureidir` and `bceidbusiness` are accepted.** The legacy `idir` alias is
-rejected outright (`invalid idp idir`), so `CSS_IDP_ALIAS_IDIR` must stay
-`azureidir`; the service warns at startup if it is set to the legacy value.
+rejected outright (`invalid idp idir`), which is why the aliases are fixed in
+`application.yml` rather than exposed as deployment configuration - there is no
+correct alternative value to supply. The service still warns at startup if the
+environment-variable escape hatch is used to set the legacy one.
 
 ### The record starts empty
 

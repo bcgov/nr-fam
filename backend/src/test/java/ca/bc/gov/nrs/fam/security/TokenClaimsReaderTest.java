@@ -184,7 +184,7 @@ class TokenClaimsReaderTest {
     @DisplayName("uses preferred_username as the stored OIDC subject")
     void usesPreferredUsername() {
       // Keycloak's <guid>@idir has the same shape Cognito produced, which is what
-      // the cognito_user_id column holds.
+      // the oidc_user_id column holds.
       assertThat(reader.oidcUserId(jwt(idirClaims())))
           .isEqualTo("b5ecdb094dfb4149a6a8445a0mangled@idir");
     }

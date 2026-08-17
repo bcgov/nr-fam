@@ -56,9 +56,28 @@ spring:
           timeout: 10000
           writetimeout: 10000
 
+  # ---------------------------------------------------------------------------
+  # Flyway. Runs on start-up, before Hibernate validates.
+  #
+  # The migrations ship inside the jar, so the schema a build expects and the
+  # code that expects it are the same artefact and cannot be deployed out of
+  # step. There is no separate migrations image or init container any more.
+  #
+  # This means the runtime database user needs DDL rights on app_fam - it
+  # creates tables now, not just rows. See migrations/dba/.
+  # ---------------------------------------------------------------------------
+  flyway:
+    enabled: true
+    schemas: ${POSTGRES_SCHEMA:app_fam}
+    default-schema: ${POSTGRES_SCHEMA:app_fam}
+    # A non-empty schema with no history is an accident, not a starting point:
+    # fail rather than silently skipping everything.
+    baseline-on-migrate: false
+
   jpa:
     open-in-view: false
-    # Schema is owned by Flyway (migrations/sql), never by Hibernate.
+    # Schema is owned by Flyway, never by Hibernate. Flyway has already run by
+    # the time this validation happens.
     hibernate:
       ddl-auto: validate
     properties:
@@ -179,15 +198,17 @@ fam:
       # rather than as misconfiguration. The deployment template supplies both.
       api-base-url: ${CSS_API_URL:}
       token-url: ${CSS_TOKEN_URL:}
-      client-id: ${CSS_CLIENT_ID:}
-      client-secret: ${CSS_CLIENT_SECRET:}
+      client-id: ${CSS_API_CLIENT_ID:}
+      client-secret: ${CSS_API_CLIENT_SECRET:}
       # FAM's own CSS integration. Administering FAM is administering who
       # administers everything else, so only FAM_ADMIN may see or act on it.
       # Unset, that protection cannot be applied and startup says so.
       own-integration-id: ${CSS_OWN_INTEGRATION_ID:}
-      # Keycloak's federated username suffix, per provider. The standard realm
-      # carries two IDIR integrations and BC Gov users sign in through the
-      # Entra-backed one, so azureidir is the default.
+      # Keycloak's federated username suffix, per provider. Fixed values, not
+      # deployment configuration: the standard realm's aliases are what they are,
+      # and the assignment endpoint accepts only these two - the legacy `idir` is
+      # rejected outright. Overridable by environment variable purely as an
+      # escape hatch if the realm ever changes; nothing sets them.
       idp-aliases:
         idir: ${CSS_IDP_ALIAS_IDIR:azureidir}
         bceid-business: ${CSS_IDP_ALIAS_BCEID:bceidbusiness}

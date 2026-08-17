@@ -36,10 +36,17 @@ jobs:
     secrets:
       db_host: ${{ secrets.db_host }}
       db_name: ${{ secrets.db_name }}
+      db_port: ${{ secrets.db_port }}
       db_user: ${{ secrets.db_user }}
       db_password: ${{ secrets.db_password }}
       oc_namespace: ${{ secrets.oc_namespace }}
       oc_token: ${{ secrets.oc_token }}
+      css_api_client_id: ${{ secrets.css_api_client_id }}
+      css_api_client_secret: ${{ secrets.css_api_client_secret }}
+      keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
+      keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
+      user_lookup_base_url: ${{ secrets.user_lookup_base_url }}
+      fc_api_token: ${{ secrets.fc_api_token }}
     with:
       environment: test
       target: test
@@ -59,10 +66,17 @@ jobs:
     secrets:
       db_host: ${{ secrets.db_host }}
       db_name: ${{ secrets.db_name }}
+      db_port: ${{ secrets.db_port }}
       db_user: ${{ secrets.db_user }}
       db_password: ${{ secrets.db_password }}
       oc_namespace: ${{ secrets.oc_namespace }}
       oc_token: ${{ secrets.oc_token }}
+      css_api_client_id: ${{ secrets.css_api_client_id }}
+      css_api_client_secret: ${{ secrets.css_api_client_secret }}
+      keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
+      keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
+      user_lookup_base_url: ${{ secrets.user_lookup_base_url }}
+      fc_api_token: ${{ secrets.fc_api_token }}
     with:
       environment: prod
       target: prod
@@ -96,7 +110,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        package: [migrations, backend, frontend]
+        package: [backend, frontend]
     timeout-minutes: 1
     steps:
       - uses: shrink/actions-docker-registry-tag@e6aaef25c595b6e0edd18bf4c7dbfea3abd43299 # v5

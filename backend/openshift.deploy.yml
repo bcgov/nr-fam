@@ -20,7 +20,7 @@ parameters:
     description: Organization name
     value: bcgov
   - name: DOMAIN
-    value: apps.silver.devops.gov.bc.ca
+    value: apps.gold.devops.gov.bc.ca
   - name: MIN_REPLICAS
     description: The minimum amount of replicas for the horizontal pod autoscaler.
     value: "2"
@@ -66,25 +66,52 @@ parameters:
       required, so a PR preview without the variable still deploys.
     required: false
     value: ""
-  - name: CSS_IDP_ALIAS_IDIR
-    description: Keycloak's federated username suffix for IDIR
-    value: azureidir
-  - name: CSS_IDP_ALIAS_BCEID
-    description: Keycloak's federated username suffix for Business BCeID
-    value: bceidbusiness
   - name: FAM_DEPLOYMENT_ENVIRONMENT
     description: >-
       dev, test or prod. Only "prod" allows the PROD instances of the Forest
       Client API and IDIM proxy to be reached.
     value: "dev"
   # ---------------------------------------------------------------------------
-  # Secret holding the Keycloak client id for every downstream application, keyed
-  # as FLYWAY_PLACEHOLDERS_CLIENT_ID_<ENV>_<APP>_OIDC_CLIENT. Consumed by the
-  # migrations init container. See migrations/README.md.
+  # Forest Client API. EVERY environment uses the PROD instance.
+  #
+  # The application still has two slots, TEST and PROD, chosen per request by
+  # ApiInstanceEnvResolver - that machinery is retained because it also governs
+  # other integrations. Here both slots are pointed at the same endpoint, which
+  # makes the resolver's choice a no-op for this API and means one API key
+  # covers every deployment.
+  #
+  # This is a deliberate departure from the AWS deployment, where dev and test
+  # used https://nr-forest-client-api-test.api.gov.bc.ca. The consequence is that
+  # non-prod FAM reads production forest-client data. It is read-only reference
+  # data - client numbers and names - so a dev deployment cannot alter anything
+  # upstream, but it is real data and that is the trade being made.
+  #
+  # A blank base URL disables an instance at startup ("Forest Client API PROD
+  # instance not configured"); a blank token does not, so the instance
+  # initialises and fails at call time with 401.
   # ---------------------------------------------------------------------------
-  - name: OIDC_CLIENTS_SECRET
-    description: Name of the secret holding the per-application OIDC client ids
-    value: oidc-clients
+  - name: FC_API_BASE_URL
+    description: >-
+      Forest Client API. Used for both instance slots, so all environments hit
+      the same endpoint.
+    value: https://nr-forest-client-api-prod.api.gov.bc.ca
+  # ---------------------------------------------------------------------------
+  # Outbound mail. Two settings only; everything else the mail client accepts
+  # (port, reply-to, auth, STARTTLS) keeps the application default, which suits
+  # the BC Gov relay: port 25, unauthenticated, no TLS upgrade.
+  #
+  # SMTP_HOST is the switch: left blank the application logs "No SMTP host
+  # configured" once at startup and every grant completes without notifying
+  # anyone. SMTP_FROM is required to actually send - a relay rejects a message
+  # with no envelope sender - so the application refuses to send with one and
+  # not the other rather than failing per-message.
+  # ---------------------------------------------------------------------------
+  - name: SMTP_HOST
+    description: Mail relay host. Blank disables sending entirely.
+    value: ""
+  - name: SMTP_FROM
+    description: Envelope sender. Required for any mail to be sent.
+    value: ""
 objects:
   - apiVersion: apps/v1
     kind: Deployment
@@ -117,110 +144,6 @@ objects:
                       matchLabels:
                         deployment: ${NAME}-${ZONE}-${COMPONENT}
                     topologyKey: kubernetes.io/hostname
-          initContainers:
-            # The database is on-prem and is NOT deployed by this repo. This only
-            # checks reachability; it never provisions anything.
-            - name: wait-for-db
-              image: ${REGISTRY}/${ORG_NAME}/${NAME}/migrations:${IMAGE_TAG}
-              env:
-                - name: DB_HOST
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-host
-                - name: DB_PORT
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-port
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  echo "Waiting for on-prem database ${DB_HOST}:${DB_PORT} to be reachable..."
-                  max_retries=30
-                  attempt=1
-                  until nc -z -v -w3 "${DB_HOST}" "${DB_PORT}"; do
-                    if [ "$attempt" -ge "$max_retries" ]; then
-                      echo "ERROR: Database ${DB_HOST}:${DB_PORT} is not reachable after ${max_retries} attempts." >&2
-                      exit 1
-                    fi
-                    echo "Database not ready (attempt ${attempt}/${max_retries}), sleeping..."
-                    attempt=$((attempt + 1))
-                    sleep 2
-                  done
-                  echo "Database is UP!"
-              securityContext:
-                allowPrivilegeEscalation: false
-                runAsNonRoot: true
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop: ["ALL"]
-                seccompProfile:
-                  type: RuntimeDefault
-              volumeMounts:
-                - name: tmp
-                  mountPath: /tmp
-            - name: migrations
-              image: ${REGISTRY}/${ORG_NAME}/${NAME}/migrations:${IMAGE_TAG}
-              imagePullPolicy: Always
-              envFrom:
-                # Per-application Keycloak client ids substituted into the
-                # seed-data migrations. Absent values fail the migration rather
-                # than seeding a bogus client.
-                - secretRef:
-                    name: ${OIDC_CLIENTS_SECRET}
-                    optional: false
-              env:
-                - name: POSTGRES_HOST
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-host
-                - name: POSTGRES_PORT
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-port
-                - name: POSTGRES_DATABASE
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-name
-                - name: FLYWAY_URL
-                  value: jdbc:postgresql://$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)
-                - name: FLYWAY_USER
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-user
-                - name: FLYWAY_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${NAME}-${ZONE}-database
-                      key: database-password
-                - name: FLYWAY_SCHEMAS
-                  value: "app_fam"
-                # Deliberately NOT baselining on migrate: the full V1..V93
-                # history is present, so an unexpectedly non-empty schema should
-                # fail loudly rather than silently skip migrations.
-                - name: FLYWAY_BASELINE_ON_MIGRATE
-                  value: "false"
-              resources:
-                requests:
-                  cpu: 10m
-                  memory: 50Mi
-              securityContext:
-                allowPrivilegeEscalation: false
-                runAsNonRoot: true
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop: ["ALL"]
-                seccompProfile:
-                  type: RuntimeDefault
-              volumeMounts:
-                - name: tmp
-                  mountPath: /tmp
           containers:
             - name: ${NAME}
               image: ${REGISTRY}/${ORG_NAME}/${NAME}/${COMPONENT}:${IMAGE_TAG}
@@ -269,26 +192,48 @@ objects:
                 # BC Gov Common Hosted Single Sign-On: applications, roles and
                 # role assignments. Credentials come from the secret created by
                 # common/openshift.init.yml; the URLs and aliases are not secret.
-                - name: CSS_CLIENT_ID
+                - name: CSS_API_CLIENT_ID
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-css
-                      key: css-client-id
-                - name: CSS_CLIENT_SECRET
+                      key: css-api-client-id
+                - name: CSS_API_CLIENT_SECRET
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-css
-                      key: css-client-secret
+                      key: css-api-client-secret
+                # Outbound mail. No credentials: the BC Gov relay accepts
+                # unauthenticated mail from inside the network, so the client
+                # keeps its defaults of port 25, no auth and no STARTTLS.
+                - name: SMTP_HOST
+                  value: ${SMTP_HOST}
+                - name: SMTP_FROM
+                  value: ${SMTP_FROM}
                 - name: CSS_API_URL
                   value: ${CSS_API_URL}
                 - name: CSS_TOKEN_URL
                   value: ${CSS_TOKEN_URL}
                 - name: CSS_OWN_INTEGRATION_ID
                   value: ${CSS_OWN_INTEGRATION_ID}
-                - name: CSS_IDP_ALIAS_IDIR
-                  value: ${CSS_IDP_ALIAS_IDIR}
-                - name: CSS_IDP_ALIAS_BCEID
-                  value: ${CSS_IDP_ALIAS_BCEID}
+                # Forest Client API. Both instance slots are given the same
+                # endpoint and the same key, so whichever one
+                # ApiInstanceEnvResolver picks, the call is identical. The base
+                # URL is public and comes from the parameter above; the key is
+                # secret and comes from common/openshift.init.yml.
+                - name: FC_API_BASE_URL_TEST
+                  value: ${FC_API_BASE_URL}
+                - name: FC_API_BASE_URL_PROD
+                  value: ${FC_API_BASE_URL}
+                - name: FC_API_TOKEN_TEST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-forest-client
+                      key: fc-api-token
+                - name: FC_API_TOKEN_PROD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-forest-client
+                      key: fc-api-token
                 # nr-user-lookup-api. Every value comes from the secret created
                 # by common/openshift.init.yml, whose client id and secret CI
                 # provisions rather than a human configuring them.
@@ -316,8 +261,10 @@ objects:
                   # correct so a future direct-route setup is not silently broken.
                 - name: ALLOW_ORIGIN
                   value: https://${NAME}-${ZONE}.${DOMAIN}
-              # Integration credentials (Forest Client API, SMTP) and the CMENG
-              # shared secret. Created out of band, not by this repo.
+              # The CMENG shared secret (FAM_UPDATE_USER_INFO_API_KEY) only -
+              # the Forest Client and SMTP settings that used to live here are
+              # wired above now. Created out of band, not by this repo, and
+              # optional so a deployment without it still starts.
               envFrom:
                 - secretRef:
                     name: ${NAME}-${ZONE}-integrations

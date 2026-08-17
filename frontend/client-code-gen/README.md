@@ -44,25 +44,28 @@ properties are `snake_case`.
 
 ## After regenerating
 
-The generator overwrites the client's `package.json`, so re-apply the axios
-`peerDependencies` change:
+Nothing by hand. `postgen.mjs` runs as part of `gen-api-client` and re-applies
+the two fixes the generator would otherwise undo, because it rewrites
+`package.json` every time:
 
-```jsonc
-// replace
-"dependencies": { "axios": "..." }
-// with
-"peerDependencies": { "axios": "^1.16.0" }
-```
+**axios becomes a peer dependency.** TypeScript treats axios types as distinct
+when they resolve through different module paths - the frontend's
+`node_modules` versus the client's - even at identical versions. Declaring it a
+peer makes the frontend the single owner.
 
-TypeScript treats axios types as distinct when they resolve through different
-module paths (the frontend's `node_modules` vs the client's), even at compatible
-versions. Declaring axios as a peer makes the frontend the single owner.
+**The build step is removed**, and `main`/`types` point at the TypeScript
+sources. The generator ships `prepare: npm run build`, which compiles to `dist/`
+with declaration emit. Nothing needs that output: the package is consumed
+through a symlink by Vite and vue-tsc, both of which read the TypeScript
+directly, and the frontend type-checks and builds with no `dist/` present.
 
-Then reinstall:
-
-```sh
-cd .. && npm run install-frontend
-```
+It was also a CI-only failure. npm runs `prepare` for a `file:` dependency
+during `npm ci` even with `--ignore-scripts`, and in that install context `tsc`
+resolves the generated package's pinned `@types/node` 12 alongside modern axios,
+failing declaration emit with `TS2527: The inferred type of
+'createRequestFunction' references an inaccessible 'unique symbol' type`. The
+same command succeeds locally, where types hoist differently - so it could not
+be reproduced before it reached CI.
 
 ## Using the client
 
