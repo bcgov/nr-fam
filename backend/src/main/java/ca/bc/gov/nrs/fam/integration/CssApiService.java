@@ -344,7 +344,7 @@ public class CssApiService {
         List.of("idir_username", "bceid_username");
 
     /**
-     * The name a person would recognise, e.g. {@code MAVILLEN}.
+     * The name a person would recognise, e.g. {@code JSMITH}.
      *
      * <p>Falls back to the federated username. Showing {@code <guid>@azureidir}
      * is poor, but inventing a name would be worse - and the fallback makes it

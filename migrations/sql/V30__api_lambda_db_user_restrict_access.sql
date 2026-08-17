@@ -1,6 +1,0 @@
--- Intentionally empty.
---
--- This migration only administered the AWS-era DB users (CREATE USER / GRANT /
--- REVOKE). On the on-prem Postgres instance the DBA team owns role creation and
--- privileges; see migrations/dba/ for the grants the backend requires.
--- Kept as a placeholder so the migration version sequence stays contiguous.

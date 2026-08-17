@@ -212,7 +212,7 @@ class TokenClaimsReaderTest {
     // has to say which, or the only signal is a bare error code.
     Map<String, Object> claims = new HashMap<>();
     claims.put("identity_provider", "azureidir");
-    claims.put("idir_username", "M2VILLEN");
+    claims.put("idir_username", "JSMITH");
     claims.put("azp", "forests-access-management-22261");
     // idir_user_guid deliberately absent.
 
@@ -227,7 +227,7 @@ class TokenClaimsReaderTest {
   void reportsMissingUsername() {
     Map<String, Object> claims = new HashMap<>();
     claims.put("identity_provider", "azureidir");
-    claims.put("idir_user_guid", "1B0E096EA77D4E6981E58F2060C3ED9D");
+    claims.put("idir_user_guid", "1122334455667788AABBCCDDEEFF0011");
     claims.put("azp", "forests-access-management-22261");
 
     assertThatThrownBy(() -> reader.identity(jwt(claims)))
