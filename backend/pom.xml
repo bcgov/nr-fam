@@ -31,6 +31,12 @@
     <java.version>21</java.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>
 
+    <!-- Overrides the version Spring Boot manages (11.7.2), which supports
+         PostgreSQL 17 at most and warns "Flyway upgrade recommended" against the
+         on-prem PostgreSQL 18 instance. 11.20.3 raises the supported ceiling to
+         18. Kept on the 11.x line rather than 12.x/13.x so Boot's Flyway
+         auto-configuration stays on the major version it was built against. -->
+    <flyway.version>11.20.3</flyway.version>
     <springdoc.version>2.8.13</springdoc.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <mapstruct.version>1.6.3</mapstruct.version>

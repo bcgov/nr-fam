@@ -96,7 +96,7 @@ parameters:
     description: dev, test or prod. Drives the environment banner in the UI.
     value: dev
   - name: DOMAIN
-    value: apps.silver.devops.gov.bc.ca
+    value: apps.gold.devops.gov.bc.ca
 objects:
   - apiVersion: v1
     kind: Secret

@@ -40,7 +40,10 @@ class SchemaValidationIT {
   @Container
   @SuppressWarnings("resource")
   static final PostgreSQLContainer<?> POSTGRES =
-      new PostgreSQLContainer<>("postgres:17-alpine")
+      // Matches the on-prem instance (18.x). This is the only place the baseline
+      // meets a real PostgreSQL, so testing an older major than production runs
+      // would be assurance about a database nothing deploys against.
+      new PostgreSQLContainer<>("postgres:18-alpine")
           .withDatabaseName("fam")
           .withUsername("fam_owner")
           .withPassword("test");
