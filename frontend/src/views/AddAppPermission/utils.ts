@@ -4,14 +4,54 @@ import {
     UserType,
     type CssRoleOptionDto,
     type CssUserRoleAssignmentRequest,
+    type CssUserRoleAssignmentResult,
     type FamDistrictDto,
     type FamForestClientDto,
 } from "fam-api/model";
 import { array, mixed, object, string } from "yup";
 
-// Query param keys for the post-grant notification.
+// Query-cache keys the grant screen leaves its outcome under, for Manage
+// permissions to pick up after the redirect and then clear.
 export const AddAppUserPermissionSuccessQuerykey = "app-user-mutation-success";
 export const AddAppUserPermissionErrorQuerykey = "app-user-mutation-error";
+
+/**
+ * What happened for one user in a grant.
+ *
+ * CSS assigns to one user at a time, so a multi-user grant is several calls and
+ * any of them can fail on its own. Keeping the user alongside their results is
+ * what lets the notification say who was granted what - flattening the results
+ * together loses exactly that.
+ */
+export type UserGrantOutcome = {
+    user: SelectedUser;
+    results: CssUserRoleAssignmentResult[];
+    /** Set when the call for this user failed outright, so it has no results. */
+    error?: string;
+};
+
+/**
+ * The reason a grant failed, as the backend gave it.
+ *
+ * FAM's errors carry a `description` naming the actual problem - a target at
+ * another organisation, a role that does not exist - which is worth far more
+ * than "Request failed with status code 403".
+ */
+export const describeGrantError = (error: unknown): string => {
+    const response = (error as { response?: { data?: { description?: string } } })
+        ?.response;
+    return (
+        response?.data?.description ??
+        (error as Error)?.message ??
+        "the grant could not be completed"
+    );
+};
+
+export type AppPermissionGrantSummary = {
+    applicationName: string;
+    roleName: string;
+    outcomes: UserGrantOutcome[];
+};
 
 export const MAX_USERS_GRANTING_ALLOWED = 50;
 

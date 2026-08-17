@@ -31,6 +31,12 @@ export interface CssUserRoleRowDto {
      * @type {string}
      * @memberof CssUserRoleRowDto
      */
+    'user_guid'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssUserRoleRowDto
+     */
     'domain'?: string;
     /**
      * 
@@ -56,6 +62,12 @@ export interface CssUserRoleRowDto {
      * @memberof CssUserRoleRowDto
      */
     'role_name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssUserRoleRowDto
+     */
+    'role_description'?: string;
     /**
      * 
      * @type {string}

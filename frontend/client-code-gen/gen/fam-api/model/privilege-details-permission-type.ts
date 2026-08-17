@@ -23,7 +23,8 @@
 export const PrivilegeDetailsPermissionType = {
     EndUser: 'End User',
     DelegatedAdmin: 'Delegated Admin',
-    ApplicationAdmin: 'Application Admin'
+    ApplicationAdmin: 'Application Admin',
+    RoleDefinition: 'Role Definition'
 } as const;
 
 export type PrivilegeDetailsPermissionType = typeof PrivilegeDetailsPermissionType[keyof typeof PrivilegeDetailsPermissionType];

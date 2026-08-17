@@ -59,10 +59,11 @@ public class FamUser extends AuditedEntity {
    * The OIDC subject of this user.
    *
    * <p>Named for AWS Cognito, which FAM no longer uses. It now holds the BC Gov
-   * SSO (Keycloak) subject claim. The column name is unchanged to avoid
-   * rewriting migration seed data.
+   * SSO (Keycloak) subject claim. The column was called {@code cognito_user_id}
+   * until the baseline migration, which renamed it to match what it holds -
+   * there was no seed data left to preserve by then.
    */
-  @Column(name = "cognito_user_id", length = 100)
+  @Column(name = "oidc_user_id", length = 100)
   private String oidcUserId;
 
   @Column(name = "first_name", length = 50)

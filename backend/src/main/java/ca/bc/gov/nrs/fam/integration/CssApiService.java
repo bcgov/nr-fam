@@ -52,6 +52,9 @@ public class CssApiService {
 
   private static final String UPSTREAM = "css-api";
 
+  /** The IDIR provider the assignment endpoint refuses; see {@link #assignUserRoles}. */
+  private static final String LEGACY_IDIR_ALIAS = "idir";
+
   /**
    * Refresh a little before expiry, so a token that passes the check here cannot
    * expire in flight on the request that follows.
@@ -98,6 +101,25 @@ public class CssApiService {
         config.timeouts().connect(),
         config.timeouts().read(),
         headers -> headers.setAccept(List.of(MediaType.APPLICATION_JSON)));
+
+    warnIfUnsupportedIdpAlias(config);
+  }
+
+  /**
+   * The assignment endpoint takes {@code azureidir} or {@code bceidbusiness} and
+   * refuses anything else, the legacy {@code idir} included.
+   *
+   * <p>Warned about at startup rather than left to be discovered: misconfigured,
+   * every grant fails with {@code invalid idp idir}, and the message names the
+   * provider without hinting that a FAM setting chose it.
+   */
+  private static void warnIfUnsupportedIdpAlias(FamProperties.Integration.Css config) {
+    if (LEGACY_IDIR_ALIAS.equalsIgnoreCase(config.idpAliases().idir())) {
+      log.warn("fam.integration.css.idp-aliases.idir is set to '{}'. The CSS role assignment "
+          + "endpoint rejects that provider, so every IDIR grant will fail with "
+          + "'invalid idp {}'. Use 'azureidir' (CSS_IDP_ALIAS_IDIR).",
+          LEGACY_IDIR_ALIAS, LEGACY_IDIR_ALIAS);
+    }
   }
 
   private FamProperties.Integration.Css config() {
@@ -155,8 +177,12 @@ public class CssApiService {
    *
    * <p>Find-or-create: a 409 means something else created it first, which is the
    * desired end state either way.
+   *
+   * @return true when this call created the role, false when it already existed.
+   *     Callers that clean up after a failure need the difference - deleting a
+   *     role somebody else created would revoke whoever already holds it.
    */
-  public void createRole(int integrationId, String environment, String roleName) {
+  public boolean createRole(int integrationId, String environment, String roleName) {
     log.debug("CssApiService.createRole({})", roleName);
 
     ResponseEntity<byte[]> response = call(() -> apiClient.post()
@@ -169,16 +195,81 @@ public class CssApiService {
 
     if (response.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
       log.debug("CssApiService.createRole({}) - already exists", roleName);
-      return;
+      return false;
     }
+    throwIfError(response);
+    return true;
+  }
+
+  /**
+   * Compose a role from other roles.
+   *
+   * <p>The children must already exist. Additive: this adds to whatever the role
+   * is already composed of rather than replacing it.
+   *
+   * <p><b>Children reach the token.</b> Keycloak expands a composite, so every
+   * child name appears alongside the parent in the access token of anyone holding
+   * it. That is the point for a scope marker, and the reason a description is not
+   * carried this way - see {@link ca.bc.gov.nrs.fam.dto.CssRoleNaming#LABEL_PREFIX}.
+   */
+  public void addRoleComposites(
+      int integrationId, String environment, String roleName, List<String> childRoleNames) {
+
+    log.debug("CssApiService.addRoleComposites({} <- {})", roleName, childRoleNames);
+
+    ResponseEntity<byte[]> response = call(() -> apiClient.post()
+        .uri("/integrations/{id}/{env}/roles/{role}/composite-roles",
+            integrationId, environment, roleName)
+        .header("Authorization", "Bearer " + accessToken())
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(childRoleNames.stream().map(name -> Map.of("name", name)).toList())
+        .retrieve()
+        .toEntity(byte[].class));
+
     throwIfError(response);
   }
 
   /**
-   * Assign roles to a user.
+   * Delete a role.
+   *
+   * <p>Used to undo a partly built role, not exposed as an operation of its own:
+   * deleting a role that people hold revokes them all at once, silently.
+   */
+  public void deleteRole(int integrationId, String environment, String roleName) {
+    log.debug("CssApiService.deleteRole({})", roleName);
+
+    ResponseEntity<byte[]> response = call(() -> apiClient.delete()
+        .uri("/integrations/{id}/{env}/roles/{role}", integrationId, environment, roleName)
+        .header("Authorization", "Bearer " + accessToken())
+        .retrieve()
+        .toEntity(byte[].class));
+
+    throwIfError(response);
+  }
+
+  /**
+   * Assign roles to a user, creating them in Keycloak if they are not there yet.
    *
    * <p>{@code username} is the CSS/Keycloak username ({@code <guid>@<idp>}), not
    * a FAM user name - see {@code CssRoleNaming.buildUsername}.
+   *
+   * <p>Uses {@code roles-new} rather than {@code roles}. The difference is what
+   * happens for somebody who has never signed in to this environment: the older
+   * endpoint answers <em>404 User not found</em>, because Keycloak only holds a
+   * federated user once they have authenticated at least once. So granting access
+   * to a new starter failed outright until they had logged in - which they could
+   * not usefully do, having no access. {@code roles-new} verifies the username
+   * against the upstream identity provider and creates the record itself.
+   *
+   * <p>It also refuses a username the directory does not recognise, with
+   * <em>could not verify user ... with the upstream identity provider</em>. That
+   * is worth having: a role assigned to a username that does not exist is a grant
+   * that silently does nothing.
+   *
+   * <p><b>Only {@code azureidir} and {@code bceidbusiness} are accepted.</b> The
+   * legacy {@code idir} alias is rejected outright ({@code invalid idp idir}) -
+   * see {@code FamProperties.Integration.Css.IdpAliases}, whose default is already
+   * {@code azureidir}.
    */
   public void assignUserRoles(
       int integrationId, String environment, String username, List<String> roleNames) {
@@ -186,11 +277,33 @@ public class CssApiService {
     log.debug("CssApiService.assignUserRoles({} -> {})", username, roleNames);
 
     ResponseEntity<byte[]> response = call(() -> apiClient.post()
-        .uri("/integrations/{id}/{env}/users/{username}/roles",
+        .uri("/integrations/{id}/{env}/users/{username}/roles-new",
             integrationId, environment, username)
         .header("Authorization", "Bearer " + accessToken())
         .contentType(MediaType.APPLICATION_JSON)
         .body(roleNames.stream().map(name -> Map.of("name", name)).toList())
+        .retrieve()
+        .toEntity(byte[].class));
+
+    throwIfError(response);
+  }
+
+  /**
+   * Take one role away from one user.
+   *
+   * <p>Removes the assignment, not the role: the role stays defined on the
+   * integration, which is what lets it be granted again and is why scope-specific
+   * roles accumulate.
+   */
+  public void removeUserRole(
+      int integrationId, String environment, String username, String roleName) {
+
+    log.debug("CssApiService.removeUserRole({} -/-> {})", username, roleName);
+
+    ResponseEntity<byte[]> response = call(() -> apiClient.delete()
+        .uri("/integrations/{id}/{env}/users/{username}/roles/{role}",
+            integrationId, environment, username, roleName)
+        .header("Authorization", "Bearer " + accessToken())
         .retrieve()
         .toEntity(byte[].class));
 
@@ -231,7 +344,7 @@ public class CssApiService {
         List.of("idir_username", "bceid_username");
 
     /**
-     * The name a person would recognise, e.g. {@code MAVILLEN}.
+     * The name a person would recognise, e.g. {@code JSMITH}.
      *
      * <p>Falls back to the federated username. Showing {@code <guid>@azureidir}
      * is poor, but inventing a name would be worse - and the fallback makes it

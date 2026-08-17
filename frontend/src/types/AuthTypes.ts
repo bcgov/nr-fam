@@ -14,6 +14,15 @@ export type AuthState = {
     readonly isAuthenticated: boolean;
     readonly famLoginUser: FamLoginUser | null;
     readonly isAuthRestored: boolean;
+    /**
+     * The caller's FAM administrative roles, from `/auth/self`.
+     *
+     * Not read from the token: FAM resolves them per request so a change of
+     * access takes effect without a fresh sign-in. Used to decide what the UI
+     * offers - never to decide what it is allowed to do, which the backend
+     * settles on its own.
+     */
+    readonly accessRoles: readonly string[];
 };
 
 export interface AuthContext {

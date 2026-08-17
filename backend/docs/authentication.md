@@ -138,11 +138,61 @@ the ordinary path and the distinction would be decorative.
 | List an application's assignments | any tier, for that application |
 | Grant or revoke an application role | any tier, for that application |
 | Grant or revoke a FAM administrative role | `FAM_ADMIN` or `APP_ADMIN`, for that application |
+| **Define a new role on an application** | `FAM_ADMIN`, in any application |
+
+Defining a role is the one operation an application administrator is refused for
+their *own* application. Every other row decides who holds a role that already
+exists; this one decides what the application's roles mean, which is a change to
+its authorisation model rather than to one person's access. See
+[css-role-format.md](css-role-format.md) for how a role is represented once
+created.
 
 A caller holding no tier for an application cannot see it in the picker and
 cannot act on it, even if the CSS API account can see it - that account is team
 scoped and returns every integration the team owns, so the filtering is FAM's
 job.
+
+### Business BCeID administrators and their organisation
+
+A Business BCeID administrator is external, so they may only deal with users at
+their own company. The rule is one comparison - the requester's `business_guid`
+against the target's - but *where* it is applied is what matters, and upstream
+applied it in three places:
+
+| | upstream | here |
+| --- | --- | --- |
+| Look up a BCeID user | restricted | yes - `IdentityLookupController` |
+| Grant a role | `enforce_bceid_by_same_org_guard` | yes - `TargetOrganizationGuard` |
+| List an application's users | filtered in the query | yes - `AssignmentVisibilityService` |
+
+Two properties of the grant check are load-bearing:
+
+- **The target's organisation comes from the directory, never from the request.**
+  The caller supplies a GUID and a user type; both are claims about somebody
+  else. A caller who could assert their target's organisation could assert their
+  way past the rule.
+- **It fails closed.** If the directory cannot be reached the grant does not
+  happen. An unverifiable organisation is not a matching one.
+
+A BCeID administrator may not grant to an IDIR user at all: an IDIR user belongs
+to no business, so no organisation could match.
+
+The listing applies the same rule on the way out: a BCeID administrator sees
+only BCeID users from their own organisation. CSS carries no organisation, so
+each distinct user is resolved against the directory - IDIR rows are dropped
+first and cost nothing, and one lookup serves however many roles a user holds.
+
+Two policies differ from the name enrichment that runs alongside it, and the
+difference is deliberate:
+
+- **No cap on lookups.** Enrichment stops at 25 because names are cosmetic. A cap
+  on a filter would have to either drop rows it could not check - a listing that
+  silently understates who has access - or admit them unchecked, which is the
+  hole it exists to close.
+- **A directory failure is raised, not swallowed.** Enrichment degrades to
+  showing GUIDs. Here the outcome decides which rows exist, and an administrator
+  shown a silently shortened list would conclude those users have no access and
+  act on it.
 
 ### FAM's own integration is FAM_ADMIN only
 

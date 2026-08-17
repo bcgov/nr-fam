@@ -17,9 +17,11 @@ configuration.ts
 git_push.sh
 index.ts
 model/css-application-option-dto.ts
+model/css-role-create-request.ts
 model/css-role-option-dto.ts
 model/css-user-role-assignment-request.ts
 model/css-user-role-assignment-result.ts
+model/css-user-role-revoke-request.ts
 model/css-user-role-row-dto.ts
 model/email-sending-status.ts
 model/fam-district-dto.ts

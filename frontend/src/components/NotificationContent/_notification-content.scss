@@ -1,0 +1,64 @@
+// Shared layout for the grant notification bodies.
+//
+// One partial rather than a copy per template: the success and failure banners
+// differ only in their icon colour, and they sit next to each other on screen,
+// so any drift between them is immediately visible.
+@mixin notification-content($icon-color) {
+    display: flex;
+    align-items: flex-start;
+
+    // Keeps the icon from shrinking as the list grows.
+    > svg {
+        flex-shrink: 0;
+        margin-top: 0.15em;
+        color: $icon-color;
+    }
+
+    .notification-body {
+        flex: 1 1 0%;
+        margin-left: 1rem;
+        font-size: 0.875rem;
+    }
+
+    .notification-header {
+        font-weight: 400;
+        line-height: 1.5;
+    }
+
+    .notification-list {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+
+        .notification-list-item {
+            position: relative;
+            line-height: 1.5;
+
+            &::before {
+                content: none;
+            }
+
+            .dot-mark-icon {
+                margin-right: 0.5rem;
+                width: 0.5em;
+                height: 0.5em;
+                fill: #212121;
+            }
+
+            &:last-child {
+                margin-bottom: 0;
+            }
+        }
+    }
+
+    .toggle-link {
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0 0 0.25rem;
+        color: inherit;
+        font-style: italic;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+}

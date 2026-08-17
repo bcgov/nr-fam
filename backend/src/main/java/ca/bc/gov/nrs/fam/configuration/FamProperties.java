@@ -87,9 +87,13 @@ public record FamProperties(
        * <p>Configurable because the standard realm carries two IDIR
        * integrations: {@code azureidir} (Entra-backed, what BC Gov IDIR users
        * actually sign in through) and the legacy {@code idir}. CSS has no user
-       * search, so FAM has to construct the username exactly - guessing the
-       * wrong alias assigns a role to a username that does not exist, and CSS
-       * accepts it silently.
+       * search, so FAM has to construct the username exactly.
+       *
+       * <p><b>The assignment endpoint accepts only {@code azureidir} and
+       * {@code bceidbusiness}.</b> Setting the IDIR alias to the legacy
+       * {@code idir} makes every grant fail with {@code invalid idp idir}, which
+       * is why the default is not it and why an override to it is warned about at
+       * startup.
        */
       public record IdpAliases(String idir, String bceidBusiness) {
 

@@ -2,16 +2,16 @@
 -- docker-compose adds local_sql to FLYWAY_LOCATIONS, and migrations/Dockerfile
 -- copies ./sql alone.
 --
--- Runs after V94, which moved applications, roles and role assignments to CSS.
--- Only fam_user is left to seed - there is no local way to make someone an
--- admin any more, because admin rights are roles on FAM's own CSS integration
--- and arrive on the access token. Assign them in CSS, not here.
+-- Runs after the V1 baseline. Only fam_user is worth seeding - applications,
+-- roles and role assignments live in CSS, and there is no local way to make
+-- someone an admin, because admin rights are roles on FAM's own CSS
+-- integration and arrive on the access token. Assign them in CSS, not here.
 
 INSERT INTO app_fam.fam_user (
     user_name,
     user_type_code,
     user_guid,
-    cognito_user_id,
+    oidc_user_id,
     create_user
 )
 VALUES

@@ -37,6 +37,39 @@ export const AddAppPermissionRoute: RouteRecordRaw = {
     meta: protectedLayoutMeta,
 };
 
+/**
+ * Route to a page for defining the roles an application offers.
+ *
+ * FAM administrators only - see `famAdminGuard`. Granting an existing role and
+ * deciding which roles exist are different powers, and only the second one is
+ * limited to FAM administrators.
+ */
+export const ManageRolesRoute: RouteRecordRaw = {
+    path: "/manage-roles",
+    name: "ManageRoles",
+    component: () => import("@/views/ManageRoles"),
+    meta: protectedLayoutMeta,
+};
+
+/**
+ * One user's permission history for one application.
+ *
+ * Identified by GUID rather than name: the audit trail holds no foreign key
+ * into any user record, so a renamed or removed user still has a history.
+ */
+export const UserPermissionHistoryRoute: RouteRecordRaw = {
+    path: "/permission-history",
+    name: "UserPermissionHistory",
+    component: () => import("@/views/UserPermissionHistory"),
+    props: (route) => ({
+        targetUserGuid: String(route.query.targetUserGuid ?? ""),
+        integrationId: Number(route.query.integrationId),
+        environment: String(route.query.environment ?? ""),
+        userName: String(route.query.userName ?? ""),
+    }),
+    meta: protectedLayoutMeta,
+};
+
 export const NoAccessRoute: RouteRecordRaw = {
     path: "/no-access",
     name: "NoAccess",
@@ -52,6 +85,8 @@ export const routeItems: RouteRecordRaw[] = [
     LandingRoute,
     ManagePermissionsRoute,
     AddAppPermissionRoute,
+    ManageRolesRoute,
+    UserPermissionHistoryRoute,
     NoAccessRoute,
     UnkownRoute,
 ];
