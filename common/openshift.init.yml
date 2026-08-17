@@ -68,6 +68,19 @@ parameters:
     value: ""
 
   # ---------------------------------------------------------------------------
+  # Forest Client API key, sent as X-API-KEY. One key, because every environment
+  # uses the same (PROD) instance - see backend/openshift.deploy.yml.
+  #
+  # Optional, and blank fails late rather than at startup: the instance still
+  # initialises and the first forest-client search returns 401. Only a blank
+  # base URL disables an instance outright.
+  # ---------------------------------------------------------------------------
+  - name: FC_API_TOKEN
+    description: Forest Client API key, used by every environment
+    required: false
+    value: ""
+
+  # ---------------------------------------------------------------------------
   # Frontend runtime configuration. The SPA fetches /env.json into localStorage
   # before it mounts (public/env.js), so one built image can be promoted between
   # environments. The image ships a local-development env.json; this ConfigMap
@@ -117,6 +130,14 @@ objects:
       user-lookup-token-url: ${USER_LOOKUP_TOKEN_URL}
       user-lookup-client-id: ${USER_LOOKUP_CLIENT_ID}
       user-lookup-client-secret: ${USER_LOOKUP_CLIENT_SECRET}
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: ${NAME}-${ZONE}-forest-client
+      labels:
+        app: ${NAME}-${ZONE}
+    stringData:
+      fc-api-token: ${FC_API_TOKEN}
   - apiVersion: v1
     kind: ConfigMap
     metadata:

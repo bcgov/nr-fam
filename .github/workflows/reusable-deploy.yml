@@ -61,6 +61,11 @@ on:
       user_lookup_base_url:
         description: Base URL of nr-user-lookup-api
         required: false
+      fc_api_token:
+        description: >-
+          Forest Client API key. One key for every environment: all of them call
+          the same (PROD) instance.
+        required: false
 
     outputs:
       triggered:
@@ -125,6 +130,7 @@ jobs:
             -p USER_LOOKUP_TOKEN_URL="${{ vars.user_lookup_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri) || '' }}"
             -p USER_LOOKUP_CLIENT_ID="${{ steps.keycloak_sa.outputs.client_id }}"
             -p USER_LOOKUP_CLIENT_SECRET="$USER_LOOKUP_CLIENT_SECRET"
+            -p FC_API_TOKEN="${{ secrets.fc_api_token }}"
             -p TARGET_ENV="${{ inputs.environment || 'dev' }}"
             -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"

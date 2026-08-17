@@ -72,6 +72,30 @@ parameters:
       Client API and IDIM proxy to be reached.
     value: "dev"
   # ---------------------------------------------------------------------------
+  # Forest Client API. EVERY environment uses the PROD instance.
+  #
+  # The application still has two slots, TEST and PROD, chosen per request by
+  # ApiInstanceEnvResolver - that machinery is retained because it also governs
+  # other integrations. Here both slots are pointed at the same endpoint, which
+  # makes the resolver's choice a no-op for this API and means one API key
+  # covers every deployment.
+  #
+  # This is a deliberate departure from the AWS deployment, where dev and test
+  # used https://nr-forest-client-api-test.api.gov.bc.ca. The consequence is that
+  # non-prod FAM reads production forest-client data. It is read-only reference
+  # data - client numbers and names - so a dev deployment cannot alter anything
+  # upstream, but it is real data and that is the trade being made.
+  #
+  # A blank base URL disables an instance at startup ("Forest Client API PROD
+  # instance not configured"); a blank token does not, so the instance
+  # initialises and fails at call time with 401.
+  # ---------------------------------------------------------------------------
+  - name: FC_API_BASE_URL
+    description: >-
+      Forest Client API. Used for both instance slots, so all environments hit
+      the same endpoint.
+    value: https://nr-forest-client-api-prod.api.gov.bc.ca
+  # ---------------------------------------------------------------------------
   # Outbound mail. Two settings only; everything else the mail client accepts
   # (port, reply-to, auth, STARTTLS) keeps the application default, which suits
   # the BC Gov relay: port 25, unauthenticated, no TLS upgrade.
@@ -191,6 +215,25 @@ objects:
                   value: ${CSS_TOKEN_URL}
                 - name: CSS_OWN_INTEGRATION_ID
                   value: ${CSS_OWN_INTEGRATION_ID}
+                # Forest Client API. Both instance slots are given the same
+                # endpoint and the same key, so whichever one
+                # ApiInstanceEnvResolver picks, the call is identical. The base
+                # URL is public and comes from the parameter above; the key is
+                # secret and comes from common/openshift.init.yml.
+                - name: FC_API_BASE_URL_TEST
+                  value: ${FC_API_BASE_URL}
+                - name: FC_API_BASE_URL_PROD
+                  value: ${FC_API_BASE_URL}
+                - name: FC_API_TOKEN_TEST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-forest-client
+                      key: fc-api-token
+                - name: FC_API_TOKEN_PROD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-forest-client
+                      key: fc-api-token
                 # nr-user-lookup-api. Every value comes from the secret created
                 # by common/openshift.init.yml, whose client id and secret CI
                 # provisions rather than a human configuring them.
@@ -218,8 +261,10 @@ objects:
                   # correct so a future direct-route setup is not silently broken.
                 - name: ALLOW_ORIGIN
                   value: https://${NAME}-${ZONE}.${DOMAIN}
-              # Integration credentials (Forest Client API, SMTP) and the CMENG
-              # shared secret. Created out of band, not by this repo.
+              # The CMENG shared secret (FAM_UPDATE_USER_INFO_API_KEY) only -
+              # the Forest Client and SMTP settings that used to live here are
+              # wired above now. Created out of band, not by this repo, and
+              # optional so a deployment without it still starts.
               envFrom:
                 - secretRef:
                     name: ${NAME}-${ZONE}-integrations

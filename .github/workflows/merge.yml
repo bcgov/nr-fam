@@ -46,6 +46,7 @@ jobs:
       keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
       keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
       user_lookup_base_url: ${{ secrets.user_lookup_base_url }}
+      fc_api_token: ${{ secrets.fc_api_token }}
     with:
       environment: test
       target: test
@@ -75,6 +76,7 @@ jobs:
       keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
       keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
       user_lookup_base_url: ${{ secrets.user_lookup_base_url }}
+      fc_api_token: ${{ secrets.fc_api_token }}
     with:
       environment: prod
       target: prod

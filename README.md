@@ -132,6 +132,7 @@ usually do.
 | `css_api_client_id` | in practice | CSS API account (CSS app -> My Teams -> CSS API Account) |
 | `css_api_client_secret` | in practice | As above |
 | `user_lookup_base_url` | in practice | Base URL of nr-user-lookup-api |
+| `fc_api_token` | in practice | Forest Client API key. One key for all environments - see below. |
 | `keycloak_sa_client_id` | optional | Keycloak admin client that provisions FAM's user-lookup service account. See below. |
 | `keycloak_sa_client_secret` | optional | Secret for that admin client |
 
@@ -201,10 +202,38 @@ The scopes (`user-lookup:idir:search`, `user-lookup:idir:read`,
 `user-lookup:business-bceid:read`) are owned by nr-user-lookup-api and must
 already exist in the realm. The script errors rather than creating them.
 
-**Created out of band** - `<name>-<zone>-integrations`, holding the Forest Client
-API credentials. Everything else the deploy creates itself: the database, CSS and
-user-lookup secrets come from `common/openshift.init.yml`, and SMTP is two plain
-template parameters rather than a secret.
+### The Forest Client API
+
+Forest-client-scoped roles need client numbers resolved to names, which comes
+from the Forest Client API.
+
+**Every environment uses the PROD instance**, so there is one key,
+`fc_api_token`, and one endpoint. The API publishes a TEST instance too, and the
+AWS deployment used it for dev and test, but this one does not. The consequence
+is that non-prod FAM reads production forest-client data. That data is read-only
+reference material - client numbers and names - so a dev deployment cannot change
+anything upstream, but it is real data.
+
+The application still has two instance slots, TEST and PROD, picked per request
+by `ApiInstanceEnvResolver` (**both** the deployment and the target application
+must be prod before PROD is chosen). That machinery stays, because it governs
+other integrations; `backend/openshift.deploy.yml` simply points both slots at
+the same endpoint and the same key, which makes the choice a no-op here.
+
+The base URL is public and is a template default rather than a deployment
+variable. Only the key is secret; it is sent as `X-API-KEY`.
+
+The two failure modes differ, which is worth knowing when reading logs. A blank
+**base URL** disables an instance at start-up and logs `Forest Client API PROD
+instance not configured`; a blank **key** does not, so the instance initialises
+and the first search fails with a 401. A missing key is therefore silent until
+someone uses the screen.
+
+**Created out of band** - `<name>-<zone>-integrations`, now holding only the CMENG
+shared secret (`FAM_UPDATE_USER_INFO_API_KEY`); it is mounted `optional: true`, so
+a deployment without it still starts. Everything else the deploy creates itself:
+the database, CSS, user-lookup and Forest Client secrets all come from
+`common/openshift.init.yml`, and SMTP is two plain template parameters.
 
 Only the frontend has a Route. The backend is reached through it at `/api`.
 
