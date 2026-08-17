@@ -18,13 +18,23 @@
 #
 # Authenticates with a confidential admin service-account client
 # (client_credentials) holding the realm-management `manage-clients` role. The
-# realm and endpoints are derived from KEYCLOAK_ISSUER_URI, so it works with or
-# without an `/auth` base path.
+# realm and endpoints are derived from USER_LOOKUP_ISSUER_URI, so it works with
+# or without an `/auth` base path.
+#
+# NOT the realm users sign in to. FAM's browser login lives in `standard`, but
+# nr-user-lookup-api validates its callers against its own realm (`forests`) and
+# only that realm defines the user-lookup client scopes below. The service
+# account has to be created where the token will be checked, so this takes a
+# separate issuer - and the admin client must live in that same realm, since
+# `manage-clients` is realm-scoped. Deriving this from KEYCLOAK_ISSUER_URI
+# instead would create the client in the login realm, where the scopes do not
+# exist and the resulting token would be rejected as a wrong-issuer token.
 #
 # Required environment:
-#   KEYCLOAK_ISSUER_URI   e.g. https://dev.loginproxy.gov.bc.ca/auth/realms/standard
-#   KC_SA_CLIENT_ID       admin service-account client id (manage-clients)
-#   KC_SA_CLIENT_SECRET   admin service-account client secret
+#   USER_LOOKUP_ISSUER_URI  realm nr-user-lookup-api trusts,
+#                           e.g. https://test.loginproxy.gov.bc.ca/auth/realms/forests
+#   KC_SA_CLIENT_ID         admin service-account client id (manage-clients)
+#   KC_SA_CLIENT_SECRET     admin service-account client secret
 # Optional:
 #   FAM_CLIENT_ID         clientId of the service account to ensure
 #                         (default: nr-fam-backend)
@@ -37,7 +47,7 @@
 # scopes are required.
 set -euo pipefail
 
-: "${KEYCLOAK_ISSUER_URI:?KEYCLOAK_ISSUER_URI is required}"
+: "${USER_LOOKUP_ISSUER_URI:?USER_LOOKUP_ISSUER_URI is required - the realm nr-user-lookup-api trusts, which is not the login realm}"
 : "${KC_SA_CLIENT_ID:?KC_SA_CLIENT_ID is required}"
 : "${KC_SA_CLIENT_SECRET:?KC_SA_CLIENT_SECRET is required}"
 
@@ -49,7 +59,7 @@ SCOPES=(
   "user-lookup:business-bceid:read"
 )
 
-issuer="${KEYCLOAK_ISSUER_URI%/}"
+issuer="${USER_LOOKUP_ISSUER_URI%/}"
 realm="${issuer##*/realms/}"
 base="${issuer%/realms/*}"
 token_url="${issuer}/protocol/openid-connect/token"

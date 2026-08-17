@@ -93,7 +93,10 @@ jobs:
         id: keycloak_sa
         if: ${{ env.KC_SA_CLIENT_ID != '' }}
         env:
-          KEYCLOAK_ISSUER_URI: ${{ vars.keycloak_issuer_uri }}
+          # Deliberately NOT keycloak_issuer_uri. The service account is created
+          # in the realm nr-user-lookup-api validates against, not the realm
+          # users sign in to - see the script header.
+          USER_LOOKUP_ISSUER_URI: ${{ vars.user_lookup_issuer_uri }}
           KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret }}
         run: ./.github/scripts/ensure-keycloak-service-account.sh
 
@@ -119,7 +122,7 @@ jobs:
             -p CSS_API_CLIENT_ID="${{ secrets.css_api_client_id }}"
             -p CSS_API_CLIENT_SECRET="${{ secrets.css_api_client_secret }}"
             -p USER_LOOKUP_BASE_URL="${{ secrets.user_lookup_base_url }}"
-            -p USER_LOOKUP_TOKEN_URL="${{ vars.keycloak_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.keycloak_issuer_uri) || '' }}"
+            -p USER_LOOKUP_TOKEN_URL="${{ vars.user_lookup_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri) || '' }}"
             -p USER_LOOKUP_CLIENT_ID="${{ steps.keycloak_sa.outputs.client_id }}"
             -p USER_LOOKUP_CLIENT_SECRET="$USER_LOOKUP_CLIENT_SECRET"
             -p TARGET_ENV="${{ inputs.environment || 'dev' }}"

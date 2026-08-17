@@ -135,8 +135,10 @@ usually do.
 | `keycloak_sa_client_id` | optional | Keycloak admin client that provisions FAM's user-lookup service account. See below. |
 | `keycloak_sa_client_secret` | optional | Secret for that admin client |
 
-`SYSDIG_API_TOKEN` is used by `analysis.yml` and `scheduled.yml` only, not by the
-deploy. `GITHUB_TOKEN` is supplied automatically.
+Not used by the deploy: `sonar_token_backend` and `sonar_token_frontend` (code
+analysis, one project each) and `SYSDIG_API_TOKEN` (`analysis.yml` and
+`scheduled.yml`). Absent, those jobs fail but no deployment is affected.
+`GITHUB_TOKEN` is supplied automatically.
 
 "In practice" means the deploy succeeds without them and the application starts,
 but every CSS-backed screen then fails at call time - the credentials are checked
@@ -147,7 +149,8 @@ when they are used, not at boot.
 | Variable | Required | What it is |
 | -------- | -------- | ---------- |
 | `oc_server` | yes | OpenShift API URL. No default. |
-| `keycloak_issuer_uri` | yes | e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/standard`. The user-lookup token URL is derived from it. |
+| `keycloak_issuer_uri` | yes | Realm users **sign in** to, e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/standard`. |
+| `user_lookup_issuer_uri` | with the SA secrets | Realm the **user-lookup service account** lives in - a different one, e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/forests`. See below. |
 | `keycloak_client_id` | yes | FAM's browser client. Also becomes `FAM_OIDC_CLIENT_ID`. |
 | `css_own_integration_id` | should | FAM's own CSS integration id, e.g. `22261`. See below. |
 | `smtp_host` | for email | Mail relay. **Blank disables sending entirely.** |
@@ -184,6 +187,15 @@ That needs an admin service-account client with the realm-management
 `manage-clients` role - `keycloak_sa_client_id` / `keycloak_sa_client_secret`.
 Without them the step is skipped, which is what lets a PR preview deploy; the
 backend then fails identity lookups loudly rather than returning empty results.
+
+**It is not the login realm.** Users sign in through `standard`, but
+nr-user-lookup-api validates its callers against its own realm - `forests` - and
+that is the only realm where the user-lookup client scopes are defined. So the
+service account is created there, against `user_lookup_issuer_uri`, and the
+backend requests its token from that realm too. The admin client has to live in
+the same realm, because `manage-clients` is realm-scoped. Point this at the
+login realm and the client lands where the scopes do not exist; if it got a
+token at all, the API would reject it as issued by the wrong issuer.
 
 The scopes (`user-lookup:idir:search`, `user-lookup:idir:read`,
 `user-lookup:business-bceid:read`) are owned by nr-user-lookup-api and must
