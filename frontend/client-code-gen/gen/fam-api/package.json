@@ -15,19 +15,11 @@
     "fam-api"
   ],
   "license": "Unlicense",
-  "main": "./dist/index.js",
-  "typings": "./dist/index.d.ts",
-  "module": "./dist/esm/index.js",
+  "main": "./index.ts",
+  "module": "./index.ts",
   "sideEffects": false,
-  "scripts": {
-    "build": "tsc && tsc -p tsconfig.esm.json",
-    "prepare": "npm run build"
-  },
-  "devDependencies": {
-    "@types/node": "^12.11.5",
-    "typescript": "^4.0"
-  },
   "peerDependencies": {
     "axios": "^1.6.1"
-  }
+  },
+  "types": "./index.ts"
 }
