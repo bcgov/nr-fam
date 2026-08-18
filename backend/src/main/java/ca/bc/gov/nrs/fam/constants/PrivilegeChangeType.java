@@ -24,5 +24,16 @@ public enum PrivilegeChangeType {
    * <p>Longer than the ten characters the code column originally allowed - V95
    * widened it rather than contract the name.
    */
-  CREATE_ROLE
+  CREATE_ROLE,
+
+  /**
+   * A role was removed from an application.
+   *
+   * <p>Like {@link #CREATE_ROLE}, a change to the application's roles rather than
+   * to one person's access, so it carries no target user either. It is the one
+   * change here that revokes access from several people at once - deleting a role
+   * in Keycloak takes it away from everyone holding it - so the row records how
+   * many held it, which is the only place that number survives.
+   */
+  DELETE_ROLE
 }

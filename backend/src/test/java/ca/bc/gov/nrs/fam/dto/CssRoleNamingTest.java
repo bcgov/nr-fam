@@ -154,7 +154,7 @@ class CssRoleNamingTest {
     assertThat(name).isEqualTo("FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator");
     assertThat(CssRoleNaming.parseLabel(name)).hasValueSatisfying(label -> {
       assertThat(label.roleCode()).isEqualTo("FREP_ADMINISTRATOR");
-      assertThat(label.description()).isEqualTo("FREP Administrator");
+      assertThat(label.text()).isEqualTo("FREP Administrator");
     });
   }
 
@@ -167,7 +167,7 @@ class CssRoleNamingTest {
 
     assertThat(CssRoleNaming.parseLabel(name))
         .hasValueSatisfying(label ->
-            assertThat(label.description()).isEqualTo("Submitter: FOM only"));
+            assertThat(label.text()).isEqualTo("Submitter: FOM only"));
   }
 
   @ParameterizedTest

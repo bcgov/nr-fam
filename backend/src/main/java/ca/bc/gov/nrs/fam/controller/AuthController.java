@@ -1,10 +1,13 @@
 package ca.bc.gov.nrs.fam.controller;
 
+import ca.bc.gov.nrs.fam.dto.SelfApplicationRoleDto;
 import ca.bc.gov.nrs.fam.dto.SelfDto;
+import ca.bc.gov.nrs.fam.dto.SelfPermissionDto;
 import ca.bc.gov.nrs.fam.entity.FamUser;
 import ca.bc.gov.nrs.fam.security.AccessRoleResolver;
 import ca.bc.gov.nrs.fam.security.Requester;
 import ca.bc.gov.nrs.fam.security.RequesterService;
+import ca.bc.gov.nrs.fam.service.SelfPermissionService;
 import ca.bc.gov.nrs.fam.security.TokenClaimsReader;
 import ca.bc.gov.nrs.fam.security.UserProvisioningService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,6 +46,7 @@ public class AuthController {
   private final AccessRoleResolver accessRoleResolver;
   private final RequesterService requesterService;
   private final TokenClaimsReader claimsReader;
+  private final SelfPermissionService selfPermissionService;
 
   /**
    * Provision the signed-in user and return their identity and effective roles.
@@ -77,6 +81,43 @@ public class AuthController {
   @Operation(operationId = "self", summary = "Current user's identity and effective access roles")
   public SelfDto self(Requester requester) {
     return toSelf(requester);
+  }
+
+  /**
+   * The caller's own administrative permissions, named rather than raw.
+   *
+   * <p>What "My permissions" shows. No authorization check beyond being signed
+   * in, and none is needed: it reports on the requester and takes no parameter,
+   * so there is nobody else it could be asked about.
+   *
+   * <p>These are administrative permissions - what the caller may administer in
+   * FAM. The roles they hold as an ordinary user of an application are not here
+   * and cannot be: those live on that application's own CSS integration and
+   * never reach a FAM token.
+   */
+  @GetMapping("/self/permissions")
+  @Operation(operationId = "self_permissions",
+      summary = "Current user's administrative permissions, with applications named")
+  public List<SelfPermissionDto> selfPermissions(Requester requester) {
+    return selfPermissionService.getSelfPermissions(requester);
+  }
+
+  /**
+   * Every application role the caller holds, across the integrations FAM can see.
+   *
+   * <p>Separate from {@code /self/permissions}, which answers from the token and
+   * returns immediately. This one asks CSS once per integration and environment,
+   * so it is materially slower - the screen renders the administrative half
+   * first and fills this in when it arrives.
+   *
+   * <p>Like {@code /self/permissions}, it takes no parameter and reports on the
+   * requester, so being signed in is the only check needed.
+   */
+  @GetMapping("/self/application-roles")
+  @Operation(operationId = "self_application_roles",
+      summary = "Every application role the current user holds")
+  public List<SelfApplicationRoleDto> selfApplicationRoles(Requester requester) {
+    return selfPermissionService.getSelfApplicationRoles(requester);
   }
 
   private static SelfDto toSelf(Requester requester) {

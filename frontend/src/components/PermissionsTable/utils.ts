@@ -25,14 +25,16 @@ export const toRevokeRequest = (
 });
 
 /**
- * How a role reads on screen: its description when it has one.
+ * How a role reads on a permission pill: its short name when it has one.
  *
- * Falls back to the code, which is what a role defined before FAM held
- * descriptions has - and what one added directly in the CSS console will always
- * have. An empty label would be worse than a technical one.
+ * The short name, not the long description - a sentence would not fit a pill,
+ * and the table is about who holds what rather than what each role means.
+ *
+ * Falls back to the code, which is what a role added directly in the CSS console
+ * will always have. An empty label would be worse than a technical one.
  */
 export const roleLabel = (row: CssUserRoleRowDto): string =>
-    row.role_description || row.role_name;
+    row.role_display_name || row.role_name;
 import type { AppPermissionGrantSummary } from "@/views/AddAppPermission/utils";
 import { wasGranted } from "@/views/ManagePermissionsView/utils";
 

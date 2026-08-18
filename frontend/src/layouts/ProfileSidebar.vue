@@ -35,6 +35,30 @@ const buttonLabel = computed(() => {
     return loading.value ? "Signing out..." : "Sign out";
 });
 
+/**
+ * How the user's directory reads next to their username.
+ *
+ * Empty rather than a placeholder for an unrecognised provider: the username
+ * alone is still correct, whereas the previous version fell back to `null`
+ * inside a template literal and rendered the word "null".
+ *
+ * `azureidir` is the alias BC Gov's standard realm actually issues for IDIR;
+ * `idir` is the legacy SiteMinder one. Matching only the legacy alias is why an
+ * ordinary IDIR sign-in showed nothing. Kept in step with the backend's
+ * `IdentityProvider` allowlist, which recognises all three.
+ */
+const directoryLabel = computed(() => {
+    switch (famLoginUser?.idpProvider) {
+        case "idir":
+        case "azureidir":
+            return "IDIR:";
+        case "bceidbusiness":
+            return "BCeID:";
+        default:
+            return "";
+    }
+});
+
 </script>
 
 <template>
@@ -70,16 +94,9 @@ const buttonLabel = computed(() => {
                 <div class="profile-info">
                     <p class="profile-name">{{ famLoginUser?.displayName }}</p>
                     <p class="profile-userid">
-                        {{
-                            `${
-                                famLoginUser?.idpProvider === "idir"
-                                    ? "IDIR: "
-                                    : famLoginUser?.idpProvider ===
-                                      "bceidbusiness"
-                                    ? "BCeID: "
-                                    : null
-                            }`
-                        }}
+                        <template v-if="directoryLabel">
+                            {{ directoryLabel }}
+                        </template>
                         {{ famLoginUser?.username }}
                     </p>
                     <p

@@ -10,6 +10,7 @@ import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsRoleDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsScopeDto;
 import ca.bc.gov.nrs.fam.dto.RoleDefinitionDetailsDto;
+import ca.bc.gov.nrs.fam.dto.RoleDeletionDetailsDto;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeType;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
@@ -136,13 +137,39 @@ public class PermissionAuditWriteService {
       int cssIntegrationId,
       String cssEnvironment,
       String roleCode,
+      String roleName,
       String description,
       String scopeType) {
 
     save(requester, null, null, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.CREATE_ROLE,
         RoleDefinitionDetailsDto.of(
-            roleCode, description, toRequiredScopeType(scopeType)));
+            roleCode, roleName, description, toRequiredScopeType(scopeType)));
+  }
+
+  /**
+   * Record that a role was removed from an application.
+   *
+   * <p>The only audit row that stands for more than one person losing access:
+   * deleting a role in Keycloak takes it from everyone at once, and afterwards
+   * there is nothing left upstream to say who those people were. The count is
+   * captured before the deletion for that reason - it cannot be recovered later.
+   *
+   * <p>Like {@link #storeRoleCreated}, carries no target user: the change is to
+   * the application's roles, not to one person's access.
+   */
+  public void storeRoleDeleted(
+      Requester requester,
+      int cssIntegrationId,
+      String cssEnvironment,
+      String roleCode,
+      String roleName,
+      List<String> removedRoles,
+      int membersAffected) {
+
+    save(requester, null, null, cssIntegrationId, cssEnvironment,
+        PrivilegeChangeType.DELETE_ROLE,
+        RoleDeletionDetailsDto.of(roleCode, roleName, removedRoles, membersAffected));
   }
 
   /**

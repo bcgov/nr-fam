@@ -6,15 +6,22 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
+import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
+import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
+import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
 import ca.bc.gov.nrs.fam.dto.CssIntegrationDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
+import ca.bc.gov.nrs.fam.dto.CssRoleBulkCreateResultDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleDeleteResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleOptionDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest;
@@ -199,16 +206,34 @@ class CssIntegrationServiceTest {
   }
 
   @Test
-  @DisplayName("reads a role's description off its sidecar")
-  void readsDescriptionFromSidecar() {
-    // CSS holds a name and nothing else, so the description is a role of its own.
+  @DisplayName("reads a role's name and description off its two sidecars")
+  void readsSidecars() {
+    // CSS holds a name and nothing else, so each text is a role of its own.
+    givenRoles(
+        role("FSPTS_VIEW_ALL", false),
+        role("FAM:LABEL:FSPTS_VIEW_ALL:View All", false),
+        role("FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit", false));
+
+    assertThat(service.getRoles(INTEGRATION, ENV)).singleElement().satisfies(option -> {
+      assertThat(option.name()).isEqualTo("FSPTS_VIEW_ALL");
+      assertThat(option.displayName()).isEqualTo("View All");
+      assertThat(option.description())
+          .isEqualTo("Allows users to view all the FSPs but not edit");
+    });
+  }
+
+  @Test
+  @DisplayName("a role predating descriptions keeps its name and simply has none")
+  void labelOnlyRoleStillReadsItsName() {
+    // Every role defined before FAM:DESC existed has only a FAM:LABEL sidecar,
+    // and its text has always been the short name.
     givenRoles(
         role("FREP_ADMINISTRATOR", false),
         role("FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator", false));
 
     assertThat(service.getRoles(INTEGRATION, ENV)).singleElement().satisfies(option -> {
-      assertThat(option.name()).isEqualTo("FREP_ADMINISTRATOR");
-      assertThat(option.description()).isEqualTo("FREP Administrator");
+      assertThat(option.displayName()).isEqualTo("FREP Administrator");
+      assertThat(option.description()).isNull();
     });
   }
 
@@ -239,9 +264,19 @@ class CssIntegrationServiceTest {
       .userName("JSMITH").userGuid("AAAA1111").accessRoles(java.util.List.of("FAM_ADMIN"))
       .build();
 
+  /**
+   * The second argument is the role's short NAME - what the fixtures have always
+   * held ("FREP Administrator"). The long description is a separate field now and
+   * is left out unless a test is about it.
+   */
   private static CssRoleCreateRequest createRequest(
-      String code, String description, boolean district, boolean client) {
-    return new CssRoleCreateRequest(code, description, district, client);
+      String code, String roleName, boolean district, boolean client) {
+    return new CssRoleCreateRequest(code, roleName, null, district, client);
+  }
+
+  private static CssRoleCreateRequest createRequest(
+      String code, String roleName, String description, boolean district, boolean client) {
+    return new CssRoleCreateRequest(code, roleName, description, district, client);
   }
 
   @Test
@@ -258,7 +293,7 @@ class CssIntegrationServiceTest {
     verify(cssApiService, never()).addRoleComposites(anyInt(), anyString(), anyString(), any());
 
     assertThat(created.name()).isEqualTo("FREP_ADMINISTRATOR");
-    assertThat(created.description()).isEqualTo("FREP Administrator");
+    assertThat(created.displayName()).isEqualTo("FREP Administrator");
     assertThat(created.roleTypeDistrict()).isFalse();
     assertThat(created.roleTypeClient()).isFalse();
   }
@@ -424,7 +459,7 @@ class CssIntegrationServiceTest {
         createRequest("FREP_ADMINISTRATOR", "FREP Administrator", true, false), DEFINER);
 
     verify(auditWriteService).storeRoleCreated(
-        DEFINER, INTEGRATION, ENV, "FREP_ADMINISTRATOR", "FREP Administrator", "DISTRICT");
+        DEFINER, INTEGRATION, ENV, "FREP_ADMINISTRATOR", "FREP Administrator", null, "DISTRICT");
   }
 
   @Test
@@ -437,7 +472,7 @@ class CssIntegrationServiceTest {
         createRequest(" frep_administrator ", " FREP Administrator ", false, false), DEFINER);
 
     verify(auditWriteService).storeRoleCreated(
-        DEFINER, INTEGRATION, ENV, "FREP_ADMINISTRATOR", "FREP Administrator", null);
+        DEFINER, INTEGRATION, ENV, "FREP_ADMINISTRATOR", "FREP Administrator", null, null);
   }
 
   @Test
@@ -453,7 +488,7 @@ class CssIntegrationServiceTest {
         .isInstanceOf(IllegalStateException.class);
 
     verify(auditWriteService, never()).storeRoleCreated(
-        any(), anyInt(), anyString(), anyString(), anyString(), any());
+        any(), anyInt(), anyString(), anyString(), anyString(), any(), any());
   }
 
   @Test
@@ -466,7 +501,7 @@ class CssIntegrationServiceTest {
         .isInstanceOf(FamHttpException.class);
 
     verify(auditWriteService, never()).storeRoleCreated(
-        any(), anyInt(), anyString(), anyString(), anyString(), any());
+        any(), anyInt(), anyString(), anyString(), anyString(), any(), any());
   }
 
   @Test
@@ -486,7 +521,7 @@ class CssIntegrationServiceTest {
 
     assertThat(service.getRoles(INTEGRATION, ENV)).singleElement().satisfies(option -> {
       assertThat(option.name()).isEqualTo("FREP_ADMINISTRATOR");
-      assertThat(option.description()).isEqualTo("FREP Administrator");
+      assertThat(option.displayName()).isEqualTo("FREP Administrator");
       assertThat(option.roleTypeDistrict()).isTrue();
     });
   }
@@ -499,9 +534,28 @@ class CssIntegrationServiceTest {
         "jane@gov.bc.ca", scopeType, values);
   }
 
+  /**
+   * An application administrator of the integration under test.
+   *
+   * <p>Holds a real tier rather than a placeholder role: since delegations were
+   * introduced the grant path checks what the requester may grant, and a
+   * requester with no tier is refused before the guard under test is reached.
+   */
+  /**
+   * An application administrator, for the tests that exercise grant mechanics
+   * rather than authorisation. Required since the grant path started checking
+   * what the requester may grant - there is no unauthenticated grant any more.
+   */
+  private static final Requester GRANTER = Requester.builder()
+      .userName("GRANTER").userGuid("EEEE1111")
+      .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
+      .build();
+
   private static Requester requesterWithGuid(String guid) {
     return Requester.builder()
-        .userName("JSMITH").userGuid(guid).accessRoles(List.of("X_ADMIN")).build();
+        .userName("JSMITH").userGuid(guid)
+        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
+        .build();
   }
 
   @Test
@@ -579,7 +633,7 @@ class CssIntegrationServiceTest {
     // There is nobody to self-grant to on the system path.
     givenRoles(role("CHR_FREP_EDITOR", false));
 
-    assertThat(service.assignUserRoles(INTEGRATION, ENV, request(null, List.of())))
+    assertThat(service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER))
         .singleElement()
         .satisfies(r -> assertThat(r.assigned()).isTrue());
   }
@@ -590,7 +644,7 @@ class CssIntegrationServiceTest {
     givenRoles(role("CHR_FREP_EDITOR", false));
 
     List<CssUserRoleAssignmentResult> results =
-        service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()));
+        service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
 
     assertThat(results).singleElement().satisfies(r -> {
       assertThat(r.roleName()).isEqualTo("CHR_FREP_EDITOR");
@@ -606,7 +660,7 @@ class CssIntegrationServiceTest {
     givenRoles(role("CHR_FREP_EDITOR", false));
 
     List<CssUserRoleAssignmentResult> results =
-        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DQU")));
+        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DQU")), GRANTER);
 
     assertThat(results).extracting(CssUserRoleAssignmentResult::roleName)
         .containsExactly("CHR_FREP_EDITOR_DISTRICT-DCC", "CHR_FREP_EDITOR_DISTRICT-DQU");
@@ -628,7 +682,7 @@ class CssIntegrationServiceTest {
     givenRoles(role("CHR_FREP_EDITOR", false), role("CHR_FREP_EDITOR_DISTRICT-DCC", false));
 
     List<CssUserRoleAssignmentResult> results =
-        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC")));
+        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC")), GRANTER);
 
     assertThat(results).singleElement().satisfies(r -> {
       assertThat(r.roleCreated()).isFalse();
@@ -644,7 +698,7 @@ class CssIntegrationServiceTest {
     givenRoles(role("CHR_FREP_EDITOR", false));
 
     assertThat(service.assignUserRoles(
-        INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DCC"))))
+        INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DCC")), GRANTER))
         .hasSize(1);
   }
 
@@ -656,7 +710,7 @@ class CssIntegrationServiceTest {
         .when(cssApiService).createRole(INTEGRATION, ENV, "CHR_FREP_EDITOR_DISTRICT-DQU");
 
     List<CssUserRoleAssignmentResult> results =
-        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DQU")));
+        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DQU")), GRANTER);
 
     assertThat(results).hasSize(2);
     assertThat(results).filteredOn(r -> r.roleName().endsWith("DCC")).singleElement()
@@ -676,7 +730,7 @@ class CssIntegrationServiceTest {
         .when(cssApiService).assignUserRoles(anyInt(), anyString(), anyString(), any());
 
     List<CssUserRoleAssignmentResult> results =
-        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC")));
+        service.assignUserRoles(INTEGRATION, ENV, request("DISTRICT", List.of("DCC")), GRANTER);
 
     assertThat(results).singleElement().satisfies(r -> {
       // The role was still created; only the assignment failed.
@@ -690,7 +744,7 @@ class CssIntegrationServiceTest {
   @DisplayName("rejects scope values with no scope type as a bad request")
   void rejectsScopeValuesWithoutScopeType() {
     assertThatThrownBy(() ->
-        service.assignUserRoles(INTEGRATION, ENV, request(null, List.of("DCC"))))
+        service.assignUserRoles(INTEGRATION, ENV, request(null, List.of("DCC")), GRANTER))
         .isInstanceOf(FamHttpException.class)
         .hasMessageContaining("scope_type");
 
@@ -798,7 +852,7 @@ class CssIntegrationServiceTest {
         .singleElement()
         .satisfies(row -> {
           assertThat(row.roleName()).isEqualTo("FREP_ADMINISTRATOR");
-          assertThat(row.roleDescription()).isEqualTo("FREP Administrator");
+          assertThat(row.roleDisplayName()).isEqualTo("FREP Administrator");
         });
   }
 
@@ -817,7 +871,7 @@ class CssIntegrationServiceTest {
     assertThat(service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER))
         .singleElement()
         .satisfies(row -> {
-          assertThat(row.roleDescription()).isEqualTo("Submitter (CHR)");
+          assertThat(row.roleDisplayName()).isEqualTo("Submitter (CHR)");
           assertThat(row.scopeValue()).isEqualTo("DCC");
         });
   }
@@ -834,7 +888,7 @@ class CssIntegrationServiceTest {
 
     assertThat(service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER))
         .singleElement()
-        .satisfies(row -> assertThat(row.roleDescription()).isNull());
+        .satisfies(row -> assertThat(row.roleDisplayName()).isNull());
   }
 
   @Test
@@ -881,5 +935,909 @@ class CssIntegrationServiceTest {
 
     assertThat(service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER)).singleElement()
         .satisfies(row -> assertThat(row.domain()).isNull());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Role deletion
+  // ---------------------------------------------------------------------------
+
+  private static CssApiService.CssUserDto user(String username) {
+    return new CssApiService.CssUserDto(username, null, null, null, null);
+  }
+
+  @Test
+  @DisplayName("deleting a role removes its sidecar too, but never the scope marker")
+  void deleteRemovesSidecarNotMarker() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role("HAS_DISTRICT_ROLE", false),
+        role("FAM:LABEL:CHR_FREP_EDITOR:Submitter (CHR)", false));
+
+    CssRoleDeleteResultDto result =
+        service.deleteRole(INTEGRATION, ENV, "CHR_FREP_EDITOR", DEFINER);
+
+    assertThat(result.removedRoles())
+        .containsExactlyInAnyOrder(
+            "CHR_FREP_EDITOR", "FAM:LABEL:CHR_FREP_EDITOR:Submitter (CHR)");
+
+    // The marker is shared by every scoped role on the integration.
+    verify(cssApiService, never()).deleteRole(INTEGRATION, ENV, "HAS_DISTRICT_ROLE");
+  }
+
+  @Test
+  @DisplayName("deleting a scoped role takes the per-scope roles with it")
+  void deleteRemovesDerivedRoles() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role("CHR_FREP_EDITOR_DISTRICT-DCC", false),
+        role("CHR_FREP_EDITOR_DISTRICT-DKA", false),
+        role("HAS_DISTRICT_ROLE", false));
+
+    CssRoleDeleteResultDto result =
+        service.deleteRole(INTEGRATION, ENV, "CHR_FREP_EDITOR", DEFINER);
+
+    assertThat(result.removedRoles()).containsExactlyInAnyOrder(
+        "CHR_FREP_EDITOR", "CHR_FREP_EDITOR_DISTRICT-DCC", "CHR_FREP_EDITOR_DISTRICT-DKA");
+  }
+
+  @Test
+  @DisplayName("a role whose name merely starts the same is left alone")
+  void deleteDoesNotMatchOnPrefix() {
+    givenRoles(role("FREP_EDITOR", false), role("FREP_EDITOR_EXTRA", false));
+
+    CssRoleDeleteResultDto result = service.deleteRole(INTEGRATION, ENV, "FREP_EDITOR", DEFINER);
+
+    assertThat(result.removedRoles()).containsExactly("FREP_EDITOR");
+    verify(cssApiService, never()).deleteRole(INTEGRATION, ENV, "FREP_EDITOR_EXTRA");
+  }
+
+  @Test
+  @DisplayName("counts people once when they hold the role in several scopes")
+  void deleteCountsDistinctMembers() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role("CHR_FREP_EDITOR_DISTRICT-DCC", false),
+        role("CHR_FREP_EDITOR_DISTRICT-DKA", false));
+    when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "CHR_FREP_EDITOR_DISTRICT-DCC"))
+        .thenReturn(List.of(user("abc@azureidir"), user("def@azureidir")));
+    when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "CHR_FREP_EDITOR_DISTRICT-DKA"))
+        .thenReturn(List.of(user("abc@azureidir")));
+
+    assertThat(service.deleteRole(INTEGRATION, ENV, "CHR_FREP_EDITOR", DEFINER).membersAffected())
+        .isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("the member count is taken before anything is deleted")
+  void deleteCountsBeforeDeleting() {
+    givenRoles(role("FREP_EDITOR", false));
+    when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "FREP_EDITOR"))
+        .thenReturn(List.of(user("abc@azureidir")));
+
+    service.deleteRole(INTEGRATION, ENV, "FREP_EDITOR", DEFINER);
+
+    // Counting after the deletion would always report zero: CSS keeps no trace
+    // of who held a role once it is gone.
+    org.mockito.InOrder order = org.mockito.Mockito.inOrder(cssApiService);
+    order.verify(cssApiService).getUsersWithRole(INTEGRATION, ENV, "FREP_EDITOR");
+    order.verify(cssApiService).deleteRole(INTEGRATION, ENV, "FREP_EDITOR");
+  }
+
+  @Test
+  @DisplayName("refuses to delete a scope marker")
+  void deleteRefusesMarker() {
+    assertThatThrownBy(() -> service.deleteRole(INTEGRATION, ENV, "HAS_DISTRICT_ROLE", DEFINER))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("scope marker");
+
+    verify(cssApiService, never()).deleteRole(anyInt(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("refuses to delete a role that does not exist")
+  void deleteRefusesUnknownRole() {
+    givenRoles(role("FREP_EDITOR", false));
+
+    assertThatThrownBy(() -> service.deleteRole(INTEGRATION, ENV, "NOPE", DEFINER))
+        .isInstanceOf(FamHttpException.class);
+
+    verify(cssApiService, never()).deleteRole(anyInt(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("audits the deletion with the count captured before it")
+  void deleteIsAudited() {
+    givenRoles(
+        role("FREP_EDITOR", false),
+        role("FAM:LABEL:FREP_EDITOR:FREP Editor", false));
+    when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "FREP_EDITOR"))
+        .thenReturn(List.of(user("abc@azureidir"), user("def@azureidir")));
+
+    service.deleteRole(INTEGRATION, ENV, "FREP_EDITOR", DEFINER);
+
+    verify(auditWriteService).storeRoleDeleted(
+        eq(DEFINER), eq(INTEGRATION), eq(ENV), eq("FREP_EDITOR"), eq("FREP Editor"),
+        any(), eq(2));
+  }
+
+  @Test
+  @DisplayName("a partial failure reports what was already removed")
+  void deletePartialFailureNamesWhatWent() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role("CHR_FREP_EDITOR_DISTRICT-DCC", false));
+    doThrow(new RuntimeException("boom"))
+        .when(cssApiService).deleteRole(INTEGRATION, ENV, "CHR_FREP_EDITOR");
+
+    // Derived roles go first, so by the time this fails the access is gone.
+    assertThatThrownBy(() -> service.deleteRole(INTEGRATION, ENV, "CHR_FREP_EDITOR", DEFINER))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("CHR_FREP_EDITOR_DISTRICT-DCC");
+
+    verify(auditWriteService, never()).storeRoleDeleted(
+        any(), anyInt(), anyString(), anyString(), any(), any(), anyInt());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Member counts
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("member counts fold derived roles into their base role")
+  void memberCountsFoldDerivedRoles() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role("CHR_FREP_EDITOR_DISTRICT-DCC", false),
+        role("HAS_DISTRICT_ROLE", false),
+        role("FAM:LABEL:CHR_FREP_EDITOR:Submitter (CHR)", false));
+    when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "CHR_FREP_EDITOR_DISTRICT-DCC"))
+        .thenReturn(List.of(user("abc@azureidir")));
+
+    assertThat(service.getRoleMemberCounts(INTEGRATION, ENV))
+        .singleElement()
+        .satisfies(count -> {
+          assertThat(count.roleName()).isEqualTo("CHR_FREP_EDITOR");
+          assertThat(count.memberCount()).isEqualTo(1);
+        });
+
+    // Neither a sidecar nor a marker is something a person holds.
+    verify(cssApiService, never()).getUsersWithRole(
+        INTEGRATION, ENV, "FAM:LABEL:CHR_FREP_EDITOR:Submitter (CHR)");
+    verify(cssApiService, never()).getUsersWithRole(INTEGRATION, ENV, "HAS_DISTRICT_ROLE");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Creating a role in every environment
+  // ---------------------------------------------------------------------------
+
+  private void givenIntegration(String... environments) {
+    when(cssApiService.getIntegrations()).thenReturn(List.of(
+        new CssIntegrationDto(INTEGRATION, "FREP", null, List.of(environments),
+            "applied", null, null)));
+  }
+
+  private void givenRolesIn(String environment, CssRoleDto... roles) {
+    when(cssApiService.getRoles(INTEGRATION, environment)).thenReturn(List.of(roles));
+  }
+
+  @Test
+  @DisplayName("creates the role in every environment the integration has")
+  void createsInEveryEnvironment() {
+    givenIntegration("dev", "test", "prod");
+    for (String env : List.of("dev", "test", "prod")) {
+      givenRolesIn(env);
+    }
+
+    CssRoleBulkCreateResultDto result = service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        DEFINER);
+
+    assertThat(result.environments()).containsExactly("dev", "test", "prod");
+    for (String env : List.of("dev", "test", "prod")) {
+      verify(cssApiService).createRole(INTEGRATION, env, "FREP_ADMINISTRATOR");
+      verify(cssApiService).createRole(
+          INTEGRATION, env, "FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator");
+    }
+  }
+
+  @Test
+  @DisplayName("uses the integration's own environments, not an assumed dev/test/prod")
+  void usesTheIntegrationsEnvironments() {
+    givenIntegration("dev", "test");
+    givenRolesIn("dev");
+    givenRolesIn("test");
+
+    assertThat(service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        DEFINER).environments())
+        .containsExactly("dev", "test");
+
+    // Asking CSS for an environment the integration does not have would fail.
+    verify(cssApiService, never()).createRole(eq(INTEGRATION), eq("prod"), anyString());
+  }
+
+  @Test
+  @DisplayName("creates nothing when the code is taken in any one environment")
+  void refusesWhenTakenAnywhere() {
+    givenIntegration("dev", "test", "prod");
+    givenRolesIn("dev");
+    givenRolesIn("test");
+    givenRolesIn("prod", role("FREP_ADMINISTRATOR", false));
+
+    assertThatThrownBy(() -> service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        DEFINER))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("prod");
+
+    // Not even the environments that were free: a half-created code cannot be
+    // fixed from the screen, because creating again fails on the one that has it.
+    verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+    verify(auditWriteService, never()).storeRoleCreated(
+        any(), anyInt(), anyString(), anyString(), anyString(), any(), any());
+  }
+
+  @Test
+  @DisplayName("rolls back earlier environments when a later one fails")
+  void rollsBackEarlierEnvironments() {
+    givenIntegration("dev", "test", "prod");
+    givenRolesIn("dev");
+    givenRolesIn("test");
+    givenRolesIn("prod");
+    doThrow(new RuntimeException("upstream down"))
+        .when(cssApiService).createRole(INTEGRATION, "prod", "FREP_ADMINISTRATOR");
+
+    assertThatThrownBy(() -> service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        DEFINER))
+        .isInstanceOf(RuntimeException.class);
+
+    // Nobody can hold a role created seconds ago, so undoing it costs nothing -
+    // and leaves the code free to try again.
+    verify(cssApiService).deleteRole(INTEGRATION, "dev", "FREP_ADMINISTRATOR");
+    verify(cssApiService).deleteRole(INTEGRATION, "test", "FREP_ADMINISTRATOR");
+  }
+
+  @Test
+  @DisplayName("writes no audit for a creation that was rolled back")
+  void noAuditWhenRolledBack() {
+    givenIntegration("dev", "test");
+    givenRolesIn("dev");
+    givenRolesIn("test");
+    doThrow(new RuntimeException("upstream down"))
+        .when(cssApiService).createRole(INTEGRATION, "test", "FREP_ADMINISTRATOR");
+
+    assertThatThrownBy(() -> service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        DEFINER))
+        .isInstanceOf(RuntimeException.class);
+
+    // dev succeeded and was undone; an audit row claiming it would be a lie.
+    verify(auditWriteService, never()).storeRoleCreated(
+        any(), anyInt(), anyString(), anyString(), anyString(), any(), any());
+  }
+
+  @Test
+  @DisplayName("audits each environment once all of them have succeeded")
+  void auditsEveryEnvironment() {
+    givenIntegration("dev", "test");
+    givenRolesIn("dev");
+    givenRolesIn("test");
+
+    service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("CHR_FREP_EDITOR", "Submitter (CHR)", true, false), DEFINER);
+
+    verify(auditWriteService).storeRoleCreated(
+        DEFINER, INTEGRATION, "dev", "CHR_FREP_EDITOR", "Submitter (CHR)", null, "DISTRICT");
+    verify(auditWriteService).storeRoleCreated(
+        DEFINER, INTEGRATION, "test", "CHR_FREP_EDITOR", "Submitter (CHR)", null, "DISTRICT");
+  }
+
+  @Test
+  @DisplayName("scopes the role in every environment, marker and all")
+  void scopesEveryEnvironment() {
+    givenIntegration("dev", "test");
+    givenRolesIn("dev");
+    givenRolesIn("test");
+
+    service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("CHR_FREP_EDITOR", "Submitter (CHR)", true, false), DEFINER);
+
+    for (String env : List.of("dev", "test")) {
+      verify(cssApiService).createRole(INTEGRATION, env, "HAS_DISTRICT_ROLE");
+      verify(cssApiService).addRoleComposites(
+          INTEGRATION, env, "CHR_FREP_EDITOR", List.of("HAS_DISTRICT_ROLE"));
+    }
+  }
+
+  @Test
+  @DisplayName("refuses an integration that has no environments")
+  void refusesIntegrationWithoutEnvironments() {
+    when(cssApiService.getIntegrations()).thenReturn(List.of(
+        new CssIntegrationDto(INTEGRATION, "FREP", null, null, "applied", null, null)));
+
+    assertThatThrownBy(() -> service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        DEFINER))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("no environments");
+  }
+
+  @Test
+  @DisplayName("validates the role code before touching any environment")
+  void validatesBeforeAnyEnvironment() {
+    assertThatThrownBy(() -> service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("HAS_DISTRICT_ROLE", "Marker", false, false), DEFINER))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("reserved");
+
+    verify(cssApiService, never()).getIntegrations();
+  }
+
+  @Test
+  @DisplayName("creates a second sidecar for the long description")
+  void createsDescriptionSidecar() {
+    givenRoles();
+
+    service.createRole(INTEGRATION, ENV, createRequest(
+        "FSPTS_VIEW_ALL", "View All",
+        "Allows users to view all the FSPs but not edit", false, false), DEFINER);
+
+    verify(cssApiService).createRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL");
+    verify(cssApiService).createRole(INTEGRATION, ENV, "FAM:LABEL:FSPTS_VIEW_ALL:View All");
+    verify(cssApiService).createRole(INTEGRATION, ENV,
+        "FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit");
+  }
+
+  @Test
+  @DisplayName("creates no description sidecar when none was given")
+  void noDescriptionNoSidecar() {
+    givenRoles();
+
+    service.createRole(INTEGRATION, ENV,
+        createRequest("FSPTS_VIEW_ALL", "View All", "  ", false, false), DEFINER);
+
+    // An empty sidecar would read back as a blank description rather than none.
+    verify(cssApiService, never()).createRole(
+        eq(INTEGRATION), eq(ENV), startsWith("FAM:DESC:"));
+  }
+
+  @Test
+  @DisplayName("deleting a role removes both of its sidecars")
+  void deleteRemovesBothSidecars() {
+    givenRoles(
+        role("FSPTS_VIEW_ALL", false),
+        role("FAM:LABEL:FSPTS_VIEW_ALL:View All", false),
+        role("FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit", false));
+
+    // Leaving either behind would describe a role that no longer exists.
+    assertThat(service.deleteRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL", DEFINER).removedRoles())
+        .containsExactlyInAnyOrder(
+            "FSPTS_VIEW_ALL",
+            "FAM:LABEL:FSPTS_VIEW_ALL:View All",
+            "FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit");
+  }
+
+  @Test
+  @DisplayName("a description sidecar is never offered as a grantable role")
+  void descriptionSidecarIsNotSelectable() {
+    givenRoles(
+        role("FSPTS_VIEW_ALL", false),
+        role("FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit", false));
+
+    assertThat(service.getRoles(INTEGRATION, ENV))
+        .extracting(CssRoleOptionDto::name)
+        .containsExactly("FSPTS_VIEW_ALL");
+  }
+
+  @Test
+  @DisplayName("the assignment listing labels a row with the role's short name")
+  void assignmentRowUsesDisplayName() {
+    givenRoles(
+        role("FSPTS_VIEW_ALL", false),
+        role("FAM:LABEL:FSPTS_VIEW_ALL:View All", false),
+        role("FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit", false));
+    when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL"))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "abc@azureidir", "Jane", "Smith", "jane@gov.bc.ca", null)));
+
+    // The pill shows the name, not the sentence - a sentence would not fit.
+    assertThat(service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER))
+        .singleElement()
+        .satisfies(row -> assertThat(row.roleDisplayName()).isEqualTo("View All"));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Administrators (Delegated admins / Application admins tabs)
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("reads administrators from FAM's own integration, not the application's")
+  void administratorsComeFromFamsIntegration() {
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of());
+
+    service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.APP_ADMIN);
+
+    // The role sits on FAM's client; the application is named inside the role.
+    // Reading the application's own integration would always come back empty.
+    verify(cssApiService).getUsersWithRole(
+        FAM_OWN_INTEGRATION, "dev", "APP_ADMIN_" + INTEGRATION + "_DEV");
+    verify(cssApiService, never()).getUsersWithRole(
+        eq(INTEGRATION), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("the delegated roster unions everyone holding any delegation")
+  void delegatedTabUnionsEveryDelegation() {
+    // A delegated administrator holds one role per delegation, so listing the
+    // plain tier marker alone would show almost nobody.
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR", false),
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FREP_VIEWER", false),
+        role("DELEGATED_ADMIN_99999_DEV__OTHER_APP_ROLE", false),
+        role("APP_ADMIN_" + INTEGRATION + "_DEV", false)));
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of());
+
+    service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN);
+
+    verify(cssApiService).getUsersWithRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR");
+    verify(cssApiService).getUsersWithRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FREP_VIEWER");
+
+    // Another application's delegations, and the app-admin role, are not ours.
+    verify(cssApiService, never()).getUsersWithRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_99999_DEV__OTHER_APP_ROLE");
+    verify(cssApiService, never()).getUsersWithRole(FAM_OWN_INTEGRATION, "dev",
+        "APP_ADMIN_" + INTEGRATION + "_DEV");
+  }
+
+  @Test
+  @DisplayName("a delegated row names the role that person may grant")
+  void delegatedRowNamesItsRole() {
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR_DISTRICT-DCC", false)));
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "abc@azureidir", "Jane", "Smith", "jane@gov.bc.ca", null)));
+
+    assertThat(service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+        .singleElement()
+        .satisfies(row -> assertThat(row.delegatedRoleName())
+            .isEqualTo("CHR_FREP_EDITOR_DISTRICT-DCC"));
+  }
+
+  @Test
+  @DisplayName("keeps environments apart - a dev tab must not list prod administrators")
+  void administratorsAreEnvironmentSpecific() {
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of());
+
+    service.getAdministrators(INTEGRATION, "prod", AdminRoleAuthGroup.APP_ADMIN);
+
+    verify(cssApiService).getUsersWithRole(
+        FAM_OWN_INTEGRATION, "dev", "APP_ADMIN_" + INTEGRATION + "_PROD");
+  }
+
+  @Test
+  @DisplayName("names the administrator and recovers their GUID and domain")
+  void administratorRowsAreNamed() {
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "aabbccddeeff00112233445566778899@azureidir",
+            "Jane", "Smith", "jane@gov.bc.ca", null)));
+
+    assertThat(service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.APP_ADMIN))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.firstName()).isEqualTo("Jane");
+          assertThat(row.email()).isEqualTo("jane@gov.bc.ca");
+          assertThat(row.userGuid()).isEqualTo("AABBCCDDEEFF00112233445566778899");
+          assertThat(row.domain()).isEqualTo("IDIR");
+          assertThat(row.tier()).isEqualTo(AdminRoleAuthGroup.APP_ADMIN);
+        });
+  }
+
+  @Test
+  @DisplayName("refuses the FAM_ADMIN tier, which belongs to no single application")
+  void famAdminTierIsRefused() {
+    assertThatThrownBy(() -> service.getAdministrators(
+        INTEGRATION, ENV, AdminRoleAuthGroup.FAM_ADMIN))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("an administrative role that does not exist yet is an empty roster")
+  void missingAdminRoleIsEmptyNotAnError() {
+    // CSS answers 404 for a role nobody has been appointed to, which is the
+    // normal state for most applications - not a failure to report.
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenThrow(new ca.bc.gov.nrs.fam.exception.UpstreamException(
+            org.springframework.http.HttpStatus.NOT_FOUND, "not_found",
+            "Role not found", "css-api"));
+
+    assertThat(service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a real upstream failure is still reported")
+  void otherUpstreamFailuresStillSurface() {
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenThrow(new ca.bc.gov.nrs.fam.exception.UpstreamException(
+            org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "boom",
+            "CSS is down", "css-api"));
+
+    // Swallowing this would show an empty roster and hide an outage.
+    assertThatThrownBy(() -> service.getAdministrators(
+        INTEGRATION, ENV, AdminRoleAuthGroup.APP_ADMIN))
+        .isInstanceOf(ca.bc.gov.nrs.fam.exception.UpstreamException.class);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Delegated administrators: what they may grant
+  // ---------------------------------------------------------------------------
+
+  /** A delegated administrator holding delegations for exactly these roles. */
+  private static Requester delegatedFor(String... roleNames) {
+    List<String> roles = new java.util.ArrayList<>();
+    for (String roleName : roleNames) {
+      roles.add(FamAdminRole.delegation(INTEGRATION, ENV, roleName));
+    }
+    return Requester.builder()
+        .userName("DELEGATE").userGuid("DDDDEEEEFFFF00112233445566778899")
+        .userType(UserType.IDIR)
+        .accessRoles(roles)
+        .build();
+  }
+
+  @Test
+  @DisplayName("a delegated admin may grant the role they were delegated")
+  void delegatedAdminMayGrantTheirRole() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    assertThat(service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), delegatedFor("CHR_FREP_EDITOR")))
+        .singleElement()
+        .satisfies(result -> assertThat(result.assigned()).isTrue());
+  }
+
+  @Test
+  @DisplayName("a delegated admin may not grant a role they were not delegated")
+  void delegatedAdminMayNotGrantOtherRoles() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    // The gap this closes: before delegations, any delegated administrator could
+    // grant every role the application defined.
+    assertThatThrownBy(() -> service.assignUserRoles(
+        INTEGRATION, ENV, request(null, List.of()), delegatedFor("SOMETHING_ELSE")))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("CHR_FREP_EDITOR");
+
+    verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
+  }
+
+  @Test
+  @DisplayName("a delegation is per scope value - one district does not carry another")
+  void delegationIsPerScopeValue() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    // Delegated DCC only; the request asks for DCC and DKA.
+    assertThatThrownBy(() -> service.assignUserRoles(
+        INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DKA")),
+        delegatedFor("CHR_FREP_EDITOR_DISTRICT-DCC")))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("DKA");
+
+    // All or nothing: DCC must not be granted just because it was allowed.
+    verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
+  }
+
+  @Test
+  @DisplayName("a delegation for one scope value grants that one")
+  void delegationAllowsItsOwnScopeValue() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    assertThat(service.assignUserRoles(INTEGRATION, ENV,
+        request("DISTRICT", List.of("DCC")),
+        delegatedFor("CHR_FREP_EDITOR_DISTRICT-DCC")))
+        .singleElement()
+        .satisfies(result -> assertThat(result.assigned()).isTrue());
+  }
+
+  @Test
+  @DisplayName("a delegation for another application does not carry over")
+  void delegationIsPerApplication() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    Requester elsewhere = Requester.builder()
+        .userName("DELEGATE").userGuid("DDDD1111").userType(UserType.IDIR)
+        .accessRoles(List.of(FamAdminRole.delegation(99999, "dev", "CHR_FREP_EDITOR")))
+        .build();
+
+    assertThatThrownBy(() -> service.assignUserRoles(
+        INTEGRATION, ENV, request(null, List.of()), elsewhere))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("an application administrator still grants anything")
+  void appAdminIsUnrestricted() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    // Delegations restrict the delegated tier only; they must not narrow the tier
+    // that hands them out.
+    assertThat(service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), requesterWithGuid("SOMEONEELSE")))
+        .singleElement()
+        .satisfies(result -> assertThat(result.assigned()).isTrue());
+  }
+
+  @Test
+  @DisplayName("revoking is delegated the same way granting is")
+  void revokeIsAlsoRestricted() {
+    assertThatThrownBy(() -> service.revokeUserRole(
+        INTEGRATION, ENV,
+        new CssUserRoleRevokeRequest("AABBCCDDEEFF00112233445566778899", UserType.IDIR,
+            "CHR_FREP_EDITOR", null, null),
+        delegatedFor("SOMETHING_ELSE")))
+        .isInstanceOf(FamHttpException.class);
+
+    verify(cssApiService, never()).removeUserRole(anyInt(), anyString(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("holding a delegation makes somebody a delegated administrator")
+  void delegationImpliesTheTier() {
+    // The plain DELEGATED_ADMIN_<id>_<ENV> marker need not also be assigned, so
+    // appointing is one role rather than two that must be kept in step.
+    assertThat(delegatedFor("CHR_FREP_EDITOR").tierFor(INTEGRATION, ENV))
+        .contains(AdminRoleAuthGroup.DELEGATED_ADMIN);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Appointing and removing delegated administrators
+  // ---------------------------------------------------------------------------
+
+  private static CssDelegatedAdminRequest appointment(String scopeType, List<String> values) {
+    return new CssDelegatedAdminRequest(
+        "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
+        scopeType, values);
+  }
+
+  @Test
+  @DisplayName("appoints by creating the delegation on FAM's own integration")
+  void appointCreatesTheDelegation() {
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of());
+
+    service.appointDelegatedAdmin(INTEGRATION, ENV, appointment(null, List.of()),
+        requesterWithGuid("SOMEONEELSE"));
+
+    String delegation = "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR";
+    verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "dev", delegation);
+    verify(cssApiService).assignUserRoles(
+        eq(FAM_OWN_INTEGRATION), eq("dev"), anyString(), eq(List.of(delegation)));
+
+    // The application's own integration holds application roles, never these.
+    verify(cssApiService, never()).createRole(eq(INTEGRATION), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("a scoped appointment is one delegation per scope value")
+  void appointIsPerScopeValue() {
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of());
+
+    service.appointDelegatedAdmin(INTEGRATION, ENV,
+        appointment("DISTRICT", List.of("DCC", "DKA")), requesterWithGuid("SOMEONEELSE"));
+
+    // Delegating the bare base role would authorise nothing, since a scoped grant
+    // only ever assigns per-scope roles.
+    verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR_DISTRICT-DCC");
+    verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR_DISTRICT-DKA");
+  }
+
+  @Test
+  @DisplayName("refuses to appoint yourself")
+  void appointRefusesSelf() {
+    Requester self = Requester.builder()
+        .userName("JSMITH").userGuid("AABBCCDDEEFF00112233445566778899")
+        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
+        .build();
+
+    assertThatThrownBy(() -> service.appointDelegatedAdmin(
+        INTEGRATION, ENV, appointment(null, List.of()), self))
+        .isInstanceOf(FamHttpException.class);
+
+    verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("a delegated admin may not appoint another one")
+  void delegatedAdminMayNotAppoint() {
+    // The one thing separating the tiers: otherwise a delegated admin could
+    // promote anyone, themselves included.
+    assertThatThrownBy(() -> service.appointDelegatedAdmin(
+        INTEGRATION, ENV, appointment(null, List.of()), delegatedFor("CHR_FREP_EDITOR")))
+        .isInstanceOf(FamHttpException.class);
+
+    verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("removing withdraws the assignment, leaving the delegation role in place")
+  void removeWithdrawsTheAssignment() {
+    service.removeDelegatedAdmin(INTEGRATION, ENV, appointment(null, List.of()),
+        requesterWithGuid("SOMEONEELSE"));
+
+    String delegation = "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR";
+    verify(cssApiService).removeUserRole(
+        eq(FAM_OWN_INTEGRATION), eq("dev"), anyString(), eq(delegation));
+
+    // The role stays defined; others may hold it.
+    verify(cssApiService, never()).deleteRole(anyInt(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("appointing is audited against the application being administered")
+  void appointIsAudited() {
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of());
+
+    service.appointDelegatedAdmin(INTEGRATION, ENV, appointment(null, List.of()),
+        requesterWithGuid("SOMEONEELSE"));
+
+    // Against FREP, not FAM: the change is "who may grant FREP's roles".
+    verify(auditWriteService).storeCssGranted(
+        any(), eq("AABBCCDDEEFF00112233445566778899"), anyString(),
+        eq(INTEGRATION), eq(ENV), eq("CHR_FREP_EDITOR"), any(), any());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Deleting a role withdraws its delegations
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("deleting a role withdraws the delegations naming it")
+  void deleteWithdrawsDelegations() {
+    givenRoles(role("FSPTS_VIEW_ALL", false));
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FSPTS_VIEW_ALL", false)));
+
+    CssRoleDeleteResultDto result =
+        service.deleteRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL", DEFINER);
+
+    // An orphan is not inert: a grant creates a role it cannot find, so the
+    // delegation would let its holder bring the deleted role back.
+    verify(cssApiService).deleteRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FSPTS_VIEW_ALL");
+    assertThat(result.removedDelegations())
+        .containsExactly("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FSPTS_VIEW_ALL");
+  }
+
+  @Test
+  @DisplayName("per-scope delegations go with the role too")
+  void deleteWithdrawsScopedDelegations() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR_DISTRICT-DCC", false),
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__CHR_FREP_EDITOR_DISTRICT-DKA", false)));
+
+    assertThat(service.deleteRole(INTEGRATION, ENV, "CHR_FREP_EDITOR", DEFINER)
+        .removedDelegations()).hasSize(2);
+  }
+
+  @Test
+  @DisplayName("a delegation for a similarly named role is left alone")
+  void deleteDoesNotWithdrawOtherRolesDelegations() {
+    givenRoles(role("FREP_EDITOR", false));
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FREP_EDITOR_EXTRA", false)));
+
+    assertThat(service.deleteRole(INTEGRATION, ENV, "FREP_EDITOR", DEFINER)
+        .removedDelegations()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("another application's delegations are not ours to withdraw")
+  void deleteDoesNotWithdrawAnotherApplicationsDelegations() {
+    givenRoles(role("FSPTS_VIEW_ALL", false));
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_99999_DEV__FSPTS_VIEW_ALL", false)));
+
+    // Two applications may define a role of the same name.
+    assertThat(service.deleteRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL", DEFINER)
+        .removedDelegations()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("delegations are withdrawn before the role itself")
+  void delegationsGoFirst() {
+    givenRoles(role("FSPTS_VIEW_ALL", false));
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FSPTS_VIEW_ALL", false)));
+
+    service.deleteRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL", DEFINER);
+
+    // If this failed partway, the authority would already be gone rather than
+    // left pointing at a role that no longer exists.
+    org.mockito.InOrder order = org.mockito.Mockito.inOrder(cssApiService);
+    order.verify(cssApiService).deleteRole(FAM_OWN_INTEGRATION, "dev",
+        "DELEGATED_ADMIN_" + INTEGRATION + "_DEV__FSPTS_VIEW_ALL");
+    order.verify(cssApiService).deleteRole(INTEGRATION, ENV, "FSPTS_VIEW_ALL");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Appointing application administrators
+  // ---------------------------------------------------------------------------
+
+  private static CssAdministratorAppointRequest appointAdmin() {
+    return new CssAdministratorAppointRequest(
+        "AABBCCDDEEFF00112233445566778899", UserType.IDIR);
+  }
+
+  @Test
+  @DisplayName("appoints an application administrator with no role or scope")
+  void appointsApplicationAdmin() {
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of());
+
+    service.appointApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
+        requesterWithGuid("SOMEONEELSE"));
+
+    // Authorised over the application, so there is nothing to name after the
+    // environment - unlike a delegation.
+    String roleName = "APP_ADMIN_" + INTEGRATION + "_DEV";
+    verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "dev", roleName);
+    verify(cssApiService).assignUserRoles(
+        eq(FAM_OWN_INTEGRATION), eq("dev"), anyString(), eq(List.of(roleName)));
+  }
+
+  @Test
+  @DisplayName("reuses the role when it already exists")
+  void appointReusesExistingRole() {
+    String roleName = "APP_ADMIN_" + INTEGRATION + "_DEV";
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev"))
+        .thenReturn(List.of(role(roleName, false)));
+
+    assertThat(service.appointApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
+        requesterWithGuid("SOMEONEELSE")).roleCreated()).isFalse();
+
+    verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("refuses to appoint yourself as an application administrator")
+  void appointAdminRefusesSelf() {
+    Requester self = Requester.builder()
+        .userName("JSMITH").userGuid("AABBCCDDEEFF00112233445566778899")
+        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
+        .build();
+
+    assertThatThrownBy(() -> service.appointApplicationAdmin(
+        INTEGRATION, ENV, appointAdmin(), self))
+        .isInstanceOf(FamHttpException.class);
+
+    verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
+  }
+
+  @Test
+  @DisplayName("a delegated admin may not appoint an application administrator")
+  void delegatedAdminMayNotAppointAdmin() {
+    assertThatThrownBy(() -> service.appointApplicationAdmin(
+        INTEGRATION, ENV, appointAdmin(), delegatedFor("CHR_FREP_EDITOR")))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("removing takes the role away from that person only")
+  void removesApplicationAdmin() {
+    service.removeApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
+        requesterWithGuid("SOMEONEELSE"));
+
+    verify(cssApiService).removeUserRole(eq(FAM_OWN_INTEGRATION), eq("dev"), anyString(),
+        eq("APP_ADMIN_" + INTEGRATION + "_DEV"));
+
+    // The role stays defined; other administrators hold it.
+    verify(cssApiService, never()).deleteRole(anyInt(), anyString(), anyString());
   }
 }

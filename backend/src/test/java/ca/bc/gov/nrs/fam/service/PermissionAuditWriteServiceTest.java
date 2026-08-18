@@ -202,7 +202,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeRoleCreated(requester, 6538, "dev",
-        "FREP_ADMINISTRATOR", "FREP Administrator", null);
+        "FREP_ADMINISTRATOR", "FREP Administrator", null, null);
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
@@ -220,7 +220,7 @@ class PermissionAuditWriteServiceTest {
     // something.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null);
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, null);
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getTargetUserGuid()).isNull();
@@ -232,7 +232,7 @@ class PermissionAuditWriteServiceTest {
   void recordsRequiredScope() {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", "DISTRICT");
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, "DISTRICT");
 
     assertThat(captureSaved().getPrivilegeDetails()).contains("District");
   }
@@ -245,7 +245,7 @@ class PermissionAuditWriteServiceTest {
     // recording it as CLIENT would misstate what was created.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null);
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, null);
 
     assertThat(captureSaved().getPrivilegeDetails())
         .contains("\"required_scope_type\":null")
@@ -262,7 +262,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeRoleCreated(requester, 1, "dev",
-        "FREP_ADMINISTRATOR", "FREP Administrator", "DISTRICT");
+        "FREP_ADMINISTRATOR", "FREP Administrator", null, "DISTRICT");
 
     String json = captureSaved().getPrivilegeDetails();
 

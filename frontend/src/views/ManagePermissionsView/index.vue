@@ -1,15 +1,22 @@
 <script setup lang="ts">
+import AdministratorsTable from "@/components/PermissionsTable/AdministratorsTable.vue";
 import CssPermissionsTable from "@/components/PermissionsTable/CssPermissionsTable.vue";
 import TablePlaceholder from "@/components/PermissionsTable/TablePlaceholder.vue";
 import Button from "@/components/UI/Button.vue";
 import Dropdown from "@/components/UI/Dropdown.vue";
 import PageTitle from "@/components/UI/PageTitle.vue";
-import { AddAppPermissionRoute } from "@/router/routes";
+import {
+    AddAppPermissionRoute,
+    AddApplicationAdminRoute,
+    AddDelegatedAdminRoute,
+} from "@/router/routes";
 import { newlyGrantedKeys as newlyGrantedKeysFor } from "@/components/PermissionsTable/utils";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { selectedApp, setSelectedApp } from "@/store/ApplicationState";
 import AddIcon from "@carbon/icons-vue/es/add/16";
 import UserIcon from "@carbon/icons-vue/es/user/16";
+import EnterpriseIcon from "@carbon/icons-vue/es/enterprise/16";
+import HelpDeskIcon from "@carbon/icons-vue/es/help-desk/16";
 import NotificationStack from "@/views/ManagePermissionsView/NotificationStack.vue";
 import {
     AddAppUserPermissionSuccessQuerykey,
@@ -20,6 +27,7 @@ import {
     toGrantNotifications,
 } from "@/views/ManagePermissionsView/utils";
 import type { PermissionNotificationType } from "@/types/NotificationTypes";
+import { fetchSelfPermissions } from "@/services/AuthApiService";
 import { useQuery, useQueryClient } from "@tanstack/vue-query";
 import type { CssApplicationOptionDto } from "fam-api";
 import Tab from "primevue/tab";
@@ -36,13 +44,47 @@ import { useRouter } from "vue-router";
  * Laid out to match the screen this replaces: page title, application picker
  * with the add button beside it, then a raised panel holding a tabbed table.
  *
- * <b>One tab, deliberately.</b> The original carried three - users, delegated
- * administrators, application administrators - each backed by its own FAM table.
- * Those tables moved to CSS, where a delegated administrator is a role like any
- * other, so there is one list of assignments to show. The tab strip is kept
- * because it is part of the layout and because a second tab is plausible again
- * later, not to imply tabs that are missing.
+ * Three tabs, as the original had. An earlier note here claimed one was enough,
+ * on the grounds that a delegated administrator is now "a role like any other".
+ * That was wrong: the administrative roles live on <b>FAM's own</b> CSS
+ * integration, not on the application's, because a token carries only the roles
+ * of the client it was issued to. So administrators never appear in the
+ * application's own assignment list, and the two admin tabs are a second read
+ * rather than a filter over the first.
+ *
+ * The admin tabs are offered to application administrators and above, matching
+ * both the backend guard and what the original showed.
  */
+/**
+ * Whether this caller may see who else administers the selected application.
+ *
+ * Application administrators and above, matching what the backend allows and
+ * what legacy showed - a delegated administrator grants ordinary access but does
+ * not appoint administrators, so the roster is not theirs to read.
+ *
+ * Decided from `/auth/self/permissions`, which returns the caller's roles
+ * already decoded into a tier and an application. Rebuilding
+ * `APP_ADMIN_<id>_<ENV>` here instead would copy the backend's naming grammar
+ * into the browser, where it would drift.
+ */
+const selfPermissionsQuery = useQuery({
+    queryKey: ["self-permissions"],
+    queryFn: fetchSelfPermissions,
+});
+
+const canSeeAdminTabs = computed(() => {
+    const permissions = selfPermissionsQuery.data.value ?? [];
+    if (permissions.some((permission) => permission.role === "FAM_ADMIN")) {
+        return true;
+    }
+    return permissions.some(
+        (permission) =>
+            permission.role === "APP_ADMIN" &&
+            permission.css_integration_id === selectedApp.value?.integration_id &&
+            permission.environment === selectedApp.value?.environment
+    );
+});
+
 const router = useRouter();
 const queryClient = useQueryClient();
 
@@ -99,6 +141,32 @@ const handleApplicationChange = (event: { value: CssApplicationOptionDto }) => {
     // different one is selected.
     clearNotifications(queryClient, notifications);
     newlyGrantedKeys.value = [];
+};
+
+const goToAddApplicationAdmin = () => {
+    if (!selectedApp.value) {
+        return;
+    }
+    router.push({
+        name: AddApplicationAdminRoute.name,
+        query: {
+            integrationId: selectedApp.value.integration_id,
+            environment: selectedApp.value.environment,
+        },
+    });
+};
+
+const goToAddDelegatedAdmin = () => {
+    if (!selectedApp.value) {
+        return;
+    }
+    router.push({
+        name: AddDelegatedAdminRoute.name,
+        query: {
+            integrationId: selectedApp.value.integration_id,
+            environment: selectedApp.value.environment,
+        },
+    });
 };
 
 const goToAddPermission = () => {
@@ -168,6 +236,14 @@ const goToAddPermission = () => {
                             <component :is="UserIcon" />
                             Users
                         </Tab>
+                        <Tab v-if="canSeeAdminTabs" value="1">
+                            <component :is="EnterpriseIcon" />
+                            Delegated admins
+                        </Tab>
+                        <Tab v-if="canSeeAdminTabs" value="2">
+                            <component :is="HelpDeskIcon" />
+                            Application admins
+                        </Tab>
                     </TabList>
                     <TabPanels>
                         <TabPanel value="0">
@@ -177,6 +253,54 @@ const goToAddPermission = () => {
                                 :integration-id="selectedApp.integration_id"
                                 :environment="selectedApp.environment"
                                 :newly-granted-keys="newlyGrantedKeys"
+                                :app-name="
+                                    selectedApp.description ?? selectedApp.name
+                                "
+                            />
+                        </TabPanel>
+
+                        <TabPanel v-if="canSeeAdminTabs" value="1">
+                            <!--
+                                The add button lives on the tab rather than
+                                beside the application picker: that one adds a
+                                permission, and appointing an administrator is a
+                                different act with a different screen.
+                            -->
+                            <div class="tab-actions">
+                                <Button
+                                    outlined
+                                    label="Add delegated admin"
+                                    :icon="AddIcon"
+                                    @click="goToAddDelegatedAdmin"
+                                />
+                            </div>
+                            <AdministratorsTable
+                                :key="`delegated-${selectedApp.integration_id}-${selectedApp.environment}`"
+                                class="tab-table"
+                                :integration-id="selectedApp.integration_id"
+                                :environment="selectedApp.environment"
+                                tier="DELEGATED_ADMIN"
+                                :app-name="
+                                    selectedApp.description ?? selectedApp.name
+                                "
+                            />
+                        </TabPanel>
+
+                        <TabPanel v-if="canSeeAdminTabs" value="2">
+                            <div class="tab-actions">
+                                <Button
+                                    outlined
+                                    label="Add application admin"
+                                    :icon="AddIcon"
+                                    @click="goToAddApplicationAdmin"
+                                />
+                            </div>
+                            <AdministratorsTable
+                                :key="`app-${selectedApp.integration_id}-${selectedApp.environment}`"
+                                class="tab-table"
+                                :integration-id="selectedApp.integration_id"
+                                :environment="selectedApp.environment"
+                                tier="APP_ADMIN"
                                 :app-name="
                                     selectedApp.description ?? selectedApp.name
                                 "
@@ -206,6 +330,24 @@ const goToAddPermission = () => {
         .fam-button {
             width: 100%;
             height: 3rem;
+        }
+    }
+
+    /*
+        The add button on an admin tab, right-aligned within its pane.
+
+        `.fam-button` needs the width reset: the dropdown row above stretches its
+        button to fill a grid column, and that rule is not scoped to it, so
+        without this the button here fills the pane and "right aligned" has no
+        visible effect.
+    */
+    .tab-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 1rem;
+
+        .fam-button {
+            width: auto;
         }
     }
 

@@ -16,8 +16,15 @@ common.ts
 configuration.ts
 git_push.sh
 index.ts
+model/admin-role-auth-group.ts
+model/css-administrator-appoint-request.ts
+model/css-administrator-row-dto.ts
 model/css-application-option-dto.ts
+model/css-delegated-admin-request.ts
+model/css-role-bulk-create-result-dto.ts
 model/css-role-create-request.ts
+model/css-role-delete-result-dto.ts
+model/css-role-member-count-dto.ts
 model/css-role-option-dto.ts
 model/css-user-role-assignment-request.ts
 model/css-user-role-assignment-result.ts
@@ -39,7 +46,9 @@ model/privilege-details-permission-type.ts
 model/privilege-details-role-dto.ts
 model/privilege-details-scope-dto.ts
 model/privilege-details-scope-type.ts
+model/self-application-role-dto.ts
 model/self-dto.ts
+model/self-permission-dto.ts
 model/user-lookup-bceid-user-dto.ts
 model/user-lookup-idir-search-result.ts
 model/user-lookup-idir-user-dto.ts

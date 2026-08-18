@@ -10,7 +10,8 @@ import {
 const form = (overrides: Partial<ManageRolesFormType> = {}): ManageRolesFormType => ({
     ...getDefaultFormData(),
     roleCode: "FREP_ADMINISTRATOR",
-    description: "FREP Administrator",
+    roleName: "FREP Administrator",
+    description: "",
     ...overrides,
 });
 
@@ -42,13 +43,24 @@ describe("role code validation", () => {
         );
     });
 
-    it("requires a description", async () => {
-        await expect(validate(form({ description: "  " }))).rejects.toBeTruthy();
+    it("requires a role name", async () => {
+        await expect(validate(form({ roleName: "  " }))).rejects.toBeTruthy();
     });
 
-    it("rejects a description too long to fit in a sidecar role name", async () => {
+    it("rejects a role name too long to fit in a sidecar role name", async () => {
         await expect(
-            validate(form({ description: "x".repeat(151) }))
+            validate(form({ roleName: "x".repeat(151) }))
+        ).rejects.toBeTruthy();
+    });
+
+    it("accepts an absent description - it is optional", async () => {
+        // A role whose name says enough needs no sentence.
+        await expect(validate(form({ description: "" }))).resolves.toBeTruthy();
+    });
+
+    it("rejects a description too long to fit in its own sidecar", async () => {
+        await expect(
+            validate(form({ description: "x".repeat(201) }))
         ).rejects.toBeTruthy();
     });
 });

@@ -136,7 +136,7 @@ class AssignmentVisibilityServiceTest {
 
     assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(described)))
         .singleElement()
-        .satisfies(row -> assertThat(row.roleDescription()).isEqualTo("Submitter"));
+        .satisfies(row -> assertThat(row.roleDisplayName()).isEqualTo("Submitter"));
   }
 
   @Test

@@ -96,15 +96,37 @@ reach FAM. The application therefore has to be named *inside* the role.
 | ---- | ------ |
 | `FAM_ADMIN` | Everything, in every application and environment. |
 | `APP_ADMIN_<integrationId>_<ENV>` | Grant and revoke roles for that one application, **and** appoint delegated administrators for it. |
-| `DELEGATED_ADMIN_<integrationId>_<ENV>` | Grant and revoke roles for that one application. **May not** appoint administrators. |
+| `DELEGATED_ADMIN_<integrationId>_<ENV>` | Legacy marker: the tier, naming no role. Kept working, but no longer issued. |
+| `DELEGATED_ADMIN_<integrationId>_<ENV>__<ROLE>` | Grant and revoke **that one role** for that one application. **May not** appoint administrators. |
 
 Examples, all created on FAM's integration:
 
 ```
 FAM_ADMIN
 APP_ADMIN_22264_DEV
-DELEGATED_ADMIN_22264_DEV
+DELEGATED_ADMIN_22264_DEV__FREP_EDITOR
+DELEGATED_ADMIN_22264_DEV__FREP_EDITOR_DISTRICT-DCC
 ```
+
+### A delegation names one role, not an application
+
+Port of legacy's `fam_access_control_privilege(user_id, role_id)`. A delegated
+administrator was never authorised over an application as a whole: the privilege
+named a concrete role, and for a scoped role it named the per-scope child. So
+"may grant Submitter for forest client 00001018" is expressible and "may grant
+anything in FREP" is not.
+
+The double underscore separates the application from the role. One underscore is
+legal inside a role code, so a single separator would be ambiguous; two is not,
+because the environment cannot contain an underscore and the *first* `__` after
+it is always the boundary.
+
+**Holding any delegation implies the tier**, so appointing somebody is one role
+rather than two that have to be kept in step.
+
+**Deleting a role withdraws the delegations naming it.** A delegation outliving
+its role is not inert: a grant creates a role it cannot find, so an orphaned
+delegation would let its holder bring the deleted role back.
 
 ### Why the integration id
 

@@ -132,7 +132,7 @@ class AssignmentRowEnrichmentServiceTest {
           assertThat(row.roleName()).isEqualTo("CHR_FREP_EDITOR");
           // Naming the user rebuilds the row; everything about the role has to
           // survive that, including what the table labels it with.
-          assertThat(row.roleDescription()).isEqualTo("Submitter (CHR)");
+          assertThat(row.roleDisplayName()).isEqualTo("Submitter (CHR)");
           assertThat(row.scopeType()).isEqualTo("DISTRICT");
           assertThat(row.scopeValue()).isEqualTo("DCC");
         });

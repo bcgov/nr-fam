@@ -67,7 +67,7 @@ export interface CssUserRoleRowDto {
      * @type {string}
      * @memberof CssUserRoleRowDto
      */
-    'role_description'?: string;
+    'role_display_name'?: string;
     /**
      * 
      * @type {string}

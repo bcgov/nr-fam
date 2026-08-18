@@ -23,21 +23,35 @@ which is what makes the conventions below possible.
 
 ## The format
 
-A role defined through *Manage roles* becomes up to three CSS roles:
+A role defined through *Manage roles* becomes up to four CSS roles:
 
 ```
-FREP_ADMINISTRATOR                                  the role; its name is the code
+FSPTS_VIEW_ALL                                      the role; its name is the code
 └── HAS_DISTRICT_ROLE                               composite child, when scoped
 
-FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator     sidecar, holds the description
+FAM:LABEL:FSPTS_VIEW_ALL:View All                   sidecar, holds the short name
+FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit
+                                                    sidecar, holds the description
 ```
 
 | Piece | Carried by | Read by |
 | ----- | ---------- | ------- |
 | Raw code | the role's own name | `CssRoleOptionDto.name` |
-| Description | a sidecar role, `FAM:LABEL:<CODE>:<text>` | `CssRoleNaming.parseLabel` |
+| Short name | a sidecar role, `FAM:LABEL:<CODE>:<text>` | `CssRoleNaming.parseLabel` |
+| Description | a sidecar role, `FAM:DESC:<CODE>:<text>` | `CssRoleNaming.parseDescription` |
 | Scope type | a marker role composed into it | `CssRoleNaming.MARKERS` |
 | Scope value | appended at grant time, `<CODE>_DISTRICT-DCC` | `CssRoleNaming.parse` |
+
+### Two sidecars, not one three-part name
+
+A role name is finite - Keycloak allows 255 characters - and a code, a short name
+and a sentence will not reliably fit in one. Splitting a three-part name is also
+ambiguous, because both the name and the description may contain colons.
+
+**Roles created before descriptions existed have only a `FAM:LABEL` sidecar, and
+nothing needs rewriting.** That sidecar's text has always been the short display
+name ("Submitter (CHR)", "FREP Administrator"); those roles simply have no long
+description until somebody gives them one.
 
 ### Why the code is the role's own name
 

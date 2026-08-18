@@ -23,15 +23,27 @@ public record CssRoleCreateRequest(
     @NotBlank String roleCode,
 
     /**
-     * The human-readable description, e.g. {@code FREP Administrator}.
+     * The short human-readable name, e.g. {@code View All}.
      *
-     * <p>Free text, stored on a sidecar role - see
+     * <p>What an administrator sees when granting the role, and what the
+     * permission pills show. Free text, stored on a sidecar role - see
      * {@link CssRoleNaming#LABEL_PREFIX}. Bounded well below Keycloak's 255
      * character limit for a role name, which the sidecar has to fit inside
      * alongside the prefix and the code.
      */
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "FREP Administrator")
-    @NotBlank @Size(max = 150) String description,
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "View All")
+    @NotBlank @Size(max = 150) String roleName,
+
+    /**
+     * The long description, e.g. {@code Allows users to view all the FSPs but
+     * not edit}.
+     *
+     * <p>Optional: a role whose name says enough needs no sentence. Stored on a
+     * second sidecar - see {@link CssRoleNaming#DESCRIPTION_PREFIX} - because a
+     * sentence and a name will not reliably fit in one role name together.
+     */
+    @Schema(example = "Allows users to view all the FSPs but not edit")
+    @Size(max = 200) String description,
 
     /** Granting this role requires choosing one or more districts. */
     boolean requiresDistrict,

@@ -7,6 +7,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdministratorsTable: typeof import('./src/components/PermissionsTable/AdministratorsTable.vue')['default']
     BoolCheckbox: typeof import('./src/components/UI/BoolCheckbox.vue')['default']
     BreadCrumbs: typeof import('./src/components/UI/BreadCrumbs.vue')['default']
     Button: typeof import('./src/components/UI/Button.vue')['default']

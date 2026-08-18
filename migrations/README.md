@@ -33,7 +33,22 @@ as a separate job again — set `spring.flyway.enabled=false` on the app and app
 
 ## Local seed data
 
-`backend/src/main/resources/db/local/V1000__seed_local_test_users.sql` is applied
+`backend/src/main/resources/db/local/R__seed_local_test_users.sql` is applied
 only under the `local` profile, which adds `classpath:db/local` to
 `spring.flyway.locations`. It ships in the jar and is never applied anywhere
 else.
+
+**Repeatable (`R__`), deliberately.** It was `V1000` — numbered high so it ran
+after the baseline — but that put it above every real migration, so the next
+versioned migration added was out of order and Flyway refused to start with
+`Detected resolved migration not applied to database`. Repeatable migrations
+carry no version and always run last, so seed data can never block a schema
+change. Keep it idempotent (`ON CONFLICT DO NOTHING`): a repeatable migration
+re-runs whenever its checksum changes.
+
+A local database that already applied `V1000` still has that row in its history,
+and Flyway will refuse to start over the now-missing migration. Clear it once:
+
+```sql
+DELETE FROM app_fam.flyway_schema_history WHERE version = '1000';
+```

@@ -38,6 +38,45 @@ export const AddAppPermissionRoute: RouteRecordRaw = {
 };
 
 /**
+ * Appoint a delegated administrator for one role.
+ *
+ * A separate screen from Add permission rather than a mode of it: the fields
+ * are the same but the question is not - here the role and its scope are what
+ * the appointee may hand out, not what they receive.
+ *
+ * Guarded by the ordinary auth guard; the backend restricts appointing to
+ * application administrators and above.
+ */
+export const AddDelegatedAdminRoute: RouteRecordRaw = {
+    path: "/manage-permissions/add-delegated-admin",
+    component: () => import("@/views/AddDelegatedAdmin"),
+    props: (route): AddAppPermissionRouteProps => ({
+        integrationId: Number(route.query.integrationId),
+        environment: String(route.query.environment ?? ""),
+    }),
+    name: "AddDelegatedAdmin",
+    meta: protectedLayoutMeta,
+};
+
+/**
+ * Appoint an application administrator.
+ *
+ * Shorter than the delegated equivalent because the tier is broader: an
+ * application administrator is authorised over the application, so there is no
+ * role to choose.
+ */
+export const AddApplicationAdminRoute: RouteRecordRaw = {
+    path: "/manage-permissions/add-application-admin",
+    component: () => import("@/views/AddApplicationAdmin"),
+    props: (route): AddAppPermissionRouteProps => ({
+        integrationId: Number(route.query.integrationId),
+        environment: String(route.query.environment ?? ""),
+    }),
+    name: "AddApplicationAdmin",
+    meta: protectedLayoutMeta,
+};
+
+/**
  * Route to a page for defining the roles an application offers.
  *
  * FAM administrators only - see `famAdminGuard`. Granting an existing role and
@@ -70,6 +109,20 @@ export const UserPermissionHistoryRoute: RouteRecordRaw = {
     meta: protectedLayoutMeta,
 };
 
+/**
+ * What the signed-in user may administer.
+ *
+ * No guard beyond the ordinary auth one: it reports on the caller, so there is
+ * nothing here that another administrator's permissions could leak through, and
+ * somebody who administers nothing gets an empty table rather than a refusal.
+ */
+export const MyPermissionsRoute: RouteRecordRaw = {
+    path: "/my-permissions",
+    name: "MyPermissions",
+    component: () => import("@/views/MyPermissions"),
+    meta: protectedLayoutMeta,
+};
+
 export const NoAccessRoute: RouteRecordRaw = {
     path: "/no-access",
     name: "NoAccess",
@@ -85,8 +138,11 @@ export const routeItems: RouteRecordRaw[] = [
     LandingRoute,
     ManagePermissionsRoute,
     AddAppPermissionRoute,
+    AddDelegatedAdminRoute,
+    AddApplicationAdminRoute,
     ManageRolesRoute,
     UserPermissionHistoryRoute,
+    MyPermissionsRoute,
     NoAccessRoute,
     UnkownRoute,
 ];

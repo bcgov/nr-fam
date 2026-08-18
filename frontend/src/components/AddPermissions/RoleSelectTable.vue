@@ -66,7 +66,12 @@ const selectRole = (role: RoleOption) => {
                     </template>
                 </Column>
 
-                <Column header="Role" field="display_name" />
+                <Column header="Role">
+                    <template #body="{ data }">
+                        <!-- The short name, falling back to the code. -->
+                        {{ data.display_name ?? data.name }}
+                    </template>
+                </Column>
 
                 <Column header="Description">
                     <template #body="{ data }">
