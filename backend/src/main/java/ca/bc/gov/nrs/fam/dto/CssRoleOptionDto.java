@@ -22,10 +22,22 @@ import java.util.List;
 public record CssRoleOptionDto(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String name,
 
-    /** The outermost, human-readable role. Same as {@link #name}. */
+    /**
+     * The short human-readable name, from the role's {@code FAM:LABEL} sidecar.
+     *
+     * <p>e.g. {@code View All} for {@code FSPTS_VIEW_ALL}. What the pickers and
+     * the permission pills show. Null for a role with no sidecar, which is why
+     * every display falls back to {@link #name}.
+     */
     String displayName,
 
-    /** From the role's sidecar. Null for a role defined without one. */
+    /**
+     * The long description, from the role's {@code FAM:DESC} sidecar.
+     *
+     * <p>e.g. "Allows users to view all the FSPs but not edit". Null for a role
+     * defined without one - including every role defined before descriptions
+     * existed, which have a display name only.
+     */
     String description,
 
     /** The machine role beneath the display role, or null if there is none. */

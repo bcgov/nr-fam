@@ -280,6 +280,209 @@
         }
       }
     },
+    "/css-applications/{integrationId}/{environment}/delegated-admins" : {
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Appoint a delegated administrator for one role",
+        "operationId" : "create_css_delegated_admin",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssDelegatedAdminRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssUserRoleAssignmentResult"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Withdraw a delegated administrator's delegation for one role",
+        "operationId" : "delete_css_delegated_admin",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssDelegatedAdminRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/application-admins" : {
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Appoint an application administrator",
+        "operationId" : "create_css_application_admin",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssAdministratorAppointRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssUserRoleAssignmentResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Remove an application administrator",
+        "operationId" : "delete_css_application_admin",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssAdministratorAppointRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/roles" : {
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Define a role in every environment of a CSS integration",
+        "operationId" : "create_css_application_role_all_environments",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssRoleCreateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssRoleBulkCreateResultDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/login" : {
       "post" : {
         "tags" : [ "Authentication" ],
@@ -303,7 +506,7 @@
     "/smoke_test" : {
       "get" : {
         "tags" : [ "Smoke Test" ],
-        "summary" : "Verify database connectivity and seeded application data",
+        "summary" : "Verify database connectivity and that migrations have run",
         "operationId" : "smoke_test",
         "responses" : {
           "200" : {
@@ -566,6 +769,89 @@
         }
       }
     },
+    "/css-applications/{integrationId}/{environment}/roles/member-counts" : {
+      "get" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Count the people holding each role of a CSS integration environment",
+        "operationId" : "get_css_application_role_member_counts",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssRoleMemberCountDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/administrators" : {
+      "get" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "List the administrators of an application at one tier",
+        "operationId" : "get_css_application_administrators",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "tier",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/AdminRoleAuthGroup"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssAdministratorRowDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/self" : {
       "get" : {
         "tags" : [ "Authentication" ],
@@ -578,6 +864,92 @@
               "*/*" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/SelfDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/self/permissions" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Current user's administrative permissions, with applications named",
+        "operationId" : "self_permissions",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/SelfPermissionDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/self/application-roles" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Every application role the current user holds",
+        "operationId" : "self_application_roles",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/SelfApplicationRoleDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/roles/{roleName}" : {
+      "delete" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Remove a role, its sidecar and any roles derived from it",
+        "operationId" : "delete_css_application_role",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "roleName",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssRoleDeleteResultDto"
                 }
               }
             }
@@ -719,10 +1091,16 @@
             "example" : "FREP_ADMINISTRATOR",
             "minLength" : 1
           },
+          "role_name" : {
+            "type" : "string",
+            "example" : "View All",
+            "maxLength" : 150,
+            "minLength" : 0
+          },
           "description" : {
             "type" : "string",
-            "example" : "FREP Administrator",
-            "maxLength" : 150,
+            "example" : "Allows users to view all the FSPs but not edit",
+            "maxLength" : 200,
             "minLength" : 0
           },
           "requires_district" : {
@@ -732,7 +1110,7 @@
             "type" : "boolean"
           }
         },
-        "required" : [ "description", "role_code" ]
+        "required" : [ "role_code", "role_name" ]
       },
       "CssRoleOptionDto" : {
         "properties" : {
@@ -765,6 +1143,63 @@
           }
         },
         "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district" ]
+      },
+      "CssDelegatedAdminRequest" : {
+        "properties" : {
+          "user_guid" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "user_type" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "role_name" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "scope_type" : {
+            "type" : "string"
+          },
+          "scope_values" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "role_name", "user_guid", "user_type" ]
+      },
+      "CssAdministratorAppointRequest" : {
+        "properties" : {
+          "user_guid" : {
+            "type" : "string",
+            "minLength" : 1
+          },
+          "user_type" : {
+            "$ref" : "#/components/schemas/UserType"
+          }
+        },
+        "required" : [ "user_guid", "user_type" ]
+      },
+      "CssRoleBulkCreateResultDto" : {
+        "properties" : {
+          "role_code" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "environments" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/CssRoleOptionDto"
+          }
+        },
+        "required" : [ "description", "environments", "role", "role_code" ]
       },
       "SelfDto" : {
         "properties" : {
@@ -856,7 +1291,7 @@
       },
       "PrivilegeChangeType" : {
         "type" : "string",
-        "enum" : [ "GRANT", "REVOKE", "UPDATE", "CREATE_ROLE" ]
+        "enum" : [ "GRANT", "REVOKE", "UPDATE", "CREATE_ROLE", "DELETE_ROLE" ]
       },
       "PrivilegeDetailsDto" : {
         "properties" : {
@@ -1074,7 +1509,7 @@
           "role_name" : {
             "type" : "string"
           },
-          "role_description" : {
+          "role_display_name" : {
             "type" : "string"
           },
           "scope_type" : {
@@ -1085,6 +1520,111 @@
           }
         },
         "required" : [ "role_name", "username" ]
+      },
+      "CssRoleMemberCountDto" : {
+        "properties" : {
+          "role_name" : {
+            "type" : "string"
+          },
+          "member_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "member_count", "role_name" ]
+      },
+      "AdminRoleAuthGroup" : {
+        "type" : "string",
+        "enum" : [ "FAM_ADMIN", "APP_ADMIN", "DELEGATED_ADMIN" ]
+      },
+      "CssAdministratorRowDto" : {
+        "properties" : {
+          "username" : {
+            "type" : "string"
+          },
+          "user_guid" : {
+            "type" : "string"
+          },
+          "domain" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "tier" : {
+            "$ref" : "#/components/schemas/AdminRoleAuthGroup"
+          },
+          "role_name" : {
+            "type" : "string"
+          },
+          "delegated_role_name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "role_name", "tier", "username" ]
+      },
+      "SelfPermissionDto" : {
+        "properties" : {
+          "css_integration_id" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "environment" : {
+            "type" : "string"
+          },
+          "application_name" : {
+            "type" : "string"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/AdminRoleAuthGroup"
+          },
+          "role_description" : {
+            "type" : "string"
+          },
+          "role_name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "application_name", "role", "role_description", "role_name" ]
+      },
+      "SelfApplicationRoleDto" : {
+        "properties" : {
+          "css_integration_id" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "environment" : {
+            "type" : "string"
+          },
+          "application_name" : {
+            "type" : "string"
+          },
+          "role_name" : {
+            "type" : "string"
+          },
+          "base_role_name" : {
+            "type" : "string"
+          },
+          "role_display_name" : {
+            "type" : "string"
+          },
+          "role_description" : {
+            "type" : "string"
+          },
+          "scope_type" : {
+            "type" : "string"
+          },
+          "scope_value" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "application_name", "base_role_name", "css_integration_id", "environment", "role_name" ]
       },
       "CssUserRoleRevokeRequest" : {
         "properties" : {
@@ -1107,6 +1647,30 @@
           }
         },
         "required" : [ "role_name", "user_guid", "user_type" ]
+      },
+      "CssRoleDeleteResultDto" : {
+        "properties" : {
+          "role_name" : {
+            "type" : "string"
+          },
+          "removed_roles" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "removed_delegations" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "members_affected" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "members_affected", "removed_delegations", "removed_roles", "role_name" ]
       }
     },
     "securitySchemes" : {

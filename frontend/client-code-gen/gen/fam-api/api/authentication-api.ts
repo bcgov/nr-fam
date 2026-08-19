@@ -22,7 +22,11 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
+import { SelfApplicationRoleDto } from '../model';
+// @ts-ignore
 import { SelfDto } from '../model';
+// @ts-ignore
+import { SelfPermissionDto } from '../model';
 /**
  * AuthenticationApi - axios parameter creator
  * @export
@@ -97,6 +101,74 @@ export const AuthenticationApiAxiosParamCreator = function (configuration?: Conf
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary Every application role the current user holds
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        selfApplicationRoles: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/auth/self/application-roles`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Current user\'s administrative permissions, with applications named
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        selfPermissions: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/auth/self/permissions`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -131,6 +203,30 @@ export const AuthenticationApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['AuthenticationApi.self']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * 
+         * @summary Every application role the current user holds
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async selfApplicationRoles(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SelfApplicationRoleDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.selfApplicationRoles(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AuthenticationApi.selfApplicationRoles']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Current user\'s administrative permissions, with applications named
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async selfPermissions(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SelfPermissionDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.selfPermissions(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AuthenticationApi.selfPermissions']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -159,6 +255,24 @@ export const AuthenticationApiFactory = function (configuration?: Configuration,
         self(options?: any): AxiosPromise<SelfDto> {
             return localVarFp.self(options).then((request) => request(axios, basePath));
         },
+        /**
+         * 
+         * @summary Every application role the current user holds
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        selfApplicationRoles(options?: any): AxiosPromise<Array<SelfApplicationRoleDto>> {
+            return localVarFp.selfApplicationRoles(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Current user\'s administrative permissions, with applications named
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        selfPermissions(options?: any): AxiosPromise<Array<SelfPermissionDto>> {
+            return localVarFp.selfPermissions(options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -185,6 +299,24 @@ export interface AuthenticationApiInterface {
      * @memberof AuthenticationApiInterface
      */
     self(options?: RawAxiosRequestConfig): AxiosPromise<SelfDto>;
+
+    /**
+     * 
+     * @summary Every application role the current user holds
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthenticationApiInterface
+     */
+    selfApplicationRoles(options?: RawAxiosRequestConfig): AxiosPromise<Array<SelfApplicationRoleDto>>;
+
+    /**
+     * 
+     * @summary Current user\'s administrative permissions, with applications named
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthenticationApiInterface
+     */
+    selfPermissions(options?: RawAxiosRequestConfig): AxiosPromise<Array<SelfPermissionDto>>;
 
 }
 
@@ -215,6 +347,28 @@ export class AuthenticationApi extends BaseAPI implements AuthenticationApiInter
      */
     public self(options?: RawAxiosRequestConfig) {
         return AuthenticationApiFp(this.configuration).self(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Every application role the current user holds
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthenticationApi
+     */
+    public selfApplicationRoles(options?: RawAxiosRequestConfig) {
+        return AuthenticationApiFp(this.configuration).selfApplicationRoles(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Current user\'s administrative permissions, with applications named
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthenticationApi
+     */
+    public selfPermissions(options?: RawAxiosRequestConfig) {
+        return AuthenticationApiFp(this.configuration).selfPermissions(options).then((request) => request(this.axios, this.basePath));
     }
 }
 

@@ -6,17 +6,25 @@ import { boolean, object, string } from "yup";
  *
  * Narrower than what CSS itself accepts. The code becomes the role name, which
  * is what reaches the access token and what applications authorise on, and it is
- * the left-hand side of both the scope suffix (`_DISTRICT-DCC`) and the sidecar
- * that holds the description - so it must not contain either delimiter.
+ * the left-hand side of both the scope suffix (`_DISTRICT-DCC`) and the sidecars
+ * that hold the name and description - so it must not contain either delimiter.
  *
  * Checked here only to say so before the round trip; the backend re-checks.
  */
 export const ROLE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,58}$/;
 
-export const MAX_DESCRIPTION_LENGTH = 150;
+/** Bounds the FAM:LABEL sidecar, which must fit inside one Keycloak role name. */
+export const MAX_ROLE_NAME_LENGTH = 150;
+
+/** Bounds the FAM:DESC sidecar. Its own role name, so it has its own budget. */
+export const MAX_DESCRIPTION_LENGTH = 200;
 
 export type ManageRolesFormType = {
+    /** FSPTS_VIEW_ALL - what reaches the token. */
     roleCode: string;
+    /** View All - what pickers and pills show. */
+    roleName: string;
+    /** The sentence explaining the role. Optional. */
     description: string;
     requiresDistrict: boolean;
     requiresForestClient: boolean;
@@ -24,6 +32,7 @@ export type ManageRolesFormType = {
 
 export const getDefaultFormData = (): ManageRolesFormType => ({
     roleCode: "",
+    roleName: "",
     description: "",
     requiresDistrict: false,
     requiresForestClient: false,
@@ -40,8 +49,15 @@ export const validateManageRolesForm = () =>
                 ROLE_CODE_PATTERN,
                 "Use letters, digits and underscores only, starting with a letter, e.g. FREP_ADMINISTRATOR"
             ),
+        roleName: string()
+            .required("A role name is required")
+            .trim()
+            .max(
+                MAX_ROLE_NAME_LENGTH,
+                `Keep the name under ${MAX_ROLE_NAME_LENGTH} characters`
+            ),
+        // Optional: a role whose name says enough needs no sentence.
         description: string()
-            .required("A description is required")
             .trim()
             .max(
                 MAX_DESCRIPTION_LENGTH,
@@ -80,12 +96,20 @@ export const toCreateRequest = (
     form: ManageRolesFormType
 ): CssRoleCreateRequest => ({
     role_code: form.roleCode.trim().toUpperCase(),
+    role_name: form.roleName.trim(),
     description: form.description.trim(),
     requires_district: form.requiresDistrict,
     requires_forest_client: form.requiresForestClient,
 });
 
-/** How a role's scope reads once created. */
+/**
+ * How a role's scope reads once created.
+ *
+ * Empty when neither box is ticked: the unscoped case is the default and the
+ * two checkboxes already say what they do, so a line explaining that nothing
+ * further is required only adds noise. The caller hides the text when it is
+ * empty rather than rendering a blank line.
+ */
 export const describeScope = (form: ManageRolesFormType): string => {
     if (form.requiresDistrict) {
         return "Districts must be chosen when this role is granted";
@@ -93,5 +117,5 @@ export const describeScope = (form: ManageRolesFormType): string => {
     if (form.requiresForestClient) {
         return "Forest clients must be chosen when this role is granted";
     }
-    return "This role is granted on its own, with no further selection";
+    return "";
 };

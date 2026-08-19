@@ -46,7 +46,7 @@ class CssIntegrationControllerTest {
   }
 
   private static CssRoleCreateRequest createRequest() {
-    return new CssRoleCreateRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false);
+    return new CssRoleCreateRequest("FREP_ADMINISTRATOR", "FREP Administrator", null, false, false);
   }
 
   @Test

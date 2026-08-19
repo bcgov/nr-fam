@@ -380,14 +380,40 @@ const confirmRevoke = (row: PermissionRow) => {
 
 <style lang="scss">
 .fam-table {
+    /*
+        Ported from legacy's ManagePermissionsTable. The differences from what
+        was here mattered visually:
+
+        - no padding and no gap, so the row runs edge to edge of the card and the
+          search and the CSV button meet on a shared border, as one toolbar strip
+          rather than two floating controls;
+        - `flex: 5 1 35ch` on the search, so it takes the width instead of
+          sitting as a narrow box with space around it;
+        - a uniform 2.6rem height, so the two sides line up;
+        - square, hairline-bordered buttons, which is what makes the CSV control
+          read as part of the strip rather than a filled button.
+    */
     .table-toolbar-container {
         display: flex;
-        flex-direction: row;
+        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
-        gap: 1rem;
-        padding: 0 1rem 1rem 1rem;
-        flex-wrap: wrap;
+
+        > * {
+            flex: 1 1 0;
+            height: 2.6rem;
+        }
+
+        :first-child {
+            flex: 5 1 35ch;
+        }
+
+        button {
+            border-radius: 0;
+            border-width: 1px;
+            border-style: solid;
+            border-color: #dfdfe1;
+        }
     }
 
     .action-button-group {

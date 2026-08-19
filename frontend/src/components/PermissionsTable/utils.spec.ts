@@ -45,7 +45,7 @@ describe("toCsv", () => {
     it("exports the role as the table shows it", () => {
         // The file should match what it was exported from.
         const lines = toCsv([
-            row({ role_description: "FREP Administrator" }),
+            row({ role_display_name: "FREP Administrator" }),
         ]).split("\r\n");
 
         expect(lines[1]).toContain('"FREP Administrator"');
@@ -106,22 +106,22 @@ describe("csvFileName", () => {
 });
 
 describe("roleLabel", () => {
-    it("prefers the role's description", () => {
+    it("prefers the role's short name", () => {
         expect(
-            roleLabel(row({ role_description: "FREP Administrator" }))
+            roleLabel(row({ role_display_name: "FREP Administrator" }))
         ).toBe("FREP Administrator");
     });
 
     it("falls back to the code when there is no description", () => {
         // Roles added directly in the CSS console never have one, and an empty
         // chip would be worse than a technical one.
-        expect(roleLabel(row({ role_description: undefined }))).toBe(
+        expect(roleLabel(row({ role_display_name: undefined }))).toBe(
             "FREP_ADMINISTRATOR"
         );
     });
 
     it("falls back when the description is blank rather than absent", () => {
-        expect(roleLabel(row({ role_description: "" }))).toBe(
+        expect(roleLabel(row({ role_display_name: "" }))).toBe(
             "FREP_ADMINISTRATOR"
         );
     });

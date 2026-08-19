@@ -132,6 +132,16 @@ export const FamPrimeVuePreset = definePreset(Lara, {
               hoverBackground: ComponentButtonTertiaryHover,
               activeBackground: ComponentButtonTertiaryActive,
             },
+            // The Cancel button of every confirmation dialog. Without this the
+            // variant had no hover background at all: an outlined button is
+            // transparent, and buttonPassThrough turns its label white on hover,
+            // so hovering Cancel made the text vanish against the dialog.
+            secondary: {
+              color: ComponentButtonSecondaryBackground,
+              borderColor: ComponentButtonSecondaryBackground,
+              hoverBackground: ComponentButtonSecondaryHover,
+              activeBackground: ComponentButtonSecondaryActive,
+            },
             danger: {
               color: ComponentButtonDangerBackground,
               borderColor: ComponentButtonDangerBackground,

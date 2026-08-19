@@ -31,7 +31,13 @@ export interface CssRoleCreateRequest {
      * @type {string}
      * @memberof CssRoleCreateRequest
      */
-    'description': string;
+    'role_name': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssRoleCreateRequest
+     */
+    'description'?: string;
     /**
      * 
      * @type {boolean}

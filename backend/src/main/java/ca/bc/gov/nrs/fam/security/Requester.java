@@ -5,6 +5,9 @@ import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.Locale;
 import lombok.Builder;
 
 /**
@@ -83,10 +86,56 @@ public record Requester(
     if (holds(FamAdminRole.appAdmin(cssIntegrationId, cssEnvironment))) {
       return Optional.of(AdminRoleAuthGroup.APP_ADMIN);
     }
-    if (holds(FamAdminRole.delegatedAdmin(cssIntegrationId, cssEnvironment))) {
+    if (holds(FamAdminRole.delegatedAdmin(cssIntegrationId, cssEnvironment))
+        || !delegatedRolesFor(cssIntegrationId, cssEnvironment).isEmpty()) {
       return Optional.of(AdminRoleAuthGroup.DELEGATED_ADMIN);
     }
     return Optional.empty();
+  }
+
+  /**
+   * The roles this caller has been delegated for one application.
+   *
+   * <p>Concrete role names, scope suffix included: a delegation names the role a
+   * grant actually assigns, so "may grant Submitter for DCC" is
+   * {@code FREP_EDITOR_DISTRICT-DCC} and does not authorise DKA.
+   *
+   * <p>Empty for an application administrator, who needs no delegation - callers
+   * must check the tier first rather than reading emptiness as "may grant
+   * nothing".
+   */
+  public Set<String> delegatedRolesFor(int cssIntegrationId, String cssEnvironment) {
+    if (accessRoles == null) {
+      return Set.of();
+    }
+    String prefix = FamAdminRole.delegatedAdmin(cssIntegrationId, cssEnvironment);
+
+    return accessRoles.stream()
+        .filter(held -> held != null
+            && held.toUpperCase(Locale.ROOT).startsWith(prefix.toUpperCase(Locale.ROOT)))
+        .map(FamAdminRole::delegatedRoleOf)
+        .flatMap(Optional::stream)
+        .collect(Collectors.toUnmodifiableSet());
+  }
+
+  /**
+   * Whether this caller may grant one concrete role.
+   *
+   * <p>An application administrator may grant anything the application defines. A
+   * delegated administrator may grant only what they hold a delegation for -
+   * which is the whole distinction between the tiers, and was unenforced before
+   * delegations existed.
+   */
+  public boolean canGrantRole(int cssIntegrationId, String cssEnvironment, String roleName) {
+    AdminRoleAuthGroup tier = tierFor(cssIntegrationId, cssEnvironment).orElse(null);
+    if (tier == null) {
+      return false;
+    }
+    if (tier != AdminRoleAuthGroup.DELEGATED_ADMIN) {
+      return true;
+    }
+    return delegatedRolesFor(cssIntegrationId, cssEnvironment).stream()
+        .anyMatch(delegated -> delegated.equalsIgnoreCase(roleName));
   }
 
   /** May grant and revoke user access for this application. All three tiers may. */

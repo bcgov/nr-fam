@@ -46,6 +46,70 @@ public final class FamAdminRole {
     return DELEGATED_ADMIN_PREFIX + suffix(cssIntegrationId, cssEnvironment);
   }
 
+  /**
+   * Separates the application a delegation is for from the role it delegates.
+   *
+   * <p>Two underscores, because one is legal inside a role code. Splitting is
+   * still unambiguous even when the delegated role contains {@code __} of its
+   * own: the environment cannot contain an underscore, so the <em>first</em>
+   * {@code __} after it is always the boundary.
+   */
+  private static final String DELEGATION_SEPARATOR = "__";
+
+  /**
+   * A delegation: the authority to grant one specific role.
+   *
+   * <pre>
+   * DELEGATED_ADMIN_22264_DEV__FREP_EDITOR
+   * DELEGATED_ADMIN_22264_DEV__FREP_EDITOR_DISTRICT-DCC
+   * </pre>
+   *
+   * <p>Port of legacy's {@code fam_access_control_privilege(user_id, role_id)}.
+   * A delegated administrator was never authorised over an application as a
+   * whole - the privilege named a concrete role, and for a scoped role it named
+   * the per-scope child, so "may grant Submitter for forest client 00001018" was
+   * expressible and "may grant anything in FREP" was not.
+   *
+   * <p>Held on <b>FAM's own integration</b>, like the other administrative roles:
+   * the application is named inside the role because a token only carries roles
+   * of the client it was issued to.
+   *
+   * <p>Names stay well inside Keycloak's 255-character limit: the prefix,
+   * integration id and environment cost about 26 characters, leaving the role
+   * code (59 at most) and its scope suffix comfortable room.
+   *
+   * @param roleName the <em>concrete</em> CSS role, scope suffix included
+   */
+  public static String delegation(int cssIntegrationId, String cssEnvironment, String roleName) {
+    return delegatedAdmin(cssIntegrationId, cssEnvironment) + DELEGATION_SEPARATOR + roleName;
+  }
+
+  /**
+   * The role a delegation authorises, or empty if this is not a delegation.
+   *
+   * <p>Empty for the plain {@code DELEGATED_ADMIN_22264_DEV} tier marker, which
+   * names no role - see {@link #isDelegation}.
+   */
+  public static Optional<String> delegatedRoleOf(String roleName) {
+    if (roleName == null) {
+      return Optional.empty();
+    }
+    String name = roleName.trim();
+    if (!name.toUpperCase(Locale.ROOT).startsWith(DELEGATED_ADMIN_PREFIX)) {
+      return Optional.empty();
+    }
+    int separator = name.indexOf(DELEGATION_SEPARATOR, DELEGATED_ADMIN_PREFIX.length());
+    if (separator < 0 || separator == name.length() - DELEGATION_SEPARATOR.length()) {
+      return Optional.empty();
+    }
+    return Optional.of(name.substring(separator + DELEGATION_SEPARATOR.length()));
+  }
+
+  /** Whether this role delegates one specific role rather than marking the tier. */
+  public static boolean isDelegation(String roleName) {
+    return delegatedRoleOf(roleName).isPresent();
+  }
+
   private static String suffix(int cssIntegrationId, String cssEnvironment) {
     return cssIntegrationId + "_"
         + (cssEnvironment == null ? "" : cssEnvironment.toUpperCase(Locale.ROOT));
@@ -80,5 +144,61 @@ public final class FamAdminRole {
   /** Whether a role name is one of FAM's administrative roles at all. */
   public static boolean isAdminRole(String roleName) {
     return tierOf(roleName).isPresent();
+  }
+
+  /** The application an administrative role names. */
+  public record AdminRoleTarget(int cssIntegrationId, String cssEnvironment) {}
+
+  /**
+   * The application an {@code APP_ADMIN_} or {@code DELEGATED_ADMIN_} role names.
+   *
+   * <p>The inverse of {@link #appAdmin} and {@link #delegatedAdmin}, for reading
+   * a caller's own roles back into applications they administer.
+   *
+   * <p>Empty for {@link #FAM_ADMIN}, which names no application because it
+   * administers every one, and for anything that is not an administrative role.
+   * Also empty for a malformed name: a role whose id will not parse names no
+   * application, and inventing one from it would be worse than ignoring it.
+   *
+   * <p>Split at the <em>last</em> underscore, not the first: the id comes before
+   * the environment and neither contains one, but an environment added later
+   * with an underscore would break a first-underscore split silently.
+   */
+  public static Optional<AdminRoleTarget> targetOf(String roleName) {
+    if (roleName == null) {
+      return Optional.empty();
+    }
+    String name = roleName.trim().toUpperCase(Locale.ROOT);
+
+    String suffix;
+    if (name.startsWith(DELEGATED_ADMIN_PREFIX)) {
+      suffix = name.substring(DELEGATED_ADMIN_PREFIX.length());
+    } else if (name.startsWith(APP_ADMIN_PREFIX)) {
+      suffix = name.substring(APP_ADMIN_PREFIX.length());
+    } else {
+      return Optional.empty();
+    }
+
+    // A delegation carries the role it delegates after the separator. Everything
+    // below splits on the LAST underscore, which would otherwise read
+    // DELEGATED_ADMIN_22264_DEV__FREP_EDITOR as integration "22264_DEV__FREP"
+    // and fail to parse, silently dropping the row.
+    int delegation = suffix.indexOf(DELEGATION_SEPARATOR);
+    if (delegation >= 0) {
+      suffix = suffix.substring(0, delegation);
+    }
+
+    int separator = suffix.lastIndexOf('_');
+    if (separator <= 0 || separator == suffix.length() - 1) {
+      return Optional.empty();
+    }
+
+    try {
+      return Optional.of(new AdminRoleTarget(
+          Integer.parseInt(suffix.substring(0, separator)),
+          suffix.substring(separator + 1).toLowerCase(Locale.ROOT)));
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
   }
 }

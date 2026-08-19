@@ -3,10 +3,12 @@ import {
     AddAppPermissionRoute,
     ManagePermissionsRoute,
     ManageRolesRoute,
+    MyPermissionsRoute,
 } from "../router/routes";
 import { isFamAdmin } from "@/utils/AdminRoleUtils";
 import UserMultiple from "@carbon/icons-vue/es/user--multiple/16";
 import UserRole from "@carbon/icons-vue/es/user--role/16";
+import IbmLpa from "@carbon/icons-vue/es/ibm--lpa/16";
 
 export const sideNavItems: SideNavItemType[] = [
     {
@@ -25,5 +27,13 @@ export const sideNavItems: SideNavItemType[] = [
         // else is offered the screen. Hiding it is presentation only - the route
         // guard turns them away and the endpoint refuses them regardless.
         isVisible: isFamAdmin,
+    },
+    {
+        // Offered to everyone who can sign in: it reports on the caller, and
+        // somebody who administers nothing sees an empty table rather than a
+        // screen they were not allowed to open.
+        name: "My permissions",
+        routeName: MyPermissionsRoute.name!,
+        icon: IbmLpa,
     },
 ];

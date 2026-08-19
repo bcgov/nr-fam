@@ -77,6 +77,24 @@ public final class CssRoleNaming {
   public static final String LABEL_PREFIX = "FAM:LABEL:";
 
   /**
+   * Prefix of the sidecar carrying a role's long description.
+   *
+   * <p>{@code FAM:DESC:<CODE>:<free text>}.
+   *
+   * <p>A second sidecar rather than a third field on the first one. Two reasons:
+   * a role name is finite (Keycloak allows 255 characters) and a sentence plus a
+   * short name plus a code would not reliably fit in one; and splitting a
+   * three-part name is ambiguous, because both the name and the description may
+   * contain colons.
+   *
+   * <p><b>Older roles have only a {@link #LABEL_PREFIX} sidecar, and that is
+   * correct.</b> Its text has always been the short display name - "Submitter
+   * (CHR)", "FREP Administrator" - so nothing needs rewriting: those roles simply
+   * have no long description until somebody gives them one.
+   */
+  public static final String DESCRIPTION_PREFIX = "FAM:DESC:";
+
+  /**
    * A role code FAM will create: upper case, starting with a letter.
    *
    * <p>Deliberately narrower than what CSS accepts (which is close to anything,
@@ -96,35 +114,71 @@ public final class CssRoleNaming {
   }
 
   /**
-   * Name of the sidecar role holding a description.
+   * Name of the sidecar role holding a role's short display name.
    *
-   * <pre>FREP_ADMINISTRATOR + "FREP Administrator"
-   *   -> FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator</pre>
+   * <pre>FSPTS_VIEW_ALL + "View All"
+   *   -> FAM:LABEL:FSPTS_VIEW_ALL:View All</pre>
    */
-  public static String buildLabelRoleName(String roleCode, String description) {
-    return "%s%s:%s".formatted(LABEL_PREFIX, roleCode, description);
+  public static String buildLabelRoleName(String roleCode, String displayName) {
+    return "%s%s:%s".formatted(LABEL_PREFIX, roleCode, displayName);
   }
 
-  /** Whether this role is a description carrier rather than a grantable role. */
+  /**
+   * Name of the sidecar role holding a role's long description.
+   *
+   * <pre>FSPTS_VIEW_ALL + "Allows users to view all the FSPs but not edit"
+   *   -> FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit</pre>
+   */
+  public static String buildDescriptionRoleName(String roleCode, String description) {
+    return "%s%s:%s".formatted(DESCRIPTION_PREFIX, roleCode, description);
+  }
+
+  /** Whether this role carries a display name rather than being grantable. */
   public static boolean isLabelRole(String roleName) {
     return roleName != null && roleName.startsWith(LABEL_PREFIX);
   }
 
+  /** Whether this role carries a description rather than being grantable. */
+  public static boolean isDescriptionRole(String roleName) {
+    return roleName != null && roleName.startsWith(DESCRIPTION_PREFIX);
+  }
+
   /**
-   * Read a sidecar back into the code it describes and its text.
+   * Whether this role is one of FAM's sidecars, of either kind.
+   *
+   * <p>What every "is this something a person can hold" check wants: a sidecar is
+   * assigned to nobody and must never appear as a grantable role, a table row or
+   * a permission somebody holds.
+   */
+  public static boolean isSidecarRole(String roleName) {
+    return isLabelRole(roleName) || isDescriptionRole(roleName);
+  }
+
+  /**
+   * Read a display-name sidecar back into the code it names and its text.
    *
    * <p>Empty for any name that is not a well-formed sidecar, so a hand-made role
    * that merely starts with the prefix is ignored rather than half-read.
-   *
-   * <p>Splits on the first colon after the prefix only: a code cannot contain one
-   * (see {@link #isValidRoleCode}) but a description may, and truncating someone's
-   * description at a colon would be worse than keeping it whole.
    */
   public static Optional<RoleLabel> parseLabel(String roleName) {
-    if (!isLabelRole(roleName)) {
+    return parseSidecar(roleName, LABEL_PREFIX);
+  }
+
+  /** Read a description sidecar back into the code it describes and its text. */
+  public static Optional<RoleLabel> parseDescription(String roleName) {
+    return parseSidecar(roleName, DESCRIPTION_PREFIX);
+  }
+
+  /**
+   * Splits on the first colon after the prefix only: a code cannot contain one
+   * (see {@link #isValidRoleCode}) but the text may, and truncating somebody's
+   * description at a colon would be worse than keeping it whole.
+   */
+  private static Optional<RoleLabel> parseSidecar(String roleName, String prefix) {
+    if (roleName == null || !roleName.startsWith(prefix)) {
       return Optional.empty();
     }
-    String rest = roleName.substring(LABEL_PREFIX.length());
+    String rest = roleName.substring(prefix.length());
     int separator = rest.indexOf(':');
     if (separator <= 0 || separator == rest.length() - 1) {
       return Optional.empty();
@@ -144,8 +198,8 @@ public final class CssRoleNaming {
     });
   }
 
-  /** A description and the role code it belongs to. */
-  public record RoleLabel(String roleCode, String description) {}
+  /** A sidecar's text and the role code it belongs to. */
+  public record RoleLabel(String roleCode, String text) {}
 
   /**
    * Name for the scope-specific role created on demand at grant time.

@@ -313,15 +313,37 @@ public class CssApiService {
   /**
    * The users holding one role.
    *
-   * <p>The only view CSS gives of assignments: there is no endpoint listing every
-   * user in an integration, so callers wanting the whole picture fan out over
-   * roles and merge.
+   * <p>The only view CSS gives of assignments <em>within</em> an integration:
+   * there is no endpoint listing every user in one, so callers wanting the whole
+   * picture fan out over roles and merge.
    */
   public List<CssUserDto> getUsersWithRole(
       int integrationId, String environment, String roleName) {
 
     return getList("/integrations/{id}/{env}/roles/{role}/users", CssUserDto.class,
         integrationId, environment, roleName);
+  }
+
+  /**
+   * The roles one user holds in one integration environment.
+   *
+   * <p>The inverse of {@link #getUsersWithRole}, and the only way to answer "what
+   * does this person hold here" without reading every role's membership.
+   *
+   * <p>Still per integration and environment - CSS has no cross-integration view
+   * of a user - so answering "everywhere" means calling this once per pair.
+   *
+   * <p>Returns empty rather than failing when the user is unknown to that
+   * environment, which is the common case: a person holds roles in a handful of
+   * the integrations a team owns, not all of them.
+   */
+  public List<CssRoleDto> getUserRoles(
+      int integrationId, String environment, String username) {
+
+    log.debug("CssApiService.getUserRoles({}, {}, {})", integrationId, environment, username);
+
+    return getList("/integrations/{id}/{env}/users/{username}/roles", CssRoleDto.class,
+        integrationId, environment, username);
   }
 
   /**

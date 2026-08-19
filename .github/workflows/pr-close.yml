@@ -20,6 +20,12 @@ jobs:
     secrets:
       oc_namespace: ${{ secrets.oc_namespace }}
       oc_token: ${{ secrets.oc_token }}
+      # Must be passed explicitly. The called workflow declares oc_server as a
+      # secret and falls back to `https://api.silver.devops.gov.bc.ca:6443` when
+      # it is absent, so omitting it does not fail - it quietly points the
+      # cleanup at the wrong cluster. It is a variable here, not a secret; a
+      # cluster API URL is not sensitive and the deploy jobs read the same one.
+      oc_server: ${{ vars.oc_server }}
     with:
       cleanup: label
       packages: backend frontend

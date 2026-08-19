@@ -214,6 +214,7 @@ const cancel = () => router.push({ name: ManagePermissionsRoute.name });
 .add-app-permission-container {
     .form-actions {
         display: flex;
+        justify-content: flex-end;
         gap: 1rem;
         margin-top: 2rem;
     }

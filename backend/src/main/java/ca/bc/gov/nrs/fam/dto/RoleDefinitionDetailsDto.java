@@ -33,20 +33,25 @@ public record RoleDefinitionDetailsDto(
     /** The raw code, which is also the CSS role name. */
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String roleCode,
 
-    /** The description as entered, held in CSS on a sidecar role. */
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String description,
+    /** The short name as entered, held in CSS on a FAM:LABEL sidecar. */
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String roleName,
+
+    /** The long description, held on a FAM:DESC sidecar. Null when not given. */
+    String description,
 
     /** What must be chosen when the role is granted. Null for an unscoped role. */
     PrivilegeDetailsScopeType requiredScopeType) {
 
   /** Builds the document, keeping the two representations of the code in step. */
   public static RoleDefinitionDetailsDto of(
-      String roleCode, String description, PrivilegeDetailsScopeType requiredScopeType) {
+      String roleCode, String roleName, String description,
+      PrivilegeDetailsScopeType requiredScopeType) {
 
     return new RoleDefinitionDetailsDto(
         PrivilegeDetailsPermissionType.ROLE_DEFINITION,
         List.of(new PrivilegeDetailsRoleDto(roleCode, null, null)),
         roleCode,
+        roleName,
         description,
         requiredScopeType);
   }

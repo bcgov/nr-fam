@@ -22,9 +22,23 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
+import { AdminRoleAuthGroup } from '../model';
+// @ts-ignore
+import { CssAdministratorAppointRequest } from '../model';
+// @ts-ignore
+import { CssAdministratorRowDto } from '../model';
+// @ts-ignore
 import { CssApplicationOptionDto } from '../model';
 // @ts-ignore
+import { CssDelegatedAdminRequest } from '../model';
+// @ts-ignore
+import { CssRoleBulkCreateResultDto } from '../model';
+// @ts-ignore
 import { CssRoleCreateRequest } from '../model';
+// @ts-ignore
+import { CssRoleDeleteResultDto } from '../model';
+// @ts-ignore
+import { CssRoleMemberCountDto } from '../model';
 // @ts-ignore
 import { CssRoleOptionDto } from '../model';
 // @ts-ignore
@@ -41,6 +55,54 @@ import { CssUserRoleRowDto } from '../model';
  */
 export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         * 
+         * @summary Appoint an application administrator
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssApplicationAdmin: async (integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('createCssApplicationAdmin', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('createCssApplicationAdmin', 'environment', environment)
+            // verify required parameter 'cssAdministratorAppointRequest' is not null or undefined
+            assertParamExists('createCssApplicationAdmin', 'cssAdministratorAppointRequest', cssAdministratorAppointRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/application-admins`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssAdministratorAppointRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          * 
          * @summary Define a new role on a CSS integration environment
@@ -83,6 +145,98 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(cssRoleCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Define a role in every environment of a CSS integration
+         * @param {number} integrationId 
+         * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssApplicationRoleAllEnvironments: async (integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('createCssApplicationRoleAllEnvironments', 'integrationId', integrationId)
+            // verify required parameter 'cssRoleCreateRequest' is not null or undefined
+            assertParamExists('createCssApplicationRoleAllEnvironments', 'cssRoleCreateRequest', cssRoleCreateRequest)
+            const localVarPath = `/css-applications/{integrationId}/roles`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssRoleCreateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Appoint a delegated administrator for one role
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssDelegatedAdmin: async (integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('createCssDelegatedAdmin', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('createCssDelegatedAdmin', 'environment', environment)
+            // verify required parameter 'cssDelegatedAdminRequest' is not null or undefined
+            assertParamExists('createCssDelegatedAdmin', 'cssDelegatedAdminRequest', cssDelegatedAdminRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/delegated-admins`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssDelegatedAdminRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -139,6 +293,148 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
         },
         /**
          * 
+         * @summary Remove an application administrator
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssApplicationAdmin: async (integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('deleteCssApplicationAdmin', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('deleteCssApplicationAdmin', 'environment', environment)
+            // verify required parameter 'cssAdministratorAppointRequest' is not null or undefined
+            assertParamExists('deleteCssApplicationAdmin', 'cssAdministratorAppointRequest', cssAdministratorAppointRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/application-admins`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssAdministratorAppointRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Remove a role, its sidecar and any roles derived from it
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {string} roleName 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssApplicationRole: async (integrationId: number, environment: string, roleName: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('deleteCssApplicationRole', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('deleteCssApplicationRole', 'environment', environment)
+            // verify required parameter 'roleName' is not null or undefined
+            assertParamExists('deleteCssApplicationRole', 'roleName', roleName)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/roles/{roleName}`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)))
+                .replace(`{${"roleName"}}`, encodeURIComponent(String(roleName)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Withdraw a delegated administrator\'s delegation for one role
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssDelegatedAdmin: async (integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('deleteCssDelegatedAdmin', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('deleteCssDelegatedAdmin', 'environment', environment)
+            // verify required parameter 'cssDelegatedAdminRequest' is not null or undefined
+            assertParamExists('deleteCssDelegatedAdmin', 'cssDelegatedAdminRequest', cssDelegatedAdminRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/delegated-admins`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssDelegatedAdminRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Revoke a role from a user
          * @param {number} integrationId 
          * @param {string} environment 
@@ -179,6 +475,97 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(cssUserRoleRevokeRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List the administrators of an application at one tier
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCssApplicationAdministrators: async (integrationId: number, environment: string, tier: AdminRoleAuthGroup, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('getCssApplicationAdministrators', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('getCssApplicationAdministrators', 'environment', environment)
+            // verify required parameter 'tier' is not null or undefined
+            assertParamExists('getCssApplicationAdministrators', 'tier', tier)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/administrators`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (tier !== undefined) {
+                localVarQueryParameter['tier'] = tier;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Count the people holding each role of a CSS integration environment
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCssApplicationRoleMemberCounts: async (integrationId: number, environment: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('getCssApplicationRoleMemberCounts', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('getCssApplicationRoleMemberCounts', 'environment', environment)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/roles/member-counts`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -315,6 +702,21 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
+         * @summary Appoint an application administrator
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssUserRoleAssignmentResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createCssApplicationAdmin(integrationId, environment, cssAdministratorAppointRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssApplicationAdmin']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Define a new role on a CSS integration environment
          * @param {number} integrationId 
          * @param {string} environment 
@@ -326,6 +728,35 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createCssApplicationRole(integrationId, environment, cssRoleCreateRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssApplicationRole']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Define a role in every environment of a CSS integration
+         * @param {number} integrationId 
+         * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssRoleBulkCreateResultDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createCssApplicationRoleAllEnvironments(integrationId, cssRoleCreateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssApplicationRoleAllEnvironments']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Appoint a delegated administrator for one role
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CssUserRoleAssignmentResult>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createCssDelegatedAdmin(integrationId, environment, cssDelegatedAdminRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssDelegatedAdmin']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -345,6 +776,51 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Remove an application administrator
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteCssApplicationAdmin(integrationId, environment, cssAdministratorAppointRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.deleteCssApplicationAdmin']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Remove a role, its sidecar and any roles derived from it
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {string} roleName 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteCssApplicationRole(integrationId: number, environment: string, roleName: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssRoleDeleteResultDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteCssApplicationRole(integrationId, environment, roleName, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.deleteCssApplicationRole']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Withdraw a delegated administrator\'s delegation for one role
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteCssDelegatedAdmin(integrationId, environment, cssDelegatedAdminRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.deleteCssDelegatedAdmin']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Revoke a role from a user
          * @param {number} integrationId 
          * @param {string} environment 
@@ -356,6 +832,35 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.deleteCssUserRoleAssignment(integrationId, environment, cssUserRoleRevokeRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.deleteCssUserRoleAssignment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary List the administrators of an application at one tier
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCssApplicationAdministrators(integrationId: number, environment: string, tier: AdminRoleAuthGroup, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CssAdministratorRowDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCssApplicationAdministrators(integrationId, environment, tier, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.getCssApplicationAdministrators']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Count the people holding each role of a CSS integration environment
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getCssApplicationRoleMemberCounts(integrationId: number, environment: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CssRoleMemberCountDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getCssApplicationRoleMemberCounts(integrationId, environment, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.getCssApplicationRoleMemberCounts']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -410,6 +915,18 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
     return {
         /**
          * 
+         * @summary Appoint an application administrator
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: any): AxiosPromise<CssUserRoleAssignmentResult> {
+            return localVarFp.createCssApplicationAdmin(integrationId, environment, cssAdministratorAppointRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Define a new role on a CSS integration environment
          * @param {number} integrationId 
          * @param {string} environment 
@@ -419,6 +936,29 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
          */
         createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: any): AxiosPromise<CssRoleOptionDto> {
             return localVarFp.createCssApplicationRole(integrationId, environment, cssRoleCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Define a role in every environment of a CSS integration
+         * @param {number} integrationId 
+         * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: any): AxiosPromise<CssRoleBulkCreateResultDto> {
+            return localVarFp.createCssApplicationRoleAllEnvironments(integrationId, cssRoleCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Appoint a delegated administrator for one role
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: any): AxiosPromise<Array<CssUserRoleAssignmentResult>> {
+            return localVarFp.createCssDelegatedAdmin(integrationId, environment, cssDelegatedAdminRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -434,6 +974,42 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
         },
         /**
          * 
+         * @summary Remove an application administrator
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: any): AxiosPromise<void> {
+            return localVarFp.deleteCssApplicationAdmin(integrationId, environment, cssAdministratorAppointRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Remove a role, its sidecar and any roles derived from it
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {string} roleName 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssApplicationRole(integrationId: number, environment: string, roleName: string, options?: any): AxiosPromise<CssRoleDeleteResultDto> {
+            return localVarFp.deleteCssApplicationRole(integrationId, environment, roleName, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Withdraw a delegated administrator\'s delegation for one role
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: any): AxiosPromise<void> {
+            return localVarFp.deleteCssDelegatedAdmin(integrationId, environment, cssDelegatedAdminRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Revoke a role from a user
          * @param {number} integrationId 
          * @param {string} environment 
@@ -443,6 +1019,29 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
          */
         deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: any): AxiosPromise<void> {
             return localVarFp.deleteCssUserRoleAssignment(integrationId, environment, cssUserRoleRevokeRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary List the administrators of an application at one tier
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCssApplicationAdministrators(integrationId: number, environment: string, tier: AdminRoleAuthGroup, options?: any): AxiosPromise<Array<CssAdministratorRowDto>> {
+            return localVarFp.getCssApplicationAdministrators(integrationId, environment, tier, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Count the people holding each role of a CSS integration environment
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCssApplicationRoleMemberCounts(integrationId: number, environment: string, options?: any): AxiosPromise<Array<CssRoleMemberCountDto>> {
+            return localVarFp.getCssApplicationRoleMemberCounts(integrationId, environment, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -486,6 +1085,18 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
 export interface CSSIntegrationsApiInterface {
     /**
      * 
+     * @summary Appoint an application administrator
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    createCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssUserRoleAssignmentResult>;
+
+    /**
+     * 
      * @summary Define a new role on a CSS integration environment
      * @param {number} integrationId 
      * @param {string} environment 
@@ -495,6 +1106,29 @@ export interface CSSIntegrationsApiInterface {
      * @memberof CSSIntegrationsApiInterface
      */
     createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleOptionDto>;
+
+    /**
+     * 
+     * @summary Define a role in every environment of a CSS integration
+     * @param {number} integrationId 
+     * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleBulkCreateResultDto>;
+
+    /**
+     * 
+     * @summary Appoint a delegated administrator for one role
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    createCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssUserRoleAssignmentResult>>;
 
     /**
      * 
@@ -510,6 +1144,42 @@ export interface CSSIntegrationsApiInterface {
 
     /**
      * 
+     * @summary Remove an application administrator
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    deleteCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: RawAxiosRequestConfig): AxiosPromise<void>;
+
+    /**
+     * 
+     * @summary Remove a role, its sidecar and any roles derived from it
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {string} roleName 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    deleteCssApplicationRole(integrationId: number, environment: string, roleName: string, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleDeleteResultDto>;
+
+    /**
+     * 
+     * @summary Withdraw a delegated administrator\'s delegation for one role
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    deleteCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: RawAxiosRequestConfig): AxiosPromise<void>;
+
+    /**
+     * 
      * @summary Revoke a role from a user
      * @param {number} integrationId 
      * @param {string} environment 
@@ -519,6 +1189,29 @@ export interface CSSIntegrationsApiInterface {
      * @memberof CSSIntegrationsApiInterface
      */
     deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: RawAxiosRequestConfig): AxiosPromise<void>;
+
+    /**
+     * 
+     * @summary List the administrators of an application at one tier
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {AdminRoleAuthGroup} tier 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    getCssApplicationAdministrators(integrationId: number, environment: string, tier: AdminRoleAuthGroup, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssAdministratorRowDto>>;
+
+    /**
+     * 
+     * @summary Count the people holding each role of a CSS integration environment
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    getCssApplicationRoleMemberCounts(integrationId: number, environment: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssRoleMemberCountDto>>;
 
     /**
      * 
@@ -562,6 +1255,20 @@ export interface CSSIntegrationsApiInterface {
 export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInterface {
     /**
      * 
+     * @summary Appoint an application administrator
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public createCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).createCssApplicationAdmin(integrationId, environment, cssAdministratorAppointRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary Define a new role on a CSS integration environment
      * @param {number} integrationId 
      * @param {string} environment 
@@ -572,6 +1279,33 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
      */
     public createCssApplicationRole(integrationId: number, environment: string, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig) {
         return CSSIntegrationsApiFp(this.configuration).createCssApplicationRole(integrationId, environment, cssRoleCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Define a role in every environment of a CSS integration
+     * @param {number} integrationId 
+     * @param {CssRoleCreateRequest} cssRoleCreateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).createCssApplicationRoleAllEnvironments(integrationId, cssRoleCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Appoint a delegated administrator for one role
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public createCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).createCssDelegatedAdmin(integrationId, environment, cssDelegatedAdminRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -590,6 +1324,48 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
 
     /**
      * 
+     * @summary Remove an application administrator
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssAdministratorAppointRequest} cssAdministratorAppointRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public deleteCssApplicationAdmin(integrationId: number, environment: string, cssAdministratorAppointRequest: CssAdministratorAppointRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).deleteCssApplicationAdmin(integrationId, environment, cssAdministratorAppointRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Remove a role, its sidecar and any roles derived from it
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {string} roleName 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public deleteCssApplicationRole(integrationId: number, environment: string, roleName: string, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).deleteCssApplicationRole(integrationId, environment, roleName, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Withdraw a delegated administrator\'s delegation for one role
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {CssDelegatedAdminRequest} cssDelegatedAdminRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public deleteCssDelegatedAdmin(integrationId: number, environment: string, cssDelegatedAdminRequest: CssDelegatedAdminRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).deleteCssDelegatedAdmin(integrationId, environment, cssDelegatedAdminRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
      * @summary Revoke a role from a user
      * @param {number} integrationId 
      * @param {string} environment 
@@ -600,6 +1376,33 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
      */
     public deleteCssUserRoleAssignment(integrationId: number, environment: string, cssUserRoleRevokeRequest: CssUserRoleRevokeRequest, options?: RawAxiosRequestConfig) {
         return CSSIntegrationsApiFp(this.configuration).deleteCssUserRoleAssignment(integrationId, environment, cssUserRoleRevokeRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary List the administrators of an application at one tier
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {AdminRoleAuthGroup} tier 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public getCssApplicationAdministrators(integrationId: number, environment: string, tier: AdminRoleAuthGroup, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).getCssApplicationAdministrators(integrationId, environment, tier, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Count the people holding each role of a CSS integration environment
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public getCssApplicationRoleMemberCounts(integrationId: number, environment: string, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).getCssApplicationRoleMemberCounts(integrationId, environment, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

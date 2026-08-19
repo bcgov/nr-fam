@@ -36,13 +36,16 @@ public record CssUserRoleRowDto(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String roleName,
 
     /**
-     * The role's description, e.g. {@code FREP Administrator}.
+     * The role's short display name, e.g. {@code View All}.
      *
-     * <p>Null for a role with no sidecar - one defined before FAM held
-     * descriptions, or added directly in the CSS console - so a caller showing
-     * this must fall back to {@link #roleName} rather than showing nothing.
+     * <p>What the permission pills show. Null for a role with no sidecar - one
+     * added directly in the CSS console - so a caller showing this must fall
+     * back to {@link #roleName} rather than showing nothing.
+     *
+     * <p>The long description is deliberately not here: this is a table of who
+     * holds what, and a sentence per row would not fit a pill.
      */
-    String roleDescription,
+    String roleDisplayName,
 
     /** Recovered from the role name, the only place it is recorded. */
     String scopeType,

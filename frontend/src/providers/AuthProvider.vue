@@ -146,6 +146,10 @@ const handlePostLogin = async () => {
         // resolves roles. Must happen before any other API call.
         applyAccessRoles((await bootstrapLogin()).access_roles ?? []);
 
+        // After the roles, as in loadUser: this is what releases the route
+        // guards, and they decide admin-only routes from accessRoles.
+        authState.value = { ...authState.value, isAuthRestored: true };
+
         startSilentRefresh();
         resetInactivityTimeout();
 
@@ -199,7 +203,12 @@ const applySession = (user: User) => {
     authState.value = {
         isAuthenticated: true,
         famLoginUser: getFamLoginUser(user),
-        isAuthRestored: true,
+        // NOT set here. The route guards wait on this flag and then read the
+        // roles, so publishing it before /auth/self has answered told them the
+        // session was ready while accessRoles was still empty - on a refresh
+        // that sent a FAM administrator straight to /no-access. loadUser sets it
+        // once the roles are known.
+        isAuthRestored: authState.value.isAuthRestored,
         // Carried across rather than cleared: this runs on every silent refresh,
         // and blanking the roles until /auth/self answers again would make
         // admin-only navigation flicker out every few minutes.
@@ -237,6 +246,11 @@ const loadUser = async (): Promise<void> => {
     // Re-read identity and roles so a permission change is picked up without a
     // fresh sign-in. Roles live in the database now, not in the token.
     applyAccessRoles((await fetchSelf()).access_roles ?? []);
+
+    // Last, and only now: the guards treat this as "the session is ready to be
+    // judged", and judging it needs the roles. Setting it in applySession left a
+    // window where isAuthenticated was true and accessRoles was still empty.
+    authState.value = { ...authState.value, isAuthRestored: true };
 };
 
 /**

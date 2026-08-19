@@ -5,6 +5,7 @@ import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import jakarta.annotation.PostConstruct;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -120,6 +121,39 @@ public class AuthorizationService {
       // FAM's to a caller who was guessing.
       throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
           "Requires administrator privilege for this application.");
+    }
+  }
+
+  /**
+   * The caller must be allowed to grant or revoke these specific roles.
+   *
+   * <p>Port of legacy's {@code authorize_by_privilege}. An application
+   * administrator passes for anything the application defines; a delegated
+   * administrator passes only for the roles they hold a delegation for.
+   *
+   * <p><b>Checked per concrete role, after scope has been applied.</b> A grant of
+   * one role across three districts is three roles, and a delegation covering one
+   * district must not carry the other two - which is the whole point of
+   * delegating per scope value. Passing the base role name here instead would
+   * quietly authorise every district.
+   *
+   * <p>All or nothing: one role the caller may not grant refuses the request
+   * rather than granting the rest. A partial grant would leave the caller
+   * believing they had done something they had not.
+   */
+  public void requireGrantableRoles(
+      Requester requester, int cssIntegrationId, String cssEnvironment, List<String> roleNames) {
+
+    List<String> refused = roleNames.stream()
+        .filter(roleName -> !requester.canGrantRole(cssIntegrationId, cssEnvironment, roleName))
+        .toList();
+
+    if (!refused.isEmpty()) {
+      log.warn("{} may not grant {} on integration {} ({}).",
+          requester.userName(), refused, cssIntegrationId, cssEnvironment);
+      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+          "You have not been delegated %s in this application."
+              .formatted(String.join(", ", refused)));
     }
   }
 
