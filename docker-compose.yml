@@ -32,8 +32,7 @@ services:
     ports: ["5432:5432"]
 
   # Applies its own migrations on start-up: the SQL ships inside the jar, so
-  # there is no separate migrations container to sequence before this one. The
-  # local profile also applies the seed users in db/local.
+  # there is no separate migrations container to sequence before this one.
   backend:
     container_name: fam-backend
     build:

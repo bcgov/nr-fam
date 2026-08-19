@@ -506,7 +506,7 @@
     "/smoke_test" : {
       "get" : {
         "tags" : [ "Smoke Test" ],
-        "summary" : "Verify database connectivity and seeded application data",
+        "summary" : "Verify database connectivity and that migrations have run",
         "operationId" : "smoke_test",
         "responses" : {
           "200" : {

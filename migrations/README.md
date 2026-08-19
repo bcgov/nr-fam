@@ -31,24 +31,38 @@ If your security posture requires keeping it, the alternative is to run Flyway
 as a separate job again — set `spring.flyway.enabled=false` on the app and apply
 `backend/src/main/resources/db/migration` with the Flyway CLI as `fam_owner`.
 
-## Local seed data
+## No local seed data
 
-`backend/src/main/resources/db/local/R__seed_local_test_users.sql` is applied
-only under the `local` profile, which adds `classpath:db/local` to
-`spring.flyway.locations`. It ships in the jar and is never applied anywhere
-else.
+There is none, deliberately. `fam_user` rows are created by signing in - the
+first `POST /auth/login` provisions the caller - so a local database needs no
+seeding to be usable.
 
-**Repeatable (`R__`), deliberately.** It was `V1000` — numbered high so it ran
-after the baseline — but that put it above every real migration, so the next
-versioned migration added was out of order and Flyway refused to start with
-`Detected resolved migration not applied to database`. Repeatable migrations
-carry no version and always run last, so seed data can never block a schema
-change. Keep it idempotent (`ON CONFLICT DO NOTHING`): a repeatable migration
-re-runs whenever its checksum changes.
+A `db/local` seed used to exist and was applied under the `local` profile. It was
+removed because it bought nothing (nothing reads `fam_user` except the caller's
+own provisioning and the user-info refresh batch) and cost something real: a
+developer whose `local` profile pointed at a deployed environment's database
+seeded that database, and the next deployment could not resolve the migration:
 
-A local database that already applied `V1000` still has that row in its history,
-and Flyway will refuse to start over the now-missing migration. Clear it once:
+```
+Detected applied migration not resolved locally: seed local test users
+```
+
+`spring.flyway.ignore-migration-patterns: repeatable:missing` is kept for exactly
+that case - a database that already has the seed in its history starts cleanly
+without anyone editing `flyway_schema_history`. A *versioned* migration going
+missing still fails the deployment loudly.
+
+If a seeded row is unwanted, it can go:
 
 ```sql
-DELETE FROM app_fam.flyway_schema_history WHERE version = '1000';
+DELETE FROM app_fam.fam_user WHERE user_name LIKE 'LOCAL%';
 ```
+
+### Keep the `local` profile off a deployed environment's database
+
+The seed is gone, but the hazard behind it is not: the `local` profile still runs
+Flyway, so pointing it at a database a deployed environment uses means your
+machine migrates that environment's schema. A migration you are still iterating
+on lands there, and that environment cannot start until you finish it.
+
+Use the `docker compose` database, or one of your own.

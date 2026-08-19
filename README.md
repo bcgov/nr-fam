@@ -59,8 +59,7 @@ docker compose up
 ```
 
 That starts PostgreSQL, then the backend on `:8080` and the frontend on `:3000`.
-The backend migrates the database itself on start-up; under the `local` profile
-it also applies the seed users in `db/local`.
+The backend migrates the database itself on start-up.
 
 The frontend is the one you open. It proxies `/api` to the backend and strips
 the prefix, mirroring the Caddy config the deployed frontend runs behind, so the

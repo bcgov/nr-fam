@@ -66,17 +66,18 @@ jobs:
           echo "::error::Backend health check failed through the /api proxy."
           exit 1
 
-      # FAM's own smoke endpoint: 200 when the database is reachable AND holds
-      # seeded applications, 417 when it is reachable but empty. A healthy but
-      # unmigrated database is a failed deployment, so 417 fails here.
+      # FAM's own smoke endpoint: 200 when the database is reachable AND
+      # migrated, 417 when it is reachable but the baseline never ran. It checks
+      # reference data, not user rows, so a new environment nobody has signed in
+      # to still passes.
       - name: FAM smoke test
         env:
           BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
         run: |
           status=$(curl -k --connect-timeout 5 --max-time 15 -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/smoke_test" || true)
           case "$status" in
-            200) echo "Smoke test passed: database reachable and seeded." ;;
-            417) echo "::error::Database reachable but has no applications - migrations did not seed."; exit 1 ;;
+            200) echo "Smoke test passed: database reachable and migrated." ;;
+            417) echo "::error::Database reachable but not migrated - the baseline did not run."; exit 1 ;;
             *)   echo "::error::Smoke test returned HTTP $status."; exit 1 ;;
           esac
 
