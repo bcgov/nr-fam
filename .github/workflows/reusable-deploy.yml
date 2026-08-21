@@ -136,8 +136,6 @@ jobs:
             -p USER_LOOKUP_TOKEN_URL="${{ vars.user_lookup_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri) || '' }}"
             -p USER_LOOKUP_CLIENT_ID="${{ steps.keycloak_sa.outputs.client_id }}"
             -p USER_LOOKUP_CLIENT_SECRET="$USER_LOOKUP_CLIENT_SECRET"
-            -p FC_API_BASE_URL_TEST="${{ vars.fc_api_base_url_test }}"
-            -p FC_API_BASE_URL_PROD="${{ vars.fc_api_base_url_prod }}"
             -p FC_API_TOKEN_TEST="${{ secrets.fc_api_token_test }}"
             -p FC_API_TOKEN_PROD="${{ secrets.fc_api_token_prod }}"
             -p TARGET_ENV="${{ inputs.environment || 'dev' }}"
@@ -171,6 +169,8 @@ jobs:
               -p CSS_OWN_INTEGRATION_ID="${{ vars.css_own_integration_id }}"
               -p SMTP_HOST="${{ vars.smtp_host }}"
               -p SMTP_FROM="${{ vars.smtp_from }}"
+              -p FC_API_BASE_URL_TEST="${{ vars.fc_api_base_url_test }}"
+              -p FC_API_BASE_URL_PROD="${{ vars.fc_api_base_url_prod }}"
           - name: frontend
             file: frontend/openshift.deploy.yml
             parameters: -p IMAGE_TAG="${{ inputs.tag }}"
