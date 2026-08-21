@@ -34,9 +34,14 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * classpath and the application's own Flyway configuration applies it, so this
  * test exercises the same path a deployment does.
  *
- * <p>Requires a Docker daemon.
+ * <p>Requires a Docker daemon. Without one the class is <em>skipped</em> rather
+ * than failed, so a developer without Docker is not blocked by an error that
+ * says nothing about their change. {@code DockerRequiredOnCiTest} makes sure
+ * that convenience cannot turn into a silent hole: on CI the absence of Docker
+ * is a failure, because skipping here would leave the schema unvalidated while
+ * the build stayed green.
  */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
 @DisplayName("JPA entities match the Flyway-migrated schema")
 class SchemaValidationIT {
