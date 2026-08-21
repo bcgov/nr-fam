@@ -106,6 +106,9 @@ class SchemaValidationIT {
     audit.setPrivilegeChangeType(
         entityManager.getReference(FamPrivilegeChangeType.class, "GRANT"));
     audit.setCreateUser(createUser);
+    // Same value as create_user, as production writes it: the row's author and
+    // the person who made the change are one and the same outside a backfill.
+    audit.setPerformerUser(createUser);
     return audit;
   }
 
