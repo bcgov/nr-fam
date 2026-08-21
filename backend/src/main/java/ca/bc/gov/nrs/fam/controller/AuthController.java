@@ -3,13 +3,11 @@ package ca.bc.gov.nrs.fam.controller;
 import ca.bc.gov.nrs.fam.dto.SelfApplicationRoleDto;
 import ca.bc.gov.nrs.fam.dto.SelfDto;
 import ca.bc.gov.nrs.fam.dto.SelfPermissionDto;
-import ca.bc.gov.nrs.fam.entity.FamUser;
 import ca.bc.gov.nrs.fam.security.AccessRoleResolver;
 import ca.bc.gov.nrs.fam.security.Requester;
 import ca.bc.gov.nrs.fam.security.RequesterService;
 import ca.bc.gov.nrs.fam.service.SelfPermissionService;
 import ca.bc.gov.nrs.fam.security.TokenClaimsReader;
-import ca.bc.gov.nrs.fam.security.UserProvisioningService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
@@ -30,10 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
  * the user's {@code fam_user} row and inject their roles into the token; a BC Gov
  * SSO realm cannot run application code at token time without a custom SPI.
  *
- * <p>So the work moves here. The frontend calls {@code POST /auth/login} once,
- * immediately after a successful Keycloak sign-in and before any other API call.
- * Until it does, a first-time user holds a valid token but has no FAM identity,
- * and every other endpoint answers {@code requester_not_exists}.
+ * <p>Roles moved to the token's own {@code client_roles} claim, and the user row
+ * is gone entirely, so nothing has to happen before the first API call.
+ * {@code POST /auth/login} remains because the frontend calls it after sign-in,
+ * but it now only reports the caller's identity and roles - the same shape as
+ * {@code GET /auth/self} - and no endpoint depends on it having run.
  */
 @Slf4j
 @RestController
@@ -42,7 +41,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AuthController {
 
-  private final UserProvisioningService userProvisioningService;
   private final AccessRoleResolver accessRoleResolver;
   private final RequesterService requesterService;
   private final TokenClaimsReader claimsReader;
@@ -60,14 +58,11 @@ public class AuthController {
           + "Cognito pre-token-generation trigger.")
   public SelfDto login(@AuthenticationPrincipal Jwt jwt) {
     TokenClaimsReader.TokenIdentity identity = claimsReader.identity(jwt);
-
-    FamUser famUser = userProvisioningService.provisionUser(identity);
-
     List<String> accessRoles = accessRoleResolver.resolveAccessRoles(jwt);
 
-    log.info("Login bootstrap for {} ({} role(s))", famUser.getUserName(), accessRoles.size());
+    log.info("Login for {} ({} role(s))", identity.userName(), accessRoles.size());
 
-    return toSelf(requesterService.forProvisionedUser(famUser, accessRoles));
+    return toSelf(requesterService.toRequester(identity, accessRoles));
   }
 
   /**
@@ -122,7 +117,6 @@ public class AuthController {
 
   private static SelfDto toSelf(Requester requester) {
     return new SelfDto(
-        requester.userId(),
         requester.userName(),
         requester.userType() == null ? null : requester.userType().getCode(),
         requester.firstName(),

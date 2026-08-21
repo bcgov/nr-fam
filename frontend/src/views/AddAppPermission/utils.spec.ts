@@ -21,7 +21,7 @@ describe("generateCssRequests", () => {
 
     const form = (overrides: Partial<AppPermissionFormType> = {}) =>
         ({
-            domain: UserType.I,
+            domain: UserType.Idir,
             users: [{ userId: "JSMITH", guid: "ABC123", email: "jane@gov.bc.ca" }],
             forestClients: [],
             districts: [],

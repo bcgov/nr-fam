@@ -59,13 +59,13 @@ class OpenApiSpecGeneratorTest {
     // absent from the generated client too.
     //
     // Applications, roles and role assignments moved to CSS in V94, so the
-    // endpoints that served them from FAM's own tables are gone.
+    // endpoints that served them from FAM's own tables are gone. So is
+    // /users/users-information: it refreshed fam_user, which no longer exists.
     assertThat(paths.has("/auth/login")).isTrue();
     assertThat(paths.has("/auth/self")).isTrue();
     assertThat(paths.has("/identity-lookup/idir")).isTrue();
     assertThat(paths.has("/permission-audit-history")).isTrue();
     assertThat(paths.has("/districts")).isTrue();
-    assertThat(paths.has("/users/users-information")).isTrue();
 
     // CSS-sourced applications, roles and assignments.
     assertThat(paths.has("/css-applications")).isTrue();

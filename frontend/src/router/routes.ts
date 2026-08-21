@@ -5,6 +5,7 @@
  3. Add the new route constant to the `routeItems` array below.
  4. Each route must have a name defined.
 */
+import type { UserType } from "fam-api";
 import type { RouteRecordRaw } from "vue-router";
 import type { AddAppPermissionRouteProps } from "@/types/RouteTypes";
 
@@ -77,6 +78,24 @@ export const AddApplicationAdminRoute: RouteRecordRaw = {
 };
 
 /**
+ * Grant one role to many users from a CSV.
+ *
+ * Ordinary application roles only - the backend refuses administrative ones.
+ * Guarded by the ordinary auth guard; the backend applies the same per-row rules
+ * the single grant path does, including a delegated administrator's limits.
+ */
+export const BulkGrantRoute: RouteRecordRaw = {
+    path: "/manage-permissions/bulk-upload",
+    component: () => import("@/views/BulkGrant"),
+    props: (route): AddAppPermissionRouteProps => ({
+        integrationId: Number(route.query.integrationId),
+        environment: String(route.query.environment ?? ""),
+    }),
+    name: "BulkGrant",
+    meta: protectedLayoutMeta,
+};
+
+/**
  * Route to a page for defining the roles an application offers.
  *
  * FAM administrators only - see `famAdminGuard`. Granting an existing role and
@@ -102,6 +121,7 @@ export const UserPermissionHistoryRoute: RouteRecordRaw = {
     component: () => import("@/views/UserPermissionHistory"),
     props: (route) => ({
         targetUserGuid: String(route.query.targetUserGuid ?? ""),
+        targetUserType: String(route.query.targetUserType ?? "") as UserType,
         integrationId: Number(route.query.integrationId),
         environment: String(route.query.environment ?? ""),
         userName: String(route.query.userName ?? ""),
@@ -140,6 +160,7 @@ export const routeItems: RouteRecordRaw[] = [
     AddAppPermissionRoute,
     AddDelegatedAdminRoute,
     AddApplicationAdminRoute,
+    BulkGrantRoute,
     ManageRolesRoute,
     UserPermissionHistoryRoute,
     MyPermissionsRoute,

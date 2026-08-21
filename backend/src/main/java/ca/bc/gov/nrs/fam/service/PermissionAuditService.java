@@ -1,8 +1,11 @@
 package ca.bc.gov.nrs.fam.service;
 
+import java.util.UUID;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.PrivilegeChangeType;
+import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.PermissionAuditHistoryDto;
+import ca.bc.gov.nrs.fam.security.AuditUser;
 import ca.bc.gov.nrs.fam.dto.PrivilegeChangePerformerDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
@@ -31,11 +34,20 @@ public class PermissionAuditService {
   private final FamPrivilegeChangeAuditRepository auditRepository;
   private final ObjectMapper objectMapper;
 
-  /** Most recent change first. */
+  /**
+   * Most recent change first.
+   *
+   * <p>Takes the target as a GUID plus its directory rather than the stored
+   * {@code <TYPE>\<GUID>} string. Composing it here keeps the encoding in one
+   * place - {@link AuditUser} - and keeps the query an equality match the
+   * history index can serve, which a suffix match on the GUID alone could not.
+   */
   @Transactional(readOnly = true)
   public List<PermissionAuditHistoryDto> getHistory(
-      String targetUserGuid, Integer cssIntegrationId, String cssEnvironment) {
-    return auditRepository.findHistory(targetUserGuid, cssIntegrationId, cssEnvironment).stream()
+      String targetUserGuid, UserType targetUserType,
+      Integer cssIntegrationId, String cssEnvironment) {
+    String targetUser = AuditUser.of(targetUserType, targetUserGuid);
+    return auditRepository.findHistory(targetUser, cssIntegrationId, cssEnvironment).stream()
         .map(this::toDto)
         .toList();
   }
@@ -62,7 +74,7 @@ public class PermissionAuditService {
    * corrupted data rather than bad input - surfaced as a 500 rather than silently
    * returning a partial record.
    */
-  private <T> T readJson(String json, Class<T> type, Long auditId, String column) {
+  private <T> T readJson(String json, Class<T> type, UUID auditId, String column) {
     if (json == null) {
       return null;
     }

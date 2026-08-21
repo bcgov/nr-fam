@@ -7,6 +7,11 @@ import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.exception.UpstreamException;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Duration;
@@ -54,7 +59,7 @@ class ForestClientIntegrationServiceTest {
             new FamProperties.Integration.ForestClient.Retry(maxAttempts, retryDelay));
 
     FamProperties properties = new FamProperties("dev", null,
-        new FamProperties.Integration(config, null, null, null), null);
+        new FamProperties.Integration(config, null, null, null));
 
     ObjectMapper objectMapper = new ObjectMapper();
     ForestClientIntegrationService created = new ForestClientIntegrationService(
@@ -194,6 +199,67 @@ class ForestClientIntegrationServiceTest {
     assertThat(server.getRequestCount()).isEqualTo(2);
   }
 
+  /** Captures what the service logs during initClients(). */
+  private static List<ILoggingEvent> logsFrom(Runnable init) {
+    Logger logger = (Logger) LoggerFactory.getLogger(ForestClientIntegrationService.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      init.run();
+      return List.copyOf(appender.list);
+    } finally {
+      logger.detachAppender(appender);
+    }
+  }
+
+  private ForestClientIntegrationService serviceWith(String testUrl, String prodUrl) {
+    FamProperties.Integration.ForestClient config =
+        new FamProperties.Integration.ForestClient(
+            new FamProperties.Integration.ForestClient.Instance(testUrl, "t"),
+            new FamProperties.Integration.ForestClient.Instance(prodUrl, "p"),
+            new FamProperties.Integration.Timeouts(Duration.ofSeconds(1), Duration.ofSeconds(1)),
+            new FamProperties.Integration.ForestClient.Retry(1, Duration.ofMillis(1)));
+    ObjectMapper objectMapper = new ObjectMapper();
+    return new ForestClientIntegrationService(
+        new FamProperties("dev", null, new FamProperties.Integration(config, null, null, null)),
+        new RestClientFactory(), new UpstreamErrorTranslator(objectMapper), objectMapper);
+  }
+
+  @Test
+  @DisplayName("an unconfigured TEST instance warns, naming the variable that sets it")
+  void missingTestEndpointWarns() {
+    // Every environment uses the TEST instance, so a blank endpoint is always a
+    // misconfiguration - and the only other symptom is searches failing later.
+    // Logged at INFO it would sit unread among the startup lines.
+    ForestClientIntegrationService service = serviceWith("", "https://prod.example");
+
+    List<ILoggingEvent> logs = logsFrom(service::initClients);
+
+    assertThat(logs).anySatisfy(event -> {
+      assertThat(event.getLevel()).isEqualTo(Level.WARN);
+      assertThat(event.getFormattedMessage())
+          .contains("TEST instance not configured")
+          .contains("fc_api_base_url_test");
+    });
+  }
+
+  @Test
+  @DisplayName("an unconfigured PROD instance does not warn - that is the normal state")
+  void missingProdEndpointDoesNotWarn() {
+    // A lower environment holding no PROD endpoint is the point, not a fault.
+    // Warning about it would train people to ignore the warning that matters.
+    ForestClientIntegrationService service = serviceWith("https://test.example", "");
+
+    List<ILoggingEvent> logs = logsFrom(service::initClients);
+
+    assertThat(logs).noneMatch(event -> event.getLevel() == Level.WARN);
+    assertThat(logs).anySatisfy(event -> {
+      assertThat(event.getLevel()).isEqualTo(Level.INFO);
+      assertThat(event.getFormattedMessage()).contains("PROD instance not configured");
+    });
+  }
+
   @Test
   @DisplayName("fails clearly when the requested instance was never configured")
   void unconfiguredInstanceFails() {
@@ -207,12 +273,42 @@ class ForestClientIntegrationServiceTest {
 
     ObjectMapper objectMapper = new ObjectMapper();
     ForestClientIntegrationService unconfigured = new ForestClientIntegrationService(
-        new FamProperties("dev", null, new FamProperties.Integration(config, null, null, null), null),
+        new FamProperties("dev", null, new FamProperties.Integration(config, null, null, null)),
         new RestClientFactory(), new UpstreamErrorTranslator(objectMapper), objectMapper);
     unconfigured.initClients();
 
     assertThatThrownBy(() -> unconfigured.search(List.of("1"), ApiInstanceEnv.PROD, false))
         .isInstanceOf(UpstreamException.class)
         .hasMessageContaining("PROD instance is not configured");
+  }
+
+  @Test
+  @DisplayName("searches by name on the same endpoint, without any id parameter")
+  void buildsNameSearchRequest() throws Exception {
+    server.enqueue(json(200, "[]"));
+
+    service.searchByName("Acme Forestry", 10, ApiInstanceEnv.TEST);
+
+    RecordedRequest request = server.takeRequest();
+    assertThat(request.getPath())
+        .contains("/api/clients/search")
+        .contains("name=Acme")
+        .contains("size=10");
+    // The upstream ANDs its criteria, so an id sent alongside a name would
+    // narrow the search to nothing rather than widening it.
+    assertThat(request.getPath()).doesNotContain("id=");
+  }
+
+  @Test
+  @DisplayName("returns what the name search matched")
+  void returnsNameMatches() throws Exception {
+    server.enqueue(json(200, """
+        [{"clientNumber":"00001011","clientName":"ACME FORESTRY LTD.",
+          "clientStatusCode":"ACT"}]"""));
+
+    assertThat(service.searchByName("acme", 10, ApiInstanceEnv.TEST))
+        .singleElement()
+        .satisfies(client ->
+            assertThat(client.get("clientName")).isEqualTo("ACME FORESTRY LTD."));
   }
 }

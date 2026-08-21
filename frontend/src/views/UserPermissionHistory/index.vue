@@ -5,6 +5,7 @@ import Button from "@/components/UI/Button.vue";
 import PageTitle from "@/components/UI/PageTitle.vue";
 import { ManagePermissionsRoute } from "@/router/routes";
 import type { BreadCrumbType } from "@/types/BreadCrumbTypes";
+import type { UserType } from "fam-api";
 import { useRouter } from "vue-router";
 
 /**
@@ -16,6 +17,7 @@ import { useRouter } from "vue-router";
  */
 const props = defineProps<{
     targetUserGuid: string;
+    targetUserType: UserType;
     integrationId: number;
     environment: string;
     userName: string;
@@ -43,6 +45,7 @@ const navigateBack = () => router.push({ name: ManagePermissionsRoute.name });
         <div class="gray-container">
             <UserPermissionHistoryTable
                 :target-user-guid="props.targetUserGuid"
+                :target-user-type="props.targetUserType"
                 :integration-id="props.integrationId"
                 :environment="props.environment"
             />

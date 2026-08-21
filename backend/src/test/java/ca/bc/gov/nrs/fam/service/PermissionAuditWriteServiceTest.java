@@ -3,15 +3,19 @@ package ca.bc.gov.nrs.fam.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.fam.constants.EmailSendingStatus;
+import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.constants.PrivilegeDetailsPermissionType;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
+import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
+import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeType;
 import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository;
 import ca.bc.gov.nrs.fam.security.Requester;
@@ -20,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +50,7 @@ class PermissionAuditWriteServiceTest {
 
   @Mock private FamPrivilegeChangeAuditRepository auditRepository;
   @Mock private EntityManager entityManager;
+  @Mock private UserLookupClient userLookupClient;
   /**
    * Configured the way the application configures it
    * ({@code spring.jackson.property-naming-strategy: SNAKE_CASE}). A default
@@ -57,7 +63,7 @@ class PermissionAuditWriteServiceTest {
   @InjectMocks private PermissionAuditWriteService service;
 
   private final Requester requester = Requester.builder()
-      .userId(1L).userName("JSMITH").userGuid("AAAA1111")
+      .userName("JSMITH").userGuid("AAAA1111").userType(UserType.IDIR)
       .firstName("Jane").lastName("Smith").email("jane@gov.bc.ca")
       .build();
 
@@ -79,19 +85,68 @@ class PermissionAuditWriteServiceTest {
   }
 
   @Test
+  @DisplayName("both identity columns read the same way as create_user")
+  void identityColumnsMatchTheAuditColumnFormat() {
+    // One vocabulary for people across the whole table. This is also why there
+    // is no target_user_type_code: the directory is in the prefix, so a separate
+    // column would be a second copy of it that could disagree.
+    service.storeCssGranted(requester, TARGET_GUID, UserType.BCEID, 54321, "dev",
+        "R", null, List.of(assigned("R")));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getTargetUser()).isEqualTo("BCEID_BUS\\" + TARGET_GUID);
+    assertThat(saved.getPerformerUser()).isEqualTo("IDIR\\AAAA1111");
+    assertThat(saved.getCreateUser()).isEqualTo(saved.getPerformerUser());
+  }
+
+  @Test
+  @DisplayName("snapshots the target's name from the directory, not from the request")
+  void snapshotsTheTarget() {
+    // FAM keeps no row for the target - a grant routinely names somebody who has
+    // never signed in - so without this snapshot the GUID is unresolvable once
+    // the row is written.
+    when(userLookupClient.getIdirDetailByGuid(TARGET_GUID))
+        .thenReturn(Optional.of(new UserLookupIdirUserDto(
+            true, "BJONES", TARGET_GUID, "Bob", "Jones", "bob@gov.bc.ca")));
+
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "R", null, List.of(assigned("R")));
+
+    assertThat(captureSaved().getChangeTargetUserDetails())
+        .contains("BJONES").contains("Bob").contains("Jones")
+        .contains("bob@gov.bc.ca").contains(TARGET_GUID);
+  }
+
+  @Test
+  @DisplayName("still records the grant when the directory cannot be reached")
+  void directoryFailureDoesNotLoseTheAuditRow() {
+    // CSS has already applied the change. Refusing to record it because a name
+    // could not be looked up would be strictly worse than recording it without.
+    when(userLookupClient.getIdirDetailByGuid(anyString()))
+        .thenThrow(new RuntimeException("directory down"));
+
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "R", null, List.of(assigned("R")));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getTargetUser()).isEqualTo("IDIR\\" + TARGET_GUID);
+    assertThat(saved.getChangeTargetUserDetails()).contains(TARGET_GUID);
+  }
+
+  @Test
   @DisplayName("records the CSS integration and environment, not a FAM application id")
   void recordsCssIdentifiers() {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssGranted(requester, TARGET_GUID, "I", 6538, "dev",
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
         "CHR_FREP_EDITOR", "DISTRICT", List.of(assigned("CHR_FREP_EDITOR_DISTRICT-DCC")));
 
     FamPrivilegeChangeAudit saved = captureSaved();
-    assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
+    assertThat(saved.getCssIntegrationId()).isEqualTo(54321);
     assertThat(saved.getCssEnvironment()).isEqualTo("dev");
-    assertThat(saved.getTargetUserGuid()).isEqualTo(TARGET_GUID);
-    assertThat(saved.getTargetUserTypeCode()).isEqualTo("I");
-    assertThat(saved.getPerformerUserGuid()).isEqualTo("AAAA1111");
+    assertThat(saved.getTargetUser()).isEqualTo("IDIR\\" + TARGET_GUID);
+    
+    assertThat(saved.getPerformerUser()).isEqualTo("IDIR\\AAAA1111");
   }
 
   @Test
@@ -101,7 +156,7 @@ class PermissionAuditWriteServiceTest {
     // overstates what the user was given.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
         "R", "DISTRICT",
         List.of(assigned("R_DISTRICT-DCC"), failed("R_DISTRICT-DQU")));
 
@@ -113,7 +168,7 @@ class PermissionAuditWriteServiceTest {
   @Test
   @DisplayName("writes nothing when no assignment succeeded")
   void writesNothingWhenAllFailed() {
-    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
         "R", "DISTRICT", List.of(failed("R_DISTRICT-DCC")));
 
     verify(auditRepository, never()).save(any());
@@ -125,7 +180,7 @@ class PermissionAuditWriteServiceTest {
     // The role name is the only place CSS records the scope.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
         "FOM_SUBMITTER", "FOREST_CLIENT",
         List.of(assigned("FOM_SUBMITTER_FOREST_CLIENT-00001018")));
 
@@ -137,7 +192,7 @@ class PermissionAuditWriteServiceTest {
   void unscopedGrantHasNoScopes() {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
         "FREP_ADMINISTRATOR", null, List.of(assigned("FREP_ADMINISTRATOR")));
 
     String details = captureSaved().getPrivilegeDetails();
@@ -151,7 +206,7 @@ class PermissionAuditWriteServiceTest {
     // So the trail stays readable after the user is renamed or removed.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssGranted(requester, TARGET_GUID, "I", 1, "dev",
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
         "R", null, List.of(assigned("R")));
 
     assertThat(captureSaved().getChangePerformerUserDetails())
@@ -163,18 +218,18 @@ class PermissionAuditWriteServiceTest {
   void recordsRevocation() {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssRevoked(requester, TARGET_GUID, "I", 6538, "dev",
+    service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
         "CHR_FREP_EDITOR", "DISTRICT", List.of("CHR_FREP_EDITOR_DISTRICT-DCC"));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getPrivilegeDetails()).contains("DCC");
-    assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
+    assertThat(saved.getCssIntegrationId()).isEqualTo(54321);
   }
 
   @Test
   @DisplayName("writes nothing when a revocation removed nothing")
   void revocationOfNothingWritesNothing() {
-    service.storeCssRevoked(requester, TARGET_GUID, "I", 1, "dev", "R", null, List.of());
+    service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 1, "dev", "R", null, List.of());
 
     verify(auditRepository, never()).save(any());
   }
@@ -184,12 +239,12 @@ class PermissionAuditWriteServiceTest {
   void systemChangeIsAttributedToSystem() {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeCssGranted(null, TARGET_GUID, "I", 1, "dev",
+    service.storeCssGranted(null, TARGET_GUID, UserType.IDIR, 1, "dev",
         "R", null, List.of(assigned("R")));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getCreateUser()).isEqualTo("system");
-    assertThat(saved.getPerformerUserGuid()).isNull();
+    assertThat(saved.getPerformerUser()).isEqualTo("system");
     assertThat(saved.getChangePerformerUserDetails()).contains("system");
   }
 
@@ -201,13 +256,13 @@ class PermissionAuditWriteServiceTest {
     // CSS keeps no history of role definitions, so this row is the only record.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeRoleCreated(requester, 6538, "dev",
+    service.storeRoleCreated(requester, 54321, "dev",
         "FREP_ADMINISTRATOR", "FREP Administrator", null, null);
 
     FamPrivilegeChangeAudit saved = captureSaved();
-    assertThat(saved.getCssIntegrationId()).isEqualTo(6538);
+    assertThat(saved.getCssIntegrationId()).isEqualTo(54321);
     assertThat(saved.getCssEnvironment()).isEqualTo("dev");
-    assertThat(saved.getPerformerUserGuid()).isEqualTo("AAAA1111");
+    assertThat(saved.getPerformerUser()).isEqualTo("IDIR\\AAAA1111");
     assertThat(saved.getPrivilegeDetails())
         .contains("FREP_ADMINISTRATOR")
         .contains("FREP Administrator");
@@ -223,8 +278,7 @@ class PermissionAuditWriteServiceTest {
     service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, null);
 
     FamPrivilegeChangeAudit saved = captureSaved();
-    assertThat(saved.getTargetUserGuid()).isNull();
-    assertThat(saved.getTargetUserTypeCode()).isNull();
+    assertThat(saved.getTargetUser()).isNull();
   }
 
   @Test

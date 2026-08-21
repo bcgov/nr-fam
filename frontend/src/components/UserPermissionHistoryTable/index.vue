@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import TableSkeleton from "@/components/Skeletons/TableSkeleton.vue";
+import { TABLE_DATATABLE_PT } from "@/passthrough/datatable/datatablePassThrough";
 import Chip from "@/components/UI/Chip.vue";
 import ErrorText from "@/components/UI/ErrorText.vue";
 import { AppActlApiService } from "@/services/ApiServiceFactory";
 import { utcToLocalDateTime } from "@/utils/DateUtils";
 import { useQuery } from "@tanstack/vue-query";
-import type { PermissionAuditHistoryDto } from "fam-api";
+import { type PermissionAuditHistoryDto, type UserType } from "fam-api";
 import Column from "primevue/column";
 import DataTable from "primevue/datatable";
 import { computed } from "vue";
@@ -19,6 +20,12 @@ import { computed } from "vue";
  */
 const props = defineProps<{
     targetUserGuid: string;
+    /**
+     * The user's directory. The audit stores the target as `IDIR\<guid>`, so the
+     * GUID alone does not identify a row - the two directories number their
+     * people separately.
+     */
+    targetUserType: UserType;
     integrationId: number;
     environment: string;
 }>();
@@ -29,6 +36,7 @@ const historyQuery = useQuery({
     queryKey: computed(() => [
         "permission-audit-history",
         props.targetUserGuid,
+        props.targetUserType,
         props.integrationId,
         props.environment,
     ]),
@@ -36,6 +44,7 @@ const historyQuery = useQuery({
         AppActlApiService.permissionAuditApi
             .getPermissionAuditHistoryByUserAndApplication(
                 props.targetUserGuid,
+                props.targetUserType,
                 props.integrationId,
                 props.environment
             )
@@ -86,6 +95,7 @@ const roleLines = (row: PermissionAuditHistoryDto) =>
     />
 
     <DataTable
+                :pt="TABLE_DATATABLE_PT"
         v-else
         class="user-permission-table fam-table"
         :value="rows"
@@ -128,6 +138,7 @@ const roleLines = (row: PermissionAuditHistoryDto) =>
 </template>
 
 <style lang="scss">
+@use "@/passthrough/datatable/datatablePassThrough.scss";
 .user-permission-table {
     .permission-details-col-container {
         display: flex;

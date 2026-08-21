@@ -142,8 +142,10 @@ const handlePostLogin = async () => {
         const user = await getUserManager().signinRedirectCallback();
         applySession(user);
 
-        // Replaces the Cognito pre-token trigger: creates the fam_user row and
-        // resolves roles. Must happen before any other API call.
+        // Replaced the Cognito pre-token trigger. It returns identity and roles
+        // and is no longer a precondition for anything: FAM keeps no user row,
+        // and roles come from the token, so a valid token is enough on the very
+        // first request. Called here because the shell wants roles at sign-in.
         applyAccessRoles((await bootstrapLogin()).access_roles ?? []);
 
         // After the roles, as in loadUser: this is what releases the route

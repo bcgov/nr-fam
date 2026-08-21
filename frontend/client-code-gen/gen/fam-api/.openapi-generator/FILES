@@ -7,7 +7,6 @@ api/authentication-api.ts
 api/cssintegrations-api.ts
 api/famdistricts-api.ts
 api/famforest-clients-api.ts
-api/famuser-api.ts
 api/idirbce-idproxy-api.ts
 api/permission-audit-api.ts
 api/smoke-test-api.ts
@@ -20,6 +19,8 @@ model/admin-role-auth-group.ts
 model/css-administrator-appoint-request.ts
 model/css-administrator-row-dto.ts
 model/css-application-option-dto.ts
+model/css-bulk-grant-preview-dto.ts
+model/css-bulk-grant-row-dto.ts
 model/css-delegated-admin-request.ts
 model/css-role-bulk-create-result-dto.ts
 model/css-role-create-request.ts
@@ -35,8 +36,6 @@ model/fam-district-dto.ts
 model/fam-forest-client-dto.ts
 model/fam-forest-client-status-dto.ts
 model/fam-forest-client-status-type.ts
-model/fam-user-update-entry-dto.ts
-model/fam-user-update-response.ts
 model/index.ts
 model/permission-audit-history-dto.ts
 model/privilege-change-performer-dto.ts

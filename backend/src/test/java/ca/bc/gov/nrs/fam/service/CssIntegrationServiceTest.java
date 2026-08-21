@@ -48,8 +48,8 @@ import org.mockito.quality.Strictness;
 @DisplayName("CssIntegrationService (port of router_css_integration.py)")
 class CssIntegrationServiceTest {
 
-  private static final int INTEGRATION = 6538;
-  private static final int FAM_OWN_INTEGRATION = 22261;
+  private static final int INTEGRATION = 54321;
+  private static final int FAM_OWN_INTEGRATION = 12345;
   private static final String ENV = "dev";
 
   @Mock private CssApiService cssApiService;
@@ -67,8 +67,7 @@ class CssIntegrationServiceTest {
       new FamProperties.Integration(null,
           new FamProperties.Integration.Css(null, null, null, null, FAM_OWN_INTEGRATION,
               new FamProperties.Integration.Css.IdpAliases(null, null), null),
-          null, null),
-      null);
+          null, null));
 
   @org.mockito.Spy private AuthorizationService authorizationService =
       new AuthorizationService(famProperties);
@@ -572,7 +571,7 @@ class CssIntegrationServiceTest {
     verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
     verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
     verify(auditWriteService, never()).storeCssGranted(
-        any(), anyString(), anyString(), anyInt(), anyString(), anyString(), any(), any());
+        any(), anyString(), any(UserType.class), anyInt(), anyString(), anyString(), any(), any());
   }
 
   @Test
@@ -787,7 +786,7 @@ class CssIntegrationServiceTest {
     service.revokeUserRole(INTEGRATION, ENV, revokeRequest("DISTRICT", "DCC"), DEFINER);
 
     verify(auditWriteService).storeCssRevoked(
-        eq(DEFINER), eq("AABBCCDDEEFF00112233445566778899"), eq("I"),
+        eq(DEFINER), eq("AABBCCDDEEFF00112233445566778899"), eq(UserType.IDIR),
         eq(INTEGRATION), eq(ENV), eq("CHR_FREP_EDITOR"), eq("DISTRICT"),
         eq(List.of("CHR_FREP_EDITOR_DISTRICT-DCC")));
   }
@@ -831,7 +830,7 @@ class CssIntegrationServiceTest {
         .isInstanceOf(IllegalStateException.class);
 
     verify(auditWriteService, never()).storeCssRevoked(
-        any(), anyString(), anyString(), anyInt(), anyString(), anyString(), any(), any());
+        any(), anyString(), any(UserType.class), anyInt(), anyString(), anyString(), any(), any());
   }
 
   // ------------------------------------------------------------------- read back
@@ -1689,7 +1688,7 @@ class CssIntegrationServiceTest {
 
     // Against FREP, not FAM: the change is "who may grant FREP's roles".
     verify(auditWriteService).storeCssGranted(
-        any(), eq("AABBCCDDEEFF00112233445566778899"), anyString(),
+        any(), eq("AABBCCDDEEFF00112233445566778899"), any(UserType.class),
         eq(INTEGRATION), eq(ENV), eq("CHR_FREP_EDITOR"), any(), any());
   }
 

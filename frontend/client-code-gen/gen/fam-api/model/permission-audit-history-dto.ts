@@ -31,10 +31,10 @@ import { PrivilegeDetailsDto } from './privilege-details-dto';
 export interface PermissionAuditHistoryDto {
     /**
      * 
-     * @type {number}
+     * @type {string}
      * @memberof PermissionAuditHistoryDto
      */
-    'privilege_change_audit_id': number;
+    'privilege_change_audit_id': string;
     /**
      * 
      * @type {string}

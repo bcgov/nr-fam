@@ -18,7 +18,7 @@ export const toRevokeRequest = (
     // The GUID, not the displayed username: that is a user id once the
     // directory has named them, and <guid>@azureidir before.
     user_guid: row.user_guid ?? "",
-    user_type: row.domain === "BCEID" ? UserType.B : UserType.I,
+    user_type: row.domain === "BCEID" ? UserType.BceidBus : UserType.Idir,
     role_name: row.role_name,
     scope_type: row.scope_type ?? undefined,
     scope_value: row.scope_value ?? undefined,

@@ -1,10 +1,14 @@
 package ca.bc.gov.nrs.fam.service;
 
+import ca.bc.gov.nrs.fam.security.AuditUser;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.PrivilegeChangeType;
 import ca.bc.gov.nrs.fam.constants.PrivilegeDetailsPermissionType;
 import ca.bc.gov.nrs.fam.constants.PrivilegeDetailsScopeType;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
+import ca.bc.gov.nrs.fam.dto.PrivilegeChangeTargetDto;
+import ca.bc.gov.nrs.fam.constants.UserType;
+import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.dto.PrivilegeChangePerformerDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsRoleDto;
@@ -19,7 +23,7 @@ import ca.bc.gov.nrs.fam.security.Requester;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,9 +37,14 @@ import org.springframework.transaction.annotation.Transactional;
  * CSS keeps no history of who granted what to whom, so if this is not recorded
  * here it is not recorded anywhere.
  *
- * <p>Records are append-only and capture a <em>snapshot</em> of the performer and
- * the privilege, so the trail stays truthful after roles are later renamed or
- * users removed. Since V94 nothing here is a foreign key.
+ * <p>Records are append-only and capture a <em>snapshot</em> of the performer,
+ * the target and the privilege, so the trail stays truthful after roles are
+ * later renamed or users removed. Since V94 nothing here is a foreign key.
+ *
+ * <p>The target snapshot is resolved from the identity directory rather than
+ * taken from the request. An audit row must not take the identity of the person
+ * it names from the caller who named them; the GUID is authoritative either way,
+ * but the name beside it is what a reader trusts.
  */
 @Slf4j
 @Service
@@ -45,6 +54,7 @@ public class PermissionAuditWriteService {
   private final FamPrivilegeChangeAuditRepository auditRepository;
   private final EntityManager entityManager;
   private final ObjectMapper objectMapper;
+  private final UserLookupClient userLookupClient;
 
   /**
    * Record a grant made through CSS.
@@ -60,7 +70,7 @@ public class PermissionAuditWriteService {
   public void storeCssGranted(
       Requester requester,
       String targetUserGuid,
-      String targetUserTypeCode,
+      UserType targetUserType,
       int cssIntegrationId,
       String cssEnvironment,
       String roleName,
@@ -75,7 +85,7 @@ public class PermissionAuditWriteService {
       return;
     }
 
-    save(requester, targetUserGuid, targetUserTypeCode, cssIntegrationId, cssEnvironment,
+    save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.GRANT,
         toCssDetails(roleName, scopeType, assigned));
   }
@@ -90,7 +100,7 @@ public class PermissionAuditWriteService {
   public void storeCssRevoked(
       Requester requester,
       String targetUserGuid,
-      String targetUserTypeCode,
+      UserType targetUserType,
       int cssIntegrationId,
       String cssEnvironment,
       String roleName,
@@ -107,7 +117,7 @@ public class PermissionAuditWriteService {
             ca.bc.gov.nrs.fam.constants.EmailSendingStatus.NOT_REQUIRED))
         .toList();
 
-    save(requester, targetUserGuid, targetUserTypeCode, cssIntegrationId, cssEnvironment,
+    save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.REVOKE,
         toCssDetails(roleName, scopeType, asResults));
   }
@@ -190,7 +200,7 @@ public class PermissionAuditWriteService {
   void save(
       Requester requester,
       String targetUserGuid,
-      String targetUserTypeCode,
+      UserType targetUserType,
       Integer cssIntegrationId,
       String cssEnvironment,
       PrivilegeChangeType changeType,
@@ -201,21 +211,55 @@ public class PermissionAuditWriteService {
     FamPrivilegeChangeAudit audit = new FamPrivilegeChangeAudit();
     audit.setCssIntegrationId(cssIntegrationId);
     audit.setCssEnvironment(cssEnvironment);
-    audit.setTargetUserGuid(targetUserGuid);
-    audit.setTargetUserTypeCode(targetUserTypeCode);
-    audit.setPerformerUserGuid(requester == null ? null : requester.userGuid());
+    // Both identities in the <TYPE>\<GUID> form the audit columns use, so one
+    // value names the person and the directory they came from. That prefix is
+    // why there is no separate target_user_type_code: it would be a second copy
+    // of what is already here.
+    audit.setTargetUser(
+        targetUserGuid == null ? null : AuditUser.of(targetUserType, targetUserGuid));
+    audit.setPerformerUser(AuditUser.of(requester));
     audit.setPrivilegeChangeType(
         entityManager.getReference(FamPrivilegeChangeType.class, changeType.name()));
-    audit.setCreateUser(requester == null ? "system" : requester.userName());
+    audit.setCreateUser(AuditUser.of(requester));
     // change_date is set explicitly rather than defaulted: for backfilled rows it
     // is not the same as create_date, so it is never derived from one.
-    audit.setChangeDate(OffsetDateTime.now());
+    audit.setChangeDate(LocalDateTime.now());
     audit.setChangePerformerUserDetails(toJson(performerDetails(requester)));
+    if (targetUserGuid != null) {
+      audit.setChangeTargetUserDetails(toJson(targetDetails(targetUserGuid, targetUserType)));
+    }
     audit.setPrivilegeDetails(toJson(privilegeDetails));
 
     log.debug("Adding audit record for {} on integration {}/{}",
         changeType, cssIntegrationId, cssEnvironment);
     auditRepository.save(audit);
+  }
+
+  /**
+   * Resolve the target's name from the identity directory.
+   *
+   * <p>Best effort by design. A directory that is slow, down or simply does not
+   * know this GUID must not fail a grant that CSS has already applied - the
+   * change happened, and refusing to record it would be strictly worse than
+   * recording it without a name. The GUID is always stored either way.
+   */
+  private PrivilegeChangeTargetDto targetDetails(String userGuid, UserType userType) {
+    try {
+      if (userType == UserType.IDIR) {
+        return userLookupClient.getIdirDetailByGuid(userGuid)
+            .map(u -> new PrivilegeChangeTargetDto(
+                userGuid, u.userId(), u.firstName(), u.lastName(), u.email()))
+            .orElseGet(() -> new PrivilegeChangeTargetDto(userGuid, null, null, null, null));
+      }
+      return userLookupClient
+          .getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, userGuid)
+          .map(u -> new PrivilegeChangeTargetDto(
+              userGuid, u.userId(), u.firstName(), u.lastName(), u.email()))
+          .orElseGet(() -> new PrivilegeChangeTargetDto(userGuid, null, null, null, null));
+    } catch (RuntimeException e) {
+      log.warn("Could not resolve target {} for the audit trail: {}", userGuid, e.getMessage());
+      return new PrivilegeChangeTargetDto(userGuid, null, null, null, null);
+    }
   }
 
   private static PrivilegeChangePerformerDto performerDetails(Requester requester) {

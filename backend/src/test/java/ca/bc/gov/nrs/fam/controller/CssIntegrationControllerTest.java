@@ -38,7 +38,7 @@ class CssIntegrationControllerTest {
   @Mock private AuthorizationService authorizationService;
   @InjectMocks private CssIntegrationController controller;
 
-  private final Requester requester = Requester.builder().userId(1L).userName("JSMITH").build();
+  private final Requester requester = Requester.builder().userName("JSMITH").build();
 
   private static CssUserRoleRevokeRequest revokeRequest(String roleName) {
     return new CssUserRoleRevokeRequest(

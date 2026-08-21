@@ -121,8 +121,8 @@ public class IdentityLookupController {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER, e.getMessage());
     }
 
-    log.info("Searching IDIR users on behalf of requester {} (id={})",
-        requester.userName(), requester.userId());
+    log.info("Searching IDIR users on behalf of requester {} ({})",
+        requester.userName(), requester.userGuid());
 
     return userLookupClient.searchIdir(
         searchParams.getUserId(), searchParams.getFirstName(), searchParams.getLastName(),

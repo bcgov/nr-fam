@@ -38,6 +38,19 @@ parameters:
   - name: LOG_LEVEL
     description: Application log level (DEBUG|INFO|WARN|ERROR)
     value: "INFO"
+  # Container timezone. Drives the JVM default zone, which is what the log
+  # pattern's %d renders against - an OpenShift container is UTC by default,
+  # which puts every log line 7-8 hours off the BC business day.
+  #
+  # A parameter rather than an ENV in the Dockerfile, so it can be changed per
+  # environment without rebuilding the image. A named zone resolves from the
+  # tzdb bundled inside the JDK, so the base image needs no OS tzdata package.
+  #
+  # Do NOT add -Duser.timezone to the ENTRYPOINT: it would override TZ and make
+  # this parameter silently ineffective.
+  - name: TZ
+    description: IANA timezone for the container, e.g. America/Vancouver
+    value: America/Vancouver
   - name: SPRING_PROFILES_ACTIVE
     value: ""
   # ---------------------------------------------------------------------------
@@ -72,29 +85,39 @@ parameters:
       Client API and IDIM proxy to be reached.
     value: "dev"
   # ---------------------------------------------------------------------------
-  # Forest Client API. EVERY environment uses the PROD instance.
+  # Forest Client API. Two published instances, and which one a request uses is
+  # decided per *application* environment, not per deployment: only a PROD
+  # application on the PROD deployment reaches the PROD instance. FAM PROD also
+  # administers DEV and TEST applications, and those must not see live client
+  # data. ApiInstanceEnvResolver holds that rule.
   #
-  # The application still has two slots, TEST and PROD, chosen per request by
-  # ApiInstanceEnvResolver - that machinery is retained because it also governs
-  # other integrations. Here both slots are pointed at the same endpoint, which
-  # makes the resolver's choice a no-op for this API and means one API key
-  # covers every deployment.
+  # The instances hold different data, so a client number that resolves in one
+  # need not resolve in the other - which is the point. Test data exists only in
+  # TEST, and searching PROD from a lower environment would not find it.
   #
-  # This is a deliberate departure from the AWS deployment, where dev and test
-  # used https://nr-forest-client-api-test.api.gov.bc.ca. The consequence is that
-  # non-prod FAM reads production forest-client data. It is read-only reference
-  # data - client numbers and names - so a dev deployment cannot alter anything
-  # upstream, but it is real data and that is the trade being made.
+  # Supplied by the deploy from the repository variables fc_api_base_url_test and
+  # fc_api_base_url_prod, not defaulted here: an endpoint that moves should be a
+  # settings change, not a code change. They are public hostnames published in
+  # the BC API Service Portal directory - only the keys are secret.
   #
-  # A blank base URL disables an instance at startup ("Forest Client API PROD
-  # instance not configured"); a blank token does not, so the instance
-  # initialises and fails at call time with 401.
+  # A blank base URL disables that instance outright: the application logs
+  # "Forest Client API <ENV> instance not configured" at start-up and every
+  # forest-client search against it fails. For PROD that is the correct state
+  # everywhere except the PROD deployment, which is why neither is required.
   # ---------------------------------------------------------------------------
-  - name: FC_API_BASE_URL
+  - name: FC_API_BASE_URL_TEST
     description: >-
-      Forest Client API. Used for both instance slots, so all environments hit
-      the same endpoint.
-    value: https://nr-forest-client-api-prod.api.gov.bc.ca
+      Forest Client API TEST instance, used by every non-PROD application. Blank
+      disables forest-client search for them.
+    required: false
+    value: ""
+
+  - name: FC_API_BASE_URL_PROD
+    description: >-
+      Forest Client API PROD instance, reached only by a PROD application on the
+      PROD deployment. Blank everywhere else, which is intended.
+    required: false
+    value: ""
   # ---------------------------------------------------------------------------
   # Outbound mail. Two settings only; everything else the mail client accepts
   # (port, reply-to, auth, STARTTLS) keeps the application default, which suits
@@ -152,6 +175,8 @@ objects:
                 - name: http
                   containerPort: 8080
               env:
+                - name: TZ
+                  value: ${TZ}
                 - name: LOG_LEVEL
                   value: ${LOG_LEVEL}
                 - name: SPRING_PROFILES_ACTIVE
@@ -215,25 +240,27 @@ objects:
                   value: ${CSS_TOKEN_URL}
                 - name: CSS_OWN_INTEGRATION_ID
                   value: ${CSS_OWN_INTEGRATION_ID}
-                # Forest Client API. Both instance slots are given the same
-                # endpoint and the same key, so whichever one
-                # ApiInstanceEnvResolver picks, the call is identical. The base
-                # URL is public and comes from the parameter above; the key is
-                # secret and comes from common/openshift.init.yml.
+                # Forest Client API. Both instance slots are populated, and
+                # ApiInstanceEnvResolver decides per request which one a call
+                # uses. Base URLs are public and come from the parameters above;
+                # the keys are secret and come from common/openshift.init.yml.
                 - name: FC_API_BASE_URL_TEST
-                  value: ${FC_API_BASE_URL}
+                  value: ${FC_API_BASE_URL_TEST}
                 - name: FC_API_BASE_URL_PROD
-                  value: ${FC_API_BASE_URL}
+                  value: ${FC_API_BASE_URL_PROD}
+                # Separate keys, not one key used twice: the portal issues a
+                # distinct key per instance. The PROD key is blank outside the
+                # PROD deployment, by design.
                 - name: FC_API_TOKEN_TEST
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-forest-client
-                      key: fc-api-token
+                      key: fc-api-token-test
                 - name: FC_API_TOKEN_PROD
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-forest-client
-                      key: fc-api-token
+                      key: fc-api-token-prod
                 # nr-user-lookup-api. Every value comes from the secret created
                 # by common/openshift.init.yml, whose client id and secret CI
                 # provisions rather than a human configuring them.
@@ -261,14 +288,6 @@ objects:
                   # correct so a future direct-route setup is not silently broken.
                 - name: ALLOW_ORIGIN
                   value: https://${NAME}-${ZONE}.${DOMAIN}
-              # The CMENG shared secret (FAM_UPDATE_USER_INFO_API_KEY) only -
-              # the Forest Client and SMTP settings that used to live here are
-              # wired above now. Created out of band, not by this repo, and
-              # optional so a deployment without it still starts.
-              envFrom:
-                - secretRef:
-                    name: ${NAME}-${ZONE}-integrations
-                    optional: true
               resources:
                 requests:
                   cpu: ${CPU_REQUEST}

@@ -36,12 +36,3 @@ export const getAxiosErrorStatus = (error: unknown): number | null => {
 
     return error.response?.status ?? null;
 };
-
-/**
- * Extracts unique applications from the AdminUserAccessResponse, filtering by `auth_key`.
- *
- * - Only adds applications with `auth_key === "FAM_ADMIN"` if `id === 1`.
- *
- * @param {AdminUserAccessResponse} data - The response containing user access information.
- * @returns {FamApplicationGrantDto[]} An array of unique FamApplicationGrantDto objects.
- */

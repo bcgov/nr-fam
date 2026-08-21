@@ -1,5 +1,6 @@
 package ca.bc.gov.nrs.fam.dto;
 
+import java.util.UUID;
 /**
  * One user in a bulk-refresh report.
  *
@@ -8,4 +9,4 @@ package ca.bc.gov.nrs.fam.dto;
  * expect. The fields are the ones upstream logged.
  */
 public record FamUserUpdateEntryDto(
-    Long userId, String userName, String userType, String userGuid, String email) {}
+    UUID userId, String userName, String userType, String userGuid, String email) {}

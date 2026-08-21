@@ -674,7 +674,7 @@ public class CssIntegrationService {
         username, delegations, integrationId, environment);
 
     auditWriteService.storeCssGranted(
-        requester, request.userGuid(), request.userType().getCode(),
+        requester, request.userGuid(), request.userType(),
         integrationId, environment, request.roleName(), request.scopeType(), results);
 
     return results;
@@ -731,7 +731,7 @@ public class CssIntegrationService {
         roleName, created, true, null, EmailSendingStatus.NOT_REQUIRED);
 
     auditWriteService.storeCssGranted(
-        requester, request.userGuid(), request.userType().getCode(),
+        requester, request.userGuid(), request.userType(),
         integrationId, environment, roleName, null, List.of(result));
 
     return result;
@@ -756,7 +756,7 @@ public class CssIntegrationService {
         integrationId, environment, request.userGuid());
 
     auditWriteService.storeCssRevoked(
-        requester, request.userGuid(), request.userType().getCode(),
+        requester, request.userGuid(), request.userType(),
         integrationId, environment, roleName, null, List.of(roleName));
   }
 
@@ -788,7 +788,7 @@ public class CssIntegrationService {
         delegations, username, integrationId, environment);
 
     auditWriteService.storeCssRevoked(
-        requester, request.userGuid(), request.userType().getCode(),
+        requester, request.userGuid(), request.userType(),
         integrationId, environment, request.roleName(), request.scopeType(), delegations);
   }
 
@@ -1195,7 +1195,7 @@ public class CssIntegrationService {
         request.targetUserEmail(), applicationLabel(integrationId, environment), results);
 
     auditWriteService.storeCssGranted(
-        requester, request.userGuid(), request.userType().getCode(),
+        requester, request.userGuid(), request.userType(),
         integrationId, environment, request.roleName(), request.scopeType(), results);
 
     return results;
@@ -1252,7 +1252,7 @@ public class CssIntegrationService {
 
     // After the removal and only for what was actually removed.
     auditWriteService.storeCssRevoked(
-        requester, request.userGuid(), request.userType().getCode(),
+        requester, request.userGuid(), request.userType(),
         integrationId, environment, request.roleName(), request.scopeType(),
         List.of(cssRoleName));
   }

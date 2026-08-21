@@ -26,7 +26,7 @@ class AuthorizationServiceTest {
 
 
   /** FAM's own integration, reserved to FAM_ADMIN. */
-  static final int FAM_OWN_INTEGRATION = 22261;
+  static final int FAM_OWN_INTEGRATION = 12345;
 
   private static ca.bc.gov.nrs.fam.configuration.FamProperties
       famPropertiesWithOwnIntegration() {
@@ -37,8 +37,7 @@ class AuthorizationServiceTest {
                 new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration.Css
                     .IdpAliases(null, null),
                 null),
-            null, null),
-        null);
+            null, null));
   }
 
   private static Requester withRoles(String... roles) {

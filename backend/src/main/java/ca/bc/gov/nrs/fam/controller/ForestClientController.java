@@ -68,6 +68,54 @@ public class ForestClientController {
         .toList();
   }
 
+  /**
+   * Autocomplete a forest client by number or by name.
+   *
+   * <p>One field, either kind of term - which is the point. A person adding an
+   * organisation knows its name far more often than its eight-digit number, and
+   * the number search matches whole numbers exactly, so a partial number found
+   * nothing and a name found nothing either.
+   *
+   * <p><b>A numeric term is zero-padded and searched as a number</b>; anything
+   * else is searched as a name. The upstream ANDs its criteria rather than ORing
+   * them, so the two cannot be sent together and the term has to be classified
+   * first. "1011" therefore finds client 00001011, not an organisation with 1011
+   * in its name.
+   *
+   * <p>Three characters minimum, so a single keystroke does not fan out into a
+   * search returning most of the province.
+   */
+  @GetMapping("/autocomplete")
+  @Operation(operationId = "autocomplete_forest_clients",
+      summary = "Autocomplete forest clients by client number or name")
+  public List<FamForestClientDto> autocomplete(
+      @RequestParam @Size(min = 3, max = 60) String term,
+      @RequestParam String environment,
+      Requester requester) {
+
+    authorizationService.authorize(requester);
+
+    ApiInstanceEnv apiInstanceEnv = apiInstanceEnvResolver.resolve(environment);
+    String trimmed = term.trim();
+
+    List<Map<String, Object>> results = trimmed.chars().allMatch(Character::isDigit)
+        // The number column is eight characters wide and matched whole, so a
+        // shorter number has to be padded to stand a chance of matching.
+        ? forestClientIntegrationService.search(
+            List.of(padClientNumber(trimmed)), AUTOCOMPLETE_LIMIT, apiInstanceEnv, false)
+        : forestClientIntegrationService.searchByName(
+            trimmed, AUTOCOMPLETE_LIMIT, apiInstanceEnv);
+
+    return results.stream().map(ForestClientController::toDto).toList();
+  }
+
+  /** Enough rows to choose from without turning the list into a second search. */
+  private static final int AUTOCOMPLETE_LIMIT = 10;
+
+  private static String padClientNumber(String number) {
+    return number.length() >= 8 ? number : "0".repeat(8 - number.length()) + number;
+  }
+
   private static FamForestClientDto toDto(Map<String, Object> result) {
     String statusCode = result.get("clientStatusCode") == null
         ? null

@@ -12,7 +12,7 @@ import lombok.Builder;
 
 /**
  * The authenticated caller, resolved once per request from the access token plus
- * the matching {@code fam_user} row.
+ * the token's claims.
  *
  * <p>Port of {@code schemas/requester.py}. Every guard and most services need it,
  * so it is resolved by {@link RequesterService} and injected into controllers via
@@ -29,7 +29,6 @@ import lombok.Builder;
  */
 @Builder(toBuilder = true)
 public record Requester(
-    Long userId,
     String oidcUserId,
     String userName,
     String firstName,

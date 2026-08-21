@@ -13,13 +13,16 @@ login. That trigger did two things:
 2. ran a database query and injected the user's FAM roles into the token's
    `cognito:groups` claim.
 
+Neither survives. FAM keeps no user table at all now — see "No login bootstrap"
+below — and roles are read from the token's own `client_roles` claim.
+
 A BC Gov SSO realm cannot run application code at token-generation time without a
 custom Keycloak SPI, which is not something a tenant can deploy. Both halves
 therefore moved into this service:
 
 | Cognito                                   | Now                                                    |
 | ----------------------------------------- | ------------------------------------------------------ |
-| `populate_user_if_necessary`              | `UserProvisioningService`, via `POST /auth/login`      |
+| `populate_user_if_necessary`              | removed - FAM stores no user rows                      |
 | `access_token_groups_override`            | `AccessRoleResolver`, per request                      |
 | `cognito:groups` claim                    | resolved from the database                             |
 | `jwt_validation.validate_token`           | Spring Security OAuth2 resource server                 |
@@ -31,15 +34,34 @@ Roles are no longer fixed at login. They are resolved from the database on every
 request, so **revoking access takes effect immediately** rather than at the next
 token refresh. This is stricter than the Cognito behaviour, not looser.
 
-### The login bootstrap is required
+### A non-prod deployment cannot touch production
 
-The frontend must call `POST /auth/login` once, immediately after a successful
-Keycloak sign-in and before any other API call. Until it does, a first-time user
-holds a valid token but has no `fam_user` row, and every other endpoint answers
-`403 requester_not_exists`.
+All FAM deployments share one CSS, so an integration's `prod` environment is
+reachable from any of them and the admin role that authorises it
+(`APP_ADMIN_<id>_PROD`) is held per deployment — granting one in FAM TEST is
+enough. `ProductionEnvironmentGuard` is the only thing comparing the requested
+environment against the deployment's own: it refuses `prod` from anything that is
+not the production deployment, returning 403.
 
-`POST /auth/login` is idempotent and also refreshes the stored name and email, so
-calling it on every sign-in and token refresh is correct.
+It is a `HandlerInterceptor` over `/**` rather than a call in each controller,
+because seventeen endpoints name an environment today and an eighteenth must not
+be able to opt out by forgetting it. It matches on parameter name
+(`environment`, `cssEnvironment`), and a test enumerates the controllers to
+confirm no endpoint uses a third name.
+
+### No login bootstrap
+
+`POST /auth/login` used to be mandatory: it provisioned the caller's `fam_user`
+row, and until it ran every other endpoint answered `403 requester_not_exists`.
+
+That table is gone, and with it the requirement. The endpoint remains as a
+convenience — it returns the caller's identity and roles, the same shape as
+`GET /auth/self` — but nothing depends on it having been called. A valid token
+is sufficient on the first request.
+
+The gate was removed because it decided nothing. Authorisation has always come
+from the roles on the token; the row only recorded that somebody had signed in
+once, and every field it held is on the token too.
 
 ## Claims this service reads
 
@@ -51,7 +73,7 @@ All reading is confined to `TokenClaimsReader`.
 | user name                       | `idir_username`   | `bceid_username`      |
 | user GUID                       | `idir_user_guid`  | `bceid_user_guid`     |
 | business GUID                   | —                 | `bceid_business_guid` |
-| `fam_user.oidc_user_id`         | `preferred_username` (`<guid>@idir`) | `preferred_username` (`<guid>@bceidbusiness`) |
+| OIDC subject                    | `preferred_username` (`<guid>@idir`) | `preferred_username` (`<guid>@bceidbusiness`) |
 | calling application             | `azp`             | `azp`                 |
 | identity provider               | `identity_provider` | `identity_provider` |
 
@@ -228,7 +250,7 @@ FAM has to be told which integration is its own; nothing in a CSS response marks
 it:
 
 ```
-CSS_OWN_INTEGRATION_ID=22261
+CSS_OWN_INTEGRATION_ID=12345
 ```
 
 Left unset, the protection cannot be applied and startup logs a warning saying so.
@@ -251,7 +273,7 @@ up to one refresh cycle.
 
 ## Column names
 
-`fam_user.oidc_user_id` holds the OIDC subject claim. It was called
+The OIDC subject claim was carried on `fam_user.oidc_user_id`, which was called
 `cognito_user_id` until the baseline migration replaced the inherited history:
 the reason for keeping the old name - that renaming it meant rewriting 50+
 migrations of seed data - went with them. `fam_application_client.cognito_client_id`

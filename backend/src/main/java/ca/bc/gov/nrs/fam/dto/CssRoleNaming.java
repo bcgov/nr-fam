@@ -279,10 +279,6 @@ public final class CssRoleNaming {
     return switch (userType) {
       case IDIR -> buildUsername(userGuid, idirAlias);
       case BCEID -> buildUsername(userGuid, bceidAlias);
-      // BC Services Card has no CSS provider. Inventing one would assign the
-      // role to a username that cannot exist, and CSS would accept it.
-      case BCSC_DEV, BCSC_TEST, BCSC_PROD -> throw new IllegalArgumentException(
-          "No CSS identity provider mapping for user type " + userType.getCode());
     };
   }
 

@@ -68,15 +68,27 @@ parameters:
     value: ""
 
   # ---------------------------------------------------------------------------
-  # Forest Client API key, sent as X-API-KEY. One key, because every environment
-  # uses the same (PROD) instance - see backend/openshift.deploy.yml.
+  # Forest Client API keys, sent as X-API-KEY. The API publishes two instances
+  # and each needs its own key from the BC API Service Portal - they are not
+  # interchangeable. See backend/openshift.deploy.yml for which is used when.
+  #
+  # The PROD key belongs only to the PROD deployment. Leaving it blank in DEV and
+  # TEST is the intended configuration, not an oversight: it is the second of the
+  # two things standing between a lower environment and live client data (the
+  # first being ApiInstanceEnvResolver, which never selects PROD off a non-prod
+  # deployment).
   #
   # Optional, and blank fails late rather than at startup: the instance still
   # initialises and the first forest-client search returns 401. Only a blank
   # base URL disables an instance outright.
   # ---------------------------------------------------------------------------
-  - name: FC_API_TOKEN
-    description: Forest Client API key, used by every environment
+  - name: FC_API_TOKEN_TEST
+    description: Forest Client API key for the TEST instance
+    required: false
+    value: ""
+
+  - name: FC_API_TOKEN_PROD
+    description: Forest Client API key for the PROD instance; PROD deployment only
     required: false
     value: ""
 
@@ -137,7 +149,8 @@ objects:
       labels:
         app: ${NAME}-${ZONE}
     stringData:
-      fc-api-token: ${FC_API_TOKEN}
+      fc-api-token-test: ${FC_API_TOKEN_TEST}
+      fc-api-token-prod: ${FC_API_TOKEN_PROD}
   - apiVersion: v1
     kind: ConfigMap
     metadata:

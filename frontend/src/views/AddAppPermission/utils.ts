@@ -86,7 +86,7 @@ export type AppPermissionQueryErrorType = {
 };
 
 const defaultFormData: AppPermissionFormType = {
-    domain: UserType.B,
+    domain: UserType.BceidBus,
     users: [],
     forestClients: [],
     districts: [],

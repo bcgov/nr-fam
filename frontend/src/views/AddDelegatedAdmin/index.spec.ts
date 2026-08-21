@@ -101,7 +101,7 @@ const selectUser = async (wrapper: any) => {
         .vm.$emit("user-selection-update", [
             { userId: "JSMITH", guid: "AABB1122", email: "jane@gov.bc.ca" },
         ]);
-    await wrapper.findComponent(UserSearchStub).vm.$emit("user-domain-change", UserType.I);
+    await wrapper.findComponent(UserSearchStub).vm.$emit("user-domain-change", UserType.Idir);
     await settle();
 };
 
@@ -132,7 +132,7 @@ describe("AddDelegatedAdmin", () => {
 
         expect(createDelegatedAdmin).toHaveBeenCalledWith(22264, "dev", {
             user_guid: "AABB1122",
-            user_type: UserType.I,
+            user_type: UserType.Idir,
             role_name: "FREP_ADMINISTRATOR",
             scope_type: undefined,
             scope_values: [],
