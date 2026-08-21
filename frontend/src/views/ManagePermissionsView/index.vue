@@ -9,6 +9,7 @@ import {
     AddAppPermissionRoute,
     AddApplicationAdminRoute,
     AddDelegatedAdminRoute,
+    BulkGrantRoute,
 } from "@/router/routes";
 import { newlyGrantedKeys as newlyGrantedKeysFor } from "@/components/PermissionsTable/utils";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
@@ -143,6 +144,19 @@ const handleApplicationChange = (event: { value: CssApplicationOptionDto }) => {
     newlyGrantedKeys.value = [];
 };
 
+const goToBulkUpload = () => {
+    if (!selectedApp.value) {
+        return;
+    }
+    router.push({
+        name: BulkGrantRoute.name,
+        query: {
+            integrationId: selectedApp.value.integration_id,
+            environment: selectedApp.value.environment,
+        },
+    });
+};
+
 const goToAddApplicationAdmin = () => {
     if (!selectedApp.value) {
         return;
@@ -247,6 +261,14 @@ const goToAddPermission = () => {
                     </TabList>
                     <TabPanels>
                         <TabPanel value="0">
+                            <div class="tab-actions">
+                                <Button
+                                    outlined
+                                    label="Bulk upload"
+                                    :icon="AddIcon"
+                                    @click="goToBulkUpload"
+                                />
+                            </div>
                             <CssPermissionsTable
                                 :key="`${selectedApp.integration_id}-${selectedApp.environment}`"
                                 class="tab-table"
@@ -363,6 +385,29 @@ const goToAddPermission = () => {
     .p-tablist {
         .p-tab {
             height: 3rem;
+        }
+    }
+
+    /*
+        Forced colours - Windows High Contrast, macOS Increase contrast - throw
+        away background colour and our blue active underline, and repaint every
+        border black. The three tabs then render as identical black boxes with
+        nothing marking the selected one.
+
+        The cue is a thick underline in the system Highlight colour, plus weight -
+        deliberately not a filled tab. Chrome paints a backplate behind text in
+        this mode to guarantee contrast, which sits on top of any background we
+        set and hides HighlightText labels entirely. Borders are not backplated,
+        so an underline survives where a fill does not.
+    */
+    @media (forced-colors: active) {
+        .p-tablist .p-tab {
+            border: 1px solid ButtonBorder;
+        }
+
+        .p-tablist .p-tab[aria-selected="true"] {
+            border-bottom: 0.25rem solid Highlight;
+            font-weight: 700;
         }
     }
 

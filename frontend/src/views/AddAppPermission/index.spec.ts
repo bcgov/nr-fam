@@ -164,13 +164,13 @@ describe("AddAppPermission", () => {
 
         await wrapper
             .findComponent(UserSearchStub)
-            .vm.$emit("user-domain-change", UserType.B);
+            .vm.$emit("user-domain-change", UserType.BceidBus);
         await selectUsers(wrapper, [IDIR_USER]);
         await selectRole(wrapper, ROLE);
         await submit(wrapper);
 
         expect(createAssignment.mock.calls[0][2]).toMatchObject({
-            user_type: UserType.B,
+            user_type: UserType.BceidBus,
         });
     });
 

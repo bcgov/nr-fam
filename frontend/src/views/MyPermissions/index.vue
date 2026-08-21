@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ErrorText from "@/components/UI/ErrorText.vue";
+import { TABLE_DATATABLE_PT } from "@/passthrough/datatable/datatablePassThrough";
 import PageTitle from "@/components/UI/PageTitle.vue";
 import StepContainer from "@/components/UI/StepContainer.vue";
 import {
@@ -70,7 +71,11 @@ const scopeOf = (role: SelfApplicationRoleDto): string =>
                 error-msg="Your application roles could not be loaded. Please try again."
             />
 
-            <DataTable class="fam-table" :value="applicationRoles">
+            <DataTable
+                :pt="TABLE_DATATABLE_PT"
+                class="fam-table"
+                :value="applicationRoles"
+            >
                 <template #empty>
                     {{
                         applicationRolesQuery.isLoading.value
@@ -158,6 +163,7 @@ const scopeOf = (role: SelfApplicationRoleDto): string =>
 </template>
 
 <style lang="scss">
+@use "@/passthrough/datatable/datatablePassThrough.scss";
 .my-permissions-container {
     padding-bottom: 2.5rem;
 

@@ -41,6 +41,9 @@ services:
       <<: *postgres-vars
       POSTGRES_SCHEMA: app_fam
       SPRING_PROFILES_ACTIVE: local
+      # Matches the deployed default, so a local log line and a DEV one read the
+      # same. A container is UTC otherwise, which is 7-8 hours off the BC day.
+      TZ: ${TZ:-America/Vancouver}
       LOG_LEVEL: DEBUG
       # Point at a real BC Gov SSO realm to sign in locally. Left unset, the app
       # still starts - JWKS is fetched lazily, not at boot - but every

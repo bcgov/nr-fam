@@ -18,7 +18,6 @@ export * from './api/authentication-api';
 export * from './api/cssintegrations-api';
 export * from './api/famdistricts-api';
 export * from './api/famforest-clients-api';
-export * from './api/famuser-api';
 export * from './api/idirbce-idproxy-api';
 export * from './api/permission-audit-api';
 export * from './api/smoke-test-api';

@@ -27,7 +27,7 @@ class DistrictControllerTest {
   @Mock private AuthorizationService authorizationService;
   @InjectMocks private DistrictController controller;
 
-  private final Requester requester = Requester.builder().userId(1L).userName("JSMITH").build();
+  private final Requester requester = Requester.builder().userName("JSMITH").build();
 
   @Test
   @DisplayName("returns every district, including expired ones")

@@ -154,7 +154,7 @@ class TokenClaimsReaderTest {
     @CsvSource({"idir_user_guid", "idir_username"})
     @DisplayName("rejects a token missing a claim FAM keys on")
     void rejectsMissingKeyClaim(String claimToRemove) {
-      // A FAM identity without a GUID cannot be matched to a fam_user row and
+      // A FAM identity without a GUID cannot be matched to a CSS assignment and
       // would silently create duplicates.
       Map<String, Object> claims = idirClaims();
       claims.remove(claimToRemove);
@@ -213,7 +213,7 @@ class TokenClaimsReaderTest {
     Map<String, Object> claims = new HashMap<>();
     claims.put("identity_provider", "azureidir");
     claims.put("idir_username", "JSMITH");
-    claims.put("azp", "forests-access-management-22261");
+    claims.put("azp", "forests-access-management-12345");
     // idir_user_guid deliberately absent.
 
     assertThatThrownBy(() -> reader.identity(jwt(claims)))
@@ -228,7 +228,7 @@ class TokenClaimsReaderTest {
     Map<String, Object> claims = new HashMap<>();
     claims.put("identity_provider", "azureidir");
     claims.put("idir_user_guid", "1122334455667788AABBCCDDEEFF0011");
-    claims.put("azp", "forests-access-management-22261");
+    claims.put("azp", "forests-access-management-12345");
 
     assertThatThrownBy(() -> reader.identity(jwt(claims)))
         .isInstanceOf(FamHttpException.class)

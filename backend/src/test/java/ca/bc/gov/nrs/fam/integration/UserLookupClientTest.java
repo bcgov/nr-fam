@@ -40,7 +40,7 @@ class UserLookupClientTest {
         new FamProperties.Integration.Timeouts(Duration.ofSeconds(2), Duration.ofSeconds(2)));
 
     FamProperties properties = new FamProperties("dev", null,
-        new FamProperties.Integration(null, null, config, null), null);
+        new FamProperties.Integration(null, null, config, null));
 
     // The app's mapper: snake_case is global, and the directory speaks camelCase.
     ObjectMapper objectMapper = new ObjectMapper()
@@ -208,7 +208,7 @@ class UserLookupClientTest {
         new FamProperties.Integration(null, null,
             new FamProperties.Integration.UserLookup(null, null, null, null, null,
                 new FamProperties.Integration.Timeouts(
-                    Duration.ofSeconds(1), Duration.ofSeconds(1))), null), null);
+                    Duration.ofSeconds(1), Duration.ofSeconds(1))), null));
 
     UserLookupClient client = new UserLookupClient(properties, new RestClientFactory(),
         new UpstreamErrorTranslator(new ObjectMapper()));

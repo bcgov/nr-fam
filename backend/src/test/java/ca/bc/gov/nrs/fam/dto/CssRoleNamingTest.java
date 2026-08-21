@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("CssRoleNaming (scope encoded into CSS role names)")
@@ -96,15 +95,15 @@ class CssRoleNamingTest {
         .isEqualTo(expected);
   }
 
-  @ParameterizedTest
-  @EnumSource(value = UserType.class, names = {"BCSC_DEV", "BCSC_TEST", "BCSC_PROD"})
-  @DisplayName("refuses a user type CSS has no provider for, rather than inventing one")
-  void refusesUnmappedUserType(UserType userType) {
-    // BC Services Card users have no CSS provider. Guessing would assign the role
-    // to a username that cannot exist - and CSS accepts that without complaint,
-    // so the grant would look successful while doing nothing.
+  @Test
+  @DisplayName("refuses a null user type, rather than inventing a provider")
+  void refusesNullUserType() {
+    // Every modelled user type now maps to a CSS provider, so the compiler covers
+    // the unmapped case. Null is what is left, and it must not be guessed at: CSS
+    // accepts a username that cannot exist without complaint, so the grant would
+    // look successful while doing nothing.
     assertThatThrownBy(() ->
-        CssRoleNaming.buildUsername("ABC", userType, "azureidir", "bceidbusiness"))
+        CssRoleNaming.buildUsername("ABC", null, "azureidir", "bceidbusiness"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

@@ -16,7 +16,6 @@ public final class ErrorCode {
   public static final String INVALID_APPLICATION_ID = "invalid_application_id";
   public static final String SELF_GRANT_PROHIBITED = "self_grant_prohibited";
   public static final String INVALID_ROLE_ID = "invalid_role_id";
-  public static final String REQUESTER_NOT_EXISTS = "requester_not_exists";
   public static final String EXTERNAL_USER_ACTION_PROHIBITED = "external_user_action_prohibited";
   public static final String DIFFERENT_ORG_GRANT_PROHIBITED = "different_org_grant_prohibited";
   public static final String MISSING_KEY_ATTRIBUTE = "missing_key_attribute";

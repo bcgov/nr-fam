@@ -34,8 +34,7 @@ class EmailServiceTest {
 
     FamProperties famProperties = new FamProperties("dev", null,
         new FamProperties.Integration(null, null, null,
-            new FamProperties.Integration.Smtp(from, replyTo)),
-        null);
+            new FamProperties.Integration.Smtp(from, replyTo)));
 
     return new EmailService(mailSender, mailProperties, famProperties);
   }

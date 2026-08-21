@@ -16,7 +16,7 @@ class ApiInstanceEnvResolverTest {
 
   private static ApiInstanceEnvResolver resolverFor(String deploymentEnvironment) {
     return new ApiInstanceEnvResolver(
-        new FamProperties(deploymentEnvironment, null, null, null));
+        new FamProperties(deploymentEnvironment, null, null));
   }
 
   @Test

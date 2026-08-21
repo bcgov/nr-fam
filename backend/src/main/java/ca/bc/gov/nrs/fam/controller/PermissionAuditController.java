@@ -1,5 +1,6 @@
 package ca.bc.gov.nrs.fam.controller;
 
+import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.PermissionAuditHistoryDto;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
@@ -27,11 +28,13 @@ public class PermissionAuditController {
   @Operation(operationId = "get_permission_audit_history_by_user_and_application", summary = "Permission audit history for a user within an application")
   public List<PermissionAuditHistoryDto> getHistory(
       @RequestParam String targetUserGuid,
+      @RequestParam UserType targetUserType,
       @RequestParam Integer cssIntegrationId,
       @RequestParam String cssEnvironment,
       Requester requester) {
 
     authorizationService.authorize(requester);
-    return permissionAuditService.getHistory(targetUserGuid, cssIntegrationId, cssEnvironment);
+    return permissionAuditService.getHistory(
+        targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment);
   }
 }

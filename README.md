@@ -39,11 +39,44 @@ deploy connects to the on-prem host using credentials from a secret.
 Role creation and privilege grants are the DBA team's responsibility and live in
 `migrations/dba/`, not in the migrations themselves. See `migrations/README.md`.
 
-The database holds four tables: `fam_user` and `fam_user_type_code` (who has
-signed in) and `fam_privilege_change_audit` with `fam_privilege_change_type` (who
-granted what to whom, which CSS does not record). Applications, roles and role
-assignments are CSS's. The audit deliberately keeps no foreign keys - an audit
-row that references mutable operational tables is only as durable as those rows.
+The database holds **two** tables, both audit: `fam_privilege_change_audit` and
+its code table `fam_privilege_change_type` — who granted what to whom, which CSS
+does not record. Applications, roles and role assignments are CSS's.
+
+There is no user table. FAM used to keep `fam_user`, provisioned at login, and
+rejected any token without a row — which made "has signed in before" a
+precondition for every API call. It decided nothing: authorisation comes from the
+roles on the token, and every field it held is on the token too. The audit
+records the people it names as **snapshots** (`change_performer_user_details`,
+`change_target_user_details`) rather than references, so the trail stays readable
+without it — and stays truthful after someone is renamed.
+
+Three conventions hold across every table:
+
+- **The same four audit columns everywhere** - `create_user`, `create_date`,
+  `update_user`, `update_date` - including the code tables, so "who put this row
+  here" has one answer regardless of which table is being read. All four are
+  `NOT NULL`: on a create, `update_user` is filled with `create_user` rather than
+  left empty, so "last touched by" always has an answer instead of encoding
+  "never updated" as an absence. `AuditedEntity`'s `@PrePersist` does the filling.
+- **Timestamps are `timestamp(6)`, without a time zone.** The containers run
+  `TZ=America/Vancouver`, so stored values are BC local time and line up with the
+  application's logs. The cost is that the two 01:30s on the November DST
+  fall-back are indistinguishable, leaving one hour of audit history a year
+  ambiguous to the minute.
+- **Audit users are `<TYPE>\<GUID>`**, e.g.
+  `IDIR\A1B2C3D4E5F60718293A4B5C6D7E8F90`. A bare GUID does not say which
+  directory it came from, and an audit column has no `user_type_code` beside it
+  to disambiguate. The prefix is the identity provider's name — `IDIR` or
+  `BCEID_BUS` — the same vocabulary `target_user_type_code` uses. Rows FAM writes
+  itself are stamped `system`. See `AuditUser`.
+- **Surrogate keys are UUIDs, not sequences.** Rows are created from several pods
+  at once and get cross-referenced against systems with their own numbering,
+  where a sequence value invites being read as an ordering or a count.
+
+The user type codes are `IDIR` and `BCEID_BUS`. BC Services Card is deliberately
+absent from both the code table and the `UserType` enum: FAM does not admit BCSC
+logins, so those codes could only ever describe rows that cannot be created.
 
 **Migrations run inside the application.** `backend/src/main/resources/db/migration`
 ships in the jar and Flyway applies it at start-up, before Hibernate validates
@@ -91,8 +124,10 @@ cd frontend && npm run type-check && npm run test:cov
 schema: Testcontainers starts a throwaway PostgreSQL, the application's own
 Flyway configuration applies `db/migration`, and Hibernate validates every
 mapping against the result - the same path a deployment takes. H2 cannot stand
-in for it, because the schema uses `JSONB` and identity columns. It needs a
-Docker daemon, so it fails on machines without one - CI always runs it.
+in for it, because the schema uses `JSONB`, `gen_random_uuid()` and expression
+indexes. It needs a Docker daemon, so it fails on machines without one - CI
+always runs it, and it is the only thing that catches an entity that has drifted
+from the DDL.
 
 ## Changing the API
 
@@ -114,8 +149,9 @@ that are easy to break - property naming, enum schema names, and parameter order
 
 GitHub Actions deploys to OpenShift per pull request, then to test and prod on
 merge. Set these on the repository, or per **environment** (`test`, `prod`) where
-they differ - the CSS credentials, `css_own_integration_id` and `smtp_from`
-usually do.
+they differ. The CSS credentials, `css_own_integration_id` and `smtp_from`
+usually do; so do `keycloak_issuer_uri`, `user_lookup_issuer_uri` and
+`keycloak_client_id` once prod points at a different realm from test.
 
 ### Secrets
 
@@ -131,7 +167,8 @@ usually do.
 | `css_api_client_id` | in practice | CSS API account (CSS app -> My Teams -> CSS API Account) |
 | `css_api_client_secret` | in practice | As above |
 | `user_lookup_base_url` | in practice | Base URL of nr-user-lookup-api |
-| `fc_api_token` | in practice | Forest Client API key. One key for all environments - see below. |
+| `fc_api_token_test` | in practice | Forest Client API key for the API's TEST instance, used by every non-PROD application. Needed in all three environments. See below. |
+| `fc_api_token_prod` | prod only | Forest Client API key for the API's PROD instance. A separate key, and deliberately unset outside prod. See below. |
 | `keycloak_sa_client_id` | optional | Keycloak admin client that provisions FAM's user-lookup service account. See below. |
 | `keycloak_sa_client_secret` | optional | Secret for that admin client |
 
@@ -151,20 +188,47 @@ when they are used, not at boot.
 | `oc_server` | yes | OpenShift API URL. No default. |
 | `keycloak_issuer_uri` | yes | Realm users **sign in** to, e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/standard`. |
 | `user_lookup_issuer_uri` | with the SA secrets | Realm the **user-lookup service account** lives in - a different one, e.g. `https://test.loginproxy.gov.bc.ca/auth/realms/forests`. See below. |
-| `keycloak_client_id` | yes | FAM's browser client. Also becomes `FAM_OIDC_CLIENT_ID`. |
-| `css_own_integration_id` | should | FAM's own CSS integration id, e.g. `22261`. See below. |
+| `keycloak_client_id` | yes | FAM's browser client. Feeds both the SPA's login redirect and the backend's `FAM_OIDC_CLIENT_ID`, which is the `azp` it requires on every token - so the two cannot be set apart. A client id is public, not a secret. |
+| `css_own_integration_id` | in practice | FAM's own CSS integration id, e.g. `12345`. The administrator tabs and appointing administrators **fail** without it. See below. |
 | `smtp_host` | for email | Mail relay. **Blank disables sending entirely.** |
 | `smtp_from` | for email | Envelope sender. Required, or nothing is sent. |
+| `fc_api_base_url_test` | in practice | Forest Client API TEST instance, e.g. `https://nr-forest-client-api-test.api.gov.bc.ca`. **Blank disables forest-client search** for every non-PROD application. See below. |
+| `fc_api_base_url_prod` | prod only | Forest Client API PROD instance. Blank everywhere but prod, which is intended. See below. |
 | `css_api_url` | optional | Defaults to the production CSS API. |
 | `css_token_url` | optional | Defaults to the production token endpoint. |
+
+### Not settings, but worth knowing
+
+These are template parameters with defaults, so they need no repository setting -
+but they are what the deploy applies, and both changed recently:
+
+| Parameter | Default | Notes |
+| --------- | ------- | ----- |
+| `TZ` | `America/Vancouver` | Container timezone, which is what log timestamps render against. An OpenShift container is UTC otherwise, putting every line 7-8 hours off the BC day. Do not add `-Duser.timezone` to the image: it would override this. |
+| `MIN_REPLICAS` | `2`, or **`3` in prod** | The autoscaler floor, set per environment by `reusable-deploy.yml`. `MAX_REPLICAS` stays 5, so prod sits at 3 and can scale. |
 
 ### Two worth understanding
 
 **`css_own_integration_id`.** Administering FAM means deciding who administers
 every other application, so FAM's own integration is reserved to `FAM_ADMIN`.
 Nothing in a CSS response marks which integration is FAM's, so it has to be told.
-Left unset the protection cannot be applied and start-up logs a warning; the
-deploy still succeeds, which is what lets a PR preview run without it.
+
+It is also where every administrative role lives - `APP_ADMIN_<id>_<ENV>` and the
+delegations `DELEGATED_ADMIN_<id>_<ENV>__<ROLE>` are held on FAM's own
+integration, not on the application being administered. So without this id there
+is nowhere to read or write them, and three things break:
+
+- the **Delegated admins** and **Application admins** tabs fail with a message
+  naming this variable;
+- **appointing** either kind of administrator fails the same way;
+- **deleting a role** cannot withdraw the delegations that name it. That one
+  degrades rather than fails: the role is removed, a warning is logged, and the
+  orphaned delegations would let their holders recreate the role by granting it.
+
+The protection itself also cannot be applied: FAM's own integration becomes
+administrable by anyone holding a role for it rather than by `FAM_ADMIN` alone.
+Start-up logs a warning and the deploy still succeeds, which is what lets a PR
+preview run without it - but a real environment wants it set.
 
 **Email needs both `smtp_host` and `smtp_from`.** Host blank and the application
 logs "No SMTP host configured" once at start-up, and grants complete without
@@ -206,21 +270,51 @@ already exist in the realm. The script errors rather than creating them.
 Forest-client-scoped roles need client numbers resolved to names, which comes
 from the Forest Client API.
 
-**Every environment uses the PROD instance**, so there is one key,
-`fc_api_token`, and one endpoint. The API publishes a TEST instance too, and the
-AWS deployment used it for dev and test, but this one does not. The consequence
-is that non-prod FAM reads production forest-client data. That data is read-only
-reference material - client numbers and names - so a dev deployment cannot change
-anything upstream, but it is real data.
+The API publishes **two instances**, TEST and PROD, holding different data and
+taking **different keys** - a key is issued per instance by the BC API Service
+Portal and they are not interchangeable. Hence two secrets, `fc_api_token_test`
+and `fc_api_token_prod`.
 
-The application still has two instance slots, TEST and PROD, picked per request
-by `ApiInstanceEnvResolver` (**both** the deployment and the target application
-must be prod before PROD is chosen). That machinery stays, because it governs
-other integrations; `backend/openshift.deploy.yml` simply points both slots at
-the same endpoint and the same key, which makes the choice a no-op here.
+Which instance a request uses is decided per **application** environment, not per
+deployment, by `ApiInstanceEnvResolver`: **both** the deployment and the target
+application must be prod before PROD is chosen. So FAM PROD administering a PROD
+application reads live client data, while FAM PROD administering that same
+application's DEV and TEST roles - and all of FAM DEV and TEST - reads the TEST
+instance. Anything unrecognised resolves to TEST, because guessing wrong towards
+PROD means real data.
 
-The base URL is public and is a template default rather than a deployment
-variable. Only the key is secret; it is sent as `X-API-KEY`.
+That split is worth keeping rather than collapsing to one endpoint. Test client
+records exist only in the TEST instance, so a lower environment pointed at PROD
+would fail to resolve exactly the clients it is meant to be working with, and
+would be reading production data to do it.
+
+Accordingly `fc_api_token_prod` belongs on the **prod environment only**. Leaving
+it unset in dev and test is the intended configuration: it is the second of two
+things standing between a lower environment and live client data, the first being
+the resolver. A blank key fails late - the instance still starts and the first
+search returns 401 - so it is a backstop, not the mechanism.
+
+Both base URLs are **variables**, not template defaults: an endpoint that moves
+should be a settings change rather than a code change. They are public hostnames
+published in the portal directory, so they are variables rather than secrets -
+only the keys are secret, and they travel as `X-API-KEY`.
+
+**A non-prod FAM cannot act on a production application.** Every deployment talks
+to the same CSS, so an integration's `prod` environment is reachable from FAM DEV
+and FAM TEST as readily as from FAM PROD, and a grant made there would be a real
+production grant — scoped, because the API instance is chosen from the
+deployment, using Forest Client *test* client numbers. `ProductionEnvironmentGuard`
+refuses any request naming `environment=prod` unless
+`FAM_DEPLOYMENT_ENVIRONMENT` is `prod`, which is what makes the split above safe
+rather than merely conservative: a lower environment can never need the PROD key,
+because it can never reach a PROD application. Reading your own access is
+untouched — it names no environment.
+
+A blank base URL disables that instance outright. The application logs
+`Forest Client API <ENV> instance not configured` at start-up and every
+forest-client search against it fails, so an unset `fc_api_base_url_test` breaks
+scoped-role screens in every environment. Blank `fc_api_base_url_prod` is the
+correct state everywhere except the PROD deployment.
 
 The two failure modes differ, which is worth knowing when reading logs. A blank
 **base URL** disables an instance at start-up and logs `Forest Client API PROD
@@ -228,11 +322,11 @@ instance not configured`; a blank **key** does not, so the instance initialises
 and the first search fails with a 401. A missing key is therefore silent until
 someone uses the screen.
 
-**Created out of band** - `<name>-<zone>-integrations`, now holding only the CMENG
-shared secret (`FAM_UPDATE_USER_INFO_API_KEY`); it is mounted `optional: true`, so
-a deployment without it still starts. Everything else the deploy creates itself:
-the database, CSS, user-lookup and Forest Client secrets all come from
-`common/openshift.init.yml`, and SMTP is two plain template parameters.
+Every secret the deploy needs, it creates: the database, CSS, user-lookup and
+Forest Client secrets all come from `common/openshift.init.yml`, and SMTP is two
+plain template parameters. Nothing is created out of band any more - the
+`<name>-<zone>-integrations` secret held only the user-info refresh key, and that
+endpoint is gone.
 
 Only the frontend has a Route. The backend is reached through it at `/api`.
 
@@ -246,9 +340,6 @@ Only the frontend has a Route. The backend is reached through it at `/api`.
   runs Flyway on start-up, so it creates tables rather than only reading and
   writing rows. `migrations/dba/02_app_user_grants.sql` grants it; a DBA runs
   that before the first deploy.
-- `PUT /users/users-information` needs `FAM_UPDATE_USER_INFO_API_KEY` set, and a
-  `fam_user` row for the configured requester (`CMENG` by default) — IDIM audits
-  every lookup against a real user. It fails closed if either is missing.
 - **FAM's own CSS integration needs its admin roles.** Admin rights are read from
   the caller's token, so `FAM_ADMIN` and `<APPLICATION_NAME>_ADMIN` have to exist
   in CSS and be assigned. Without them `authorize()` rejects every request. See

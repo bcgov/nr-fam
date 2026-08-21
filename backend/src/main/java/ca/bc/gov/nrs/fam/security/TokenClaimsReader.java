@@ -59,7 +59,7 @@ public class TokenClaimsReader {
   private static final String CLAIM_BCEID_BUSINESS_GUID = "bceid_business_guid";
 
   /**
-   * The value stored in {@code fam_user.oidc_user_id}.
+   * The OIDC subject, carried on the requester as {@code oidcUserId}.
    *
    * <p>Keycloak's {@code preferred_username} is {@code <guid>@idir} or
    * {@code <guid>@bceidbusiness} - the same shape Cognito produced, and stable
@@ -141,7 +141,7 @@ public class TokenClaimsReader {
    *
    * @throws FamHttpException 403 when the provider is unsupported, or a claim FAM
    *     treats as a key is absent. Failing here is deliberate: a FAM identity
-   *     without a GUID cannot be matched to a {@code fam_user} row and would
+   *     without a GUID cannot be matched to a CSS assignment and would
    *     silently create duplicates.
    */
   public TokenIdentity identity(Jwt jwt) {

@@ -69,7 +69,7 @@ const roleOptions = computed<CssRoleOptionDto[]>(
 
 const { values, setFieldValue, handleSubmit, errors } =
     useForm<AppPermissionFormType>({
-        initialValues: getDefaultFormData(UserType.I),
+        initialValues: getDefaultFormData(UserType.Idir),
         validationSchema: validateAppPermissionForm(),
     });
 

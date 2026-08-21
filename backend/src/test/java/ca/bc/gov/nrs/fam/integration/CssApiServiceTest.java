@@ -50,7 +50,7 @@ class CssApiServiceTest {
         new FamProperties.Integration.Timeouts(Duration.ofSeconds(2), Duration.ofSeconds(2)));
 
     FamProperties properties = new FamProperties("dev", null,
-        new FamProperties.Integration(null, css, null, null), null);
+        new FamProperties.Integration(null, css, null, null));
 
     // The app's ObjectMapper, not a default one. FAM's own API is snake_case and
     // that strategy is global, so the CSS client deserialises upstream responses
@@ -79,13 +79,13 @@ class CssApiServiceTest {
   void unwrapsDataEnvelope() {
     enqueueToken();
     enqueueJson("""
-        {"data":[{"id":6538,"projectName":"FREP","environments":["dev","test"],
+        {"data":[{"id":54321,"projectName":"FREP","environments":["dev","test"],
                   "status":"applied"}]}""");
 
     List<CssIntegrationDto> integrations = service.getIntegrations();
 
     assertThat(integrations).singleElement().satisfies(i -> {
-      assertThat(i.id()).isEqualTo(6538);
+      assertThat(i.id()).isEqualTo(54321);
       assertThat(i.projectName()).isEqualTo("FREP");
       assertThat(i.environments()).containsExactly("dev", "test");
     });
@@ -145,7 +145,7 @@ class CssApiServiceTest {
     enqueueToken();
     enqueueJson("{\"data\":[{\"name\":\"FREP_EDITOR\",\"composite\":false}]}");
 
-    List<CssRoleDto> roles = service.getRoles(6538, "dev");
+    List<CssRoleDto> roles = service.getRoles(54321, "dev");
 
     assertThat(roles).singleElement().satisfies(r -> {
       assertThat(r.name()).isEqualTo("FREP_EDITOR");
@@ -153,7 +153,7 @@ class CssApiServiceTest {
     });
 
     server.takeRequest(); // token
-    assertThat(server.takeRequest().getPath()).isEqualTo("/api/v1/integrations/6538/dev/roles");
+    assertThat(server.takeRequest().getPath()).isEqualTo("/api/v1/integrations/54321/dev/roles");
   }
 
   @Test

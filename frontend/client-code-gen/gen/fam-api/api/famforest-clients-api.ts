@@ -31,6 +31,54 @@ export const FAMForestClientsApiAxiosParamCreator = function (configuration?: Co
     return {
         /**
          * 
+         * @summary Autocomplete forest clients by client number or name
+         * @param {string} term 
+         * @param {string} environment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        autocompleteForestClients: async (term: string, environment: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'term' is not null or undefined
+            assertParamExists('autocompleteForestClients', 'term', term)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('autocompleteForestClients', 'environment', environment)
+            const localVarPath = `/forest-clients/autocomplete`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (term !== undefined) {
+                localVarQueryParameter['term'] = term;
+            }
+
+            if (environment !== undefined) {
+                localVarQueryParameter['environment'] = environment;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Search forest clients by client number
          * @param {string} clientNumber 
          * @param {string} environment 
@@ -89,6 +137,20 @@ export const FAMForestClientsApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
+         * @summary Autocomplete forest clients by client number or name
+         * @param {string} term 
+         * @param {string} environment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async autocompleteForestClients(term: string, environment: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<FamForestClientDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.autocompleteForestClients(term, environment, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['FAMForestClientsApi.autocompleteForestClients']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Search forest clients by client number
          * @param {string} clientNumber 
          * @param {string} environment 
@@ -113,6 +175,17 @@ export const FAMForestClientsApiFactory = function (configuration?: Configuratio
     return {
         /**
          * 
+         * @summary Autocomplete forest clients by client number or name
+         * @param {string} term 
+         * @param {string} environment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        autocompleteForestClients(term: string, environment: string, options?: any): AxiosPromise<Array<FamForestClientDto>> {
+            return localVarFp.autocompleteForestClients(term, environment, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Search forest clients by client number
          * @param {string} clientNumber 
          * @param {string} environment 
@@ -133,6 +206,17 @@ export const FAMForestClientsApiFactory = function (configuration?: Configuratio
 export interface FAMForestClientsApiInterface {
     /**
      * 
+     * @summary Autocomplete forest clients by client number or name
+     * @param {string} term 
+     * @param {string} environment 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof FAMForestClientsApiInterface
+     */
+    autocompleteForestClients(term: string, environment: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<FamForestClientDto>>;
+
+    /**
+     * 
      * @summary Search forest clients by client number
      * @param {string} clientNumber 
      * @param {string} environment 
@@ -151,6 +235,19 @@ export interface FAMForestClientsApiInterface {
  * @extends {BaseAPI}
  */
 export class FAMForestClientsApi extends BaseAPI implements FAMForestClientsApiInterface {
+    /**
+     * 
+     * @summary Autocomplete forest clients by client number or name
+     * @param {string} term 
+     * @param {string} environment 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof FAMForestClientsApi
+     */
+    public autocompleteForestClients(term: string, environment: string, options?: RawAxiosRequestConfig) {
+        return FAMForestClientsApiFp(this.configuration).autocompleteForestClients(term, environment, options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      * 
      * @summary Search forest clients by client number

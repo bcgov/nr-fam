@@ -51,7 +51,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    availableDomains: () => [UserType.I, UserType.B],
+    availableDomains: () => [UserType.Idir, UserType.BceidBus],
     disabled: false,
     searchButtonLabel: "Search",
     helperText: "",
@@ -84,7 +84,7 @@ const { searchUsers, isPending, searchResults, isSuccess, searchError, reset } =
 
 const domainOptions = computed<SelectOption<UserType>[]>(() =>
     (props.availableDomains ?? []).map((domain) => ({
-        label: domain === UserType.I ? "IDIR" : "BCeID",
+        label: domain === UserType.Idir ? "IDIR" : "BCeID",
         value: domain,
     }))
 );
@@ -95,7 +95,7 @@ const selectedDomainOption = ref<SelectOption<UserType>>(domainOptions.value[0])
 const getSearchTypeOptions = (
     domain: UserType
 ): SelectOption<UserSearchType>[] => {
-    if (domain === UserType.B) {
+    if (domain === UserType.BceidBus) {
         return [{ label: "Username", value: "username" }];
     }
 

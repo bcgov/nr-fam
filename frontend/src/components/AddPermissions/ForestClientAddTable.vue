@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import Button from "@/components/UI/Button.vue";
-import { FOREST_CLIENT_INPUT_MAX_LENGTH } from "@/constants/constants";
+import { FOREST_CLIENT_SEARCH_MIN_LENGTH } from "@/constants/constants";
 import { AppActlApiService } from "@/services/ApiServiceFactory";
 import { getAxiosErrorStatus } from "@/utils/ApiUtils";
 import type { AppPermissionFormType } from "@/views/AddAppPermission/utils";
-import AddIcon from "@carbon/icons-vue/es/add/16";
+import type { FamForestClientDto } from "fam-api";
 import TrashIcon from "@carbon/icons-vue/es/trash-can/16";
-import { useMutation } from "@tanstack/vue-query";
 import Column from "primevue/column";
 import DataTable from "primevue/datatable";
-import InputText from "primevue/inputtext";
+import AutoComplete from "primevue/autocomplete";
 import { Field, useField } from "vee-validate";
-import { ref, onUnmounted } from "vue";
+import { ref } from "vue";
 import Chip from "../UI/Chip.vue";
 import HelperText from "../UI/HelperText.vue";
 import Label from "../UI/Label.vue";
@@ -56,58 +55,80 @@ const clearVerificationError = () => {
     isForestClientServiceDown.value = false;
 };
 
-const clientSearchMutation = useMutation({
-    mutationKey: [
-        "forest_clients",
-        "search",
-        {
-            client_number: props.formValues.forestClientInput.value,
-            application_id: props.environment,
-        },
-    ],
-    mutationFn: (clientNumber: string) => {
-        updateForestClientInput({
-            isVerifying: true,
-        });
-        return AppActlApiService.forestClientsApi
-            .search(clientNumber, props.environment)
-            .then((res) => res.data);
-    },
-    onSuccess: (data) => {
-        if (!data.length) {
-            setVerificationError(
-                "No organization found. Check the client number and try again"
+/**
+ * Suggestions for the organisation field.
+ *
+ * Typed either way: an eight-digit client number, or a name. The backend
+ * classifies the term and searches the right column - the Forest Client API ANDs
+ * its criteria, so a name and a number cannot be sent together and one has to be
+ * chosen.
+ */
+const suggestions = ref<FamForestClientDto[]>([]);
+
+const onSearch = async (event: { query: string }) => {
+    const term = event.query.trim();
+    clearVerificationError();
+
+    // The backend enforces this too; checking here avoids a request that can
+    // only come back as a validation error.
+    if (term.length < FOREST_CLIENT_SEARCH_MIN_LENGTH) {
+        suggestions.value = [];
+        return;
+    }
+
+    try {
+        const { data } =
+            await AppActlApiService.forestClientsApi.autocompleteForestClients(
+                term,
+                props.environment
             );
-        } else if (data[0].status?.status_code !== "A") {
-            setVerificationError(
-                "This organization can't be added due to its status"
-            );
-        } else {
-            props.setFieldValue("forestClients", [
-                ...props.formValues.forestClients,
-                data[0],
-            ]);
-            updateForestClientInput({
-                value: "",
-            });
-        }
-    },
-    onError: (error) => {
-        const status = getAxiosErrorStatus(error);
-        if (status === HttpStatusCode.GatewayTimeout) {
+
+        // Already-added organisations are dropped rather than offered and then
+        // refused on selection.
+        const chosen = new Set(
+            props.formValues.forestClients.map(
+                (client) => client.forest_client_number
+            )
+        );
+        suggestions.value = data.filter(
+            (client) => !chosen.has(client.forest_client_number)
+        );
+        isForestClientServiceDown.value = false;
+    } catch (error) {
+        suggestions.value = [];
+        if (getAxiosErrorStatus(error) === HttpStatusCode.GatewayTimeout) {
             isForestClientServiceDown.value = true;
         } else {
             setVerificationError(
-                "The organization could not be added. Please try again"
+                "The organization search failed. Please try again"
             );
         }
-    },
-    onSettled: () => {
-        updateForestClientInput({
-            isVerifying: false,
-        });
-    },
-});
+    }
+};
+
+/**
+ * Adds the chosen organisation.
+ *
+ * The status check is the one the verify button used to make: an inactive
+ * organisation is findable but not grantable, and saying so is more use than
+ * hiding it from the results.
+ */
+const onSelect = (event: { value: FamForestClientDto }) => {
+    const client = event.value;
+
+    if (client.status?.status_code !== "A") {
+        setVerificationError(
+            "This organization can't be added due to its status"
+        );
+    } else {
+        props.setFieldValue("forestClients", [
+            ...props.formValues.forestClients,
+            client,
+        ]);
+    }
+    // Cleared either way: the field is a search box, not a value.
+    updateForestClientInput({ value: "" });
+};
 
 const removeForestClientFromList = (clientNumber: string) => {
     props.setFieldValue(
@@ -118,54 +139,6 @@ const removeForestClientFromList = (clientNumber: string) => {
     );
 };
 
-const enforceNumber = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    let newValue = "";
-    for (const char of target.value) {
-        if (char >= "0" && char <= "9") {
-            newValue += char;
-        }
-    }
-    target.value = newValue;
-    updateForestClientInput({
-        value: newValue,
-    });
-};
-
-const addOrganization = () => {
-    clearVerificationError();
-
-    if (!props.formValues.forestClientInput.value) {
-        return;
-    }
-
-    if (
-        props.formValues.forestClientInput.value.length <
-        FOREST_CLIENT_INPUT_MAX_LENGTH
-    ) {
-        setVerificationError(
-            `Client number must be ${FOREST_CLIENT_INPUT_MAX_LENGTH} digits long`
-        );
-        return;
-    }
-    // Check duplication
-    const duplicate = props.formValues.forestClients.find(
-        (client) =>
-            client.forest_client_number ===
-            props.formValues.forestClientInput.value
-    );
-
-    if (duplicate) {
-        setVerificationError("Client number has already been added");
-        return;
-    }
-
-    clientSearchMutation.mutate(props.formValues.forestClientInput.value);
-};
-
-onUnmounted(() => {
-    clientSearchMutation.reset();
-});
 </script>
 
 <template>
@@ -182,7 +155,7 @@ onUnmounted(() => {
 
         <Label
             for="forestClientInput"
-            label-text="Organization's client number"
+            label-text="Organization"
             required
         />
         <Field
@@ -191,44 +164,61 @@ onUnmounted(() => {
             :model-value="props.formValues.forestClients"
             @update:model-value="(value) => props.setFieldValue('forestClients', value)"
         >
-            <!-- Input section -->
-            <div class="input-with-verify-button">
-                <div>
-                    <InputText
-                        :id="props.formValues.forestClientInput.id"
-                        class="w-100 custom-height"
-                        :value="props.formValues.forestClientInput.value"
-                        @input="enforceNumber"
-                        @keydown.enter.prevent="addOrganization()"
-                        :maxlength="FOREST_CLIENT_INPUT_MAX_LENGTH"
-                        :invalid="!!(errorMessage || !props.formValues.forestClientInput.isValid)"
-                        :disabled="props.formValues.forestClientInput.isVerifying"
-                    />
-                    <HelperText
-                        :text="
-                            errorMessage ||
-                            props.formValues.forestClientInput.errorMsg ||
-                            'Enter the 8-digit client number'
-                        "
-                        :is-error="
-                            !!(
-                                errorMessage ||
-                                !props.formValues.forestClientInput.isValid
-                            )
-                        "
-                    />
-                </div>
-                <Button
-                    outlined
-                    class="add-organization-button"
-                    aria-label="add organizations"
-                    name="add organizations"
-                    label="Add organization"
-                    @click="addOrganization"
-                    :icon="AddIcon"
-                    :is-loading="props.formValues.forestClientInput.isVerifying"
-                />
-            </div>
+            <!--
+                One field, either kind of term. `option-label` is what lands in
+                the box on selection; the slot below is what the list shows,
+                because a number alone is not something anybody recognises.
+            -->
+            <AutoComplete
+                :id="props.formValues.forestClientInput.id"
+                class="w-100 forest-client-autocomplete"
+                :model-value="props.formValues.forestClientInput.value"
+                @update:model-value="
+                    (value: any) =>
+                        updateForestClientInput({
+                            value: typeof value === 'string' ? value : '',
+                        })
+                "
+                :suggestions="suggestions"
+                option-label="client_name"
+                :min-length="FOREST_CLIENT_SEARCH_MIN_LENGTH"
+                :delay="300"
+                :complete-on-focus="false"
+                placeholder="Search by organization name or client number"
+                :invalid="!!(errorMessage || !props.formValues.forestClientInput.isValid)"
+                @complete="onSearch"
+                @item-select="onSelect"
+            >
+                <template #option="{ option }">
+                    <span class="option-name">{{ option.client_name }}</span>
+                    <span class="option-number">
+                        {{ option.forest_client_number }}
+                    </span>
+                    <!-- Findable but not grantable; say so before it is chosen. -->
+                    <span
+                        v-if="option.status?.status_code !== 'A'"
+                        class="option-inactive"
+                    >
+                        {{ option.status?.description ?? "Inactive" }}
+                    </span>
+                </template>
+
+                <template #empty>No organization found</template>
+            </AutoComplete>
+
+            <HelperText
+                :text="
+                    errorMessage ||
+                    props.formValues.forestClientInput.errorMsg ||
+                    'Type an organization name or client number, then choose from the list'
+                "
+                :is-error="
+                    !!(
+                        errorMessage ||
+                        !props.formValues.forestClientInput.isValid
+                    )
+                "
+            />
         </Field>
 
         <!-- Table section -->
@@ -270,6 +260,24 @@ onUnmounted(() => {
 
 <style lang="scss">
 .foresnt-client-add-table-container {
+    .forest-client-autocomplete {
+        max-width: 32rem;
+
+        .p-autocomplete-input {
+            width: 100%;
+        }
+    }
+
+    .option-number {
+        margin-left: 0.5rem;
+        color: var(--semantic-color-text-secondary);
+    }
+
+    .option-inactive {
+        margin-left: 0.5rem;
+        color: var(--semantic-color-text-error);
+    }
+
     .subsection-title-container {
         margin: 1.5rem 0;
     }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TableSkeleton from "@/components/Skeletons/TableSkeleton.vue";
+import { TABLE_DATATABLE_PT } from "@/passthrough/datatable/datatablePassThrough";
 import TableHeaderTitle from "@/components/Table/TableHeaderTitle.vue";
 import TableToolbar from "@/components/Table/TableToolbar.vue";
 import Button from "@/components/UI/Button.vue";
@@ -20,7 +21,7 @@ import DownloadIcon from "@carbon/icons-vue/es/download/16";
 import RecentlyViewedIcon from "@carbon/icons-vue/es/recently-viewed/16";
 import TrashIcon from "@carbon/icons-vue/es/trash-can/16";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
-import type { CssUserRoleRowDto } from "fam-api";
+import { type CssUserRoleRowDto, UserType } from "fam-api";
 import Column from "primevue/column";
 import ConfirmDialog from "primevue/confirmdialog";
 import DataTable from "primevue/datatable";
@@ -175,6 +176,10 @@ const goToHistory = (row: PermissionRow) => {
         name: UserPermissionHistoryRoute.name,
         query: {
             targetUserGuid: row.user_guid,
+            // The audit keys the target by <TYPE>\<GUID>, so the directory has
+            // to travel with the GUID.
+            targetUserType:
+                row.domain === "BCEID" ? UserType.BceidBus : UserType.Idir,
             integrationId: props.integrationId,
             environment: props.environment,
             userName: row.username,
@@ -294,6 +299,7 @@ const confirmRevoke = (row: PermissionRow) => {
 
         <div v-else>
             <DataTable
+                :pt="TABLE_DATATABLE_PT"
                 :value="filteredRows"
                 removableSort
                 stripedRows
@@ -379,6 +385,7 @@ const confirmRevoke = (row: PermissionRow) => {
 </template>
 
 <style lang="scss">
+@use "@/passthrough/datatable/datatablePassThrough.scss";
 .fam-table {
     /*
         Ported from legacy's ManagePermissionsTable. The differences from what

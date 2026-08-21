@@ -15,7 +15,6 @@ import java.util.List;
  * has no use for them and they are identifiers worth not shipping to the browser.
  */
 public record SelfDto(
-    Long userId,
     String userName,
     String userTypeCode,
     String firstName,

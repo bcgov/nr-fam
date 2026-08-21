@@ -5,6 +5,8 @@ import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorRowDto;
 import ca.bc.gov.nrs.fam.dto.CssApplicationOptionDto;
+import ca.bc.gov.nrs.fam.dto.CssBulkGrantPreviewDto;
+import ca.bc.gov.nrs.fam.dto.CssBulkGrantRowDto;
 import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleBulkCreateResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
@@ -17,6 +19,7 @@ import ca.bc.gov.nrs.fam.dto.CssUserRoleRevokeRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
+import ca.bc.gov.nrs.fam.service.BulkGrantService;
 import ca.bc.gov.nrs.fam.service.CssIntegrationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,6 +54,7 @@ public class CssIntegrationController {
 
   private final CssIntegrationService cssIntegrationService;
   private final AuthorizationService authorizationService;
+  private final BulkGrantService bulkGrantService;
 
   /**
    * Applications available to administer, sourced from CSS integrations.
@@ -314,6 +318,52 @@ public class CssIntegrationController {
 
     return cssIntegrationService.assignUserRoles(
         integrationId, environment, request, requester);
+  }
+
+  /**
+   * What a bulk upload would grant, without granting it.
+   *
+   * <p>Takes the CSV as a plain text body: two columns, a user GUID and a role
+   * code. Returns a row per line with the person and role resolved, so the
+   * uploader confirms names rather than identifiers.
+   *
+   * <p>Writes nothing. Any of the three tiers may call it - the same rule as
+   * granting - and each row is additionally checked against what the caller may
+   * actually grant.
+   */
+  @PostMapping(value = "/{integrationId}/{environment}/bulk-grants/preview",
+      consumes = {"text/csv", "text/plain"})
+  @Operation(operationId = "preview_css_bulk_grants",
+      summary = "Validate a bulk grant CSV and resolve its users and roles")
+  public CssBulkGrantPreviewDto previewCssBulkGrants(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @RequestBody String csv,
+      Requester requester) {
+
+    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+    return bulkGrantService.preview(integrationId, environment, csv, requester);
+  }
+
+  /**
+   * Apply a bulk upload.
+   *
+   * <p>Re-validates the file rather than trusting a previewed payload back from
+   * the browser, and reports one outcome per row - a file where one row fails
+   * still grants the rest, because the rows are unrelated people.
+   */
+  @PostMapping(value = "/{integrationId}/{environment}/bulk-grants",
+      consumes = {"text/csv", "text/plain"})
+  @Operation(operationId = "create_css_bulk_grants",
+      summary = "Grant every valid row of a bulk grant CSV")
+  public List<CssBulkGrantRowDto> createCssBulkGrants(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @RequestBody String csv,
+      Requester requester) {
+
+    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+    return bulkGrantService.apply(integrationId, environment, csv, requester);
   }
 
   /**

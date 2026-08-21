@@ -249,7 +249,7 @@ describe("toRevokeRequest", () => {
     it("maps the domain onto the user type the backend expects", () => {
         // The user type decides which identity provider the CSS username is
         // built against; the wrong one names a user who does not exist.
-        expect(toRevokeRequest(row({ domain: "BCEID" })).user_type).toBe(UserType.B);
-        expect(toRevokeRequest(row({ domain: "IDIR" })).user_type).toBe(UserType.I);
+        expect(toRevokeRequest(row({ domain: "BCEID" })).user_type).toBe(UserType.BceidBus);
+        expect(toRevokeRequest(row({ domain: "IDIR" })).user_type).toBe(UserType.Idir);
     });
 });

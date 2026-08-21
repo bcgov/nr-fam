@@ -29,7 +29,7 @@ export const SmokeTestApiAxiosParamCreator = function (configuration?: Configura
     return {
         /**
          * 
-         * @summary Verify database connectivity and seeded application data
+         * @summary Verify database connectivity and that migrations have run
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -73,7 +73,7 @@ export const SmokeTestApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
-         * @summary Verify database connectivity and seeded application data
+         * @summary Verify database connectivity and that migrations have run
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -95,7 +95,7 @@ export const SmokeTestApiFactory = function (configuration?: Configuration, base
     return {
         /**
          * 
-         * @summary Verify database connectivity and seeded application data
+         * @summary Verify database connectivity and that migrations have run
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -113,7 +113,7 @@ export const SmokeTestApiFactory = function (configuration?: Configuration, base
 export interface SmokeTestApiInterface {
     /**
      * 
-     * @summary Verify database connectivity and seeded application data
+     * @summary Verify database connectivity and that migrations have run
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof SmokeTestApiInterface
@@ -131,7 +131,7 @@ export interface SmokeTestApiInterface {
 export class SmokeTestApi extends BaseAPI implements SmokeTestApiInterface {
     /**
      * 
-     * @summary Verify database connectivity and seeded application data
+     * @summary Verify database connectivity and that migrations have run
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof SmokeTestApi

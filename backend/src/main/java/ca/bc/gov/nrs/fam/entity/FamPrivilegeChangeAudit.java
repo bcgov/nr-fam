@@ -9,19 +9,21 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
  * Append-only log of privilege grants, revocations and updates.
  *
- * <p>Does not extend {@link AuditedEntity}: the table has {@code create_user} and
- * {@code create_date} but no update columns, because rows are never modified.
+ * <p>Extends {@link AuditedEntity} for the same four audit columns every table
+ * carries. {@code update_user} and {@code update_date} are inert here: nothing
+ * modifies a row, so a non-null {@code update_user} on this table is a finding
+ * rather than a normal state.
  *
  * <p><b>Self-contained by design.</b> Roles, role assignments and applications
  * moved to CSS in V94, and this record deliberately kept no foreign keys into
@@ -40,12 +42,12 @@ import org.hibernate.type.SqlTypes;
 @Setter
 @NoArgsConstructor
 @Table(name = "fam_privilege_change_audit")
-public class FamPrivilegeChangeAudit {
+public class FamPrivilegeChangeAudit extends AuditedEntity {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @GeneratedValue(strategy = GenerationType.UUID)
   @Column(name = "privilege_change_audit_id")
-  private Long privilegeChangeAuditId;
+  private UUID privilegeChangeAuditId;
 
   /**
    * The CSS integration the change was made against.
@@ -66,7 +68,7 @@ public class FamPrivilegeChangeAudit {
 
   /** When the privilege change happened, which may predate this row. */
   @Column(name = "change_date", nullable = false)
-  private OffsetDateTime changeDate;
+  private LocalDateTime changeDate;
 
   /**
    * Snapshot of who made the change, as JSON.
@@ -78,16 +80,31 @@ public class FamPrivilegeChangeAudit {
   @Column(name = "change_performer_user_details", nullable = false)
   private String changePerformerUserDetails;
 
-  /** Null when the change was made by a system process rather than a person. */
-  @Column(name = "performer_user_guid", length = 32)
-  private String performerUserGuid;
+  /**
+   * Snapshot of who the change was made to, as JSON.
+   *
+   * <p>Null for a change with no target, and null when the directory could not
+   * be reached. Stored rather than joined because FAM keeps no row for the
+   * target - see {@link ca.bc.gov.nrs.fam.dto.PrivilegeChangeTargetDto}.
+   */
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(name = "change_target_user_details")
+  private String changeTargetUserDetails;
 
-  @Column(name = "target_user_guid", length = 32)
-  private String targetUserGuid;
+  /**
+   * Who made the change, as {@code <TYPE>\<GUID>} - the same form as
+   * {@code create_user}, and {@code system} when no person did.
+   */
+  @Column(name = "performer_user", nullable = false, length = 100)
+  private String performerUser;
 
-  /** {@code I} or {@code B}; needed alongside the GUID to identify the user. */
-  @Column(name = "target_user_type_code", length = 2)
-  private String targetUserTypeCode;
+  /**
+   * Who the change was made to, in the same form as {@link #performerUser}.
+   * Null for a change with no target, such as CREATE_ROLE.
+   */
+  @Column(name = "target_user", length = 100)
+  private String targetUser;
+
 
   @ManyToOne(fetch = FetchType.EAGER, optional = false)
   @JoinColumn(name = "privilege_change_type_code", nullable = false)
@@ -97,11 +114,4 @@ public class FamPrivilegeChangeAudit {
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "privilege_details", nullable = false)
   private String privilegeDetails;
-
-  @CreationTimestamp
-  @Column(name = "create_date", nullable = false)
-  private OffsetDateTime createDate;
-
-  @Column(name = "create_user", nullable = false, length = 100)
-  private String createUser;
 }

@@ -29,7 +29,7 @@ const router = useRouter();
 const queryClient = useQueryClient();
 
 const selectedUser = ref<SelectedUser | null>(null);
-const domain = ref<UserType>(UserType.I);
+const domain = ref<UserType>(UserType.Idir);
 const submitError = ref<string | null>(null);
 
 const setSelectedUsers = (users: SelectedUser[]) => {

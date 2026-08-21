@@ -6,7 +6,7 @@ import java.util.Optional;
 
 /**
  * BC Gov SSO (Keycloak) identity providers, and how they map onto FAM's
- * {@code fam_user_type_code}.
+ * FAM's user type codes.
  *
  * <p>Replaces the {@code custom:idp_name} attribute Cognito carried. Keycloak
  * publishes the provider in the {@code identity_provider} claim.

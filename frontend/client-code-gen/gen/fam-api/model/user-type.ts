@@ -21,11 +21,8 @@
  */
 
 export const UserType = {
-    I: 'I',
-    B: 'B',
-    Cd: 'CD',
-    Ct: 'CT',
-    Cp: 'CP'
+    Idir: 'IDIR',
+    BceidBus: 'BCEID_BUS'
 } as const;
 
 export type UserType = typeof UserType[keyof typeof UserType];

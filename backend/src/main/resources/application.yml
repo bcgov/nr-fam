@@ -178,6 +178,10 @@ fam:
   integration:
     forest-client:
       test:
+        # The TEST host as a local-development fallback only. Every deployed
+        # environment sets FC_API_BASE_URL_TEST from the fc_api_base_url_test
+        # variable, and an env var set to empty overrides this default rather
+        # than falling back to it - so the deploy always wins.
         base-url: ${FC_API_BASE_URL_TEST:https://nr-forest-client-api-test.api.gov.bc.ca}
         api-token: ${FC_API_TOKEN_TEST:}
       prod:
@@ -238,12 +242,6 @@ fam:
       timeouts:
         connect: 5s
         read: 20s
-
-
-  # Shared-secret API used by CMENG to push user info updates.
-  update-user-info:
-    api-key: ${FAM_UPDATE_USER_INFO_API_KEY:}
-    requester-name: ${FAM_UPDATE_USER_INFO_REQUESTER_NAME:CMENG}
 
 ---
 spring:

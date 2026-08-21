@@ -1,6 +1,6 @@
 package ca.bc.gov.nrs.fam.controller;
 
-import ca.bc.gov.nrs.fam.repository.FamUserTypeRepository;
+import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeTypeRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -20,12 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
  * upstream.
  *
  * <p><b>Checks reference data, not user data.</b> This used to count
- * {@code fam_user}, which was only ever non-zero because a local seed had been
+ * {@code fam_user}, which no longer exists and was only ever non-zero because a seed had been
  * applied. That made a correctly migrated, freshly deployed environment report
  * 417 until somebody signed in - the smoke test failing for the one reason it
  * should not, an empty user table.
  *
- * <p>{@code fam_user_type_code} is populated by the baseline migration itself,
+ * <p>{@code fam_privilege_change_type} is populated by the baseline migration itself,
  * so it is non-empty exactly when the database has been migrated, and never
  * depends on anybody having used the application.
  */
@@ -35,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class SmokeTestController {
 
-  private final FamUserTypeRepository userTypeRepository;
+  private final FamPrivilegeChangeTypeRepository changeTypeRepository;
 
   @GetMapping
   @Operation(operationId = "smoke_test",
@@ -43,7 +43,7 @@ public class SmokeTestController {
   public ResponseEntity<Void> smokeTest() {
     // A successful count proves connectivity; a non-zero one proves the baseline
     // ran, since these rows are inserted by the migration that creates the table.
-    long referenceRows = userTypeRepository.count();
+    long referenceRows = changeTypeRepository.count();
     return referenceRows == 0
         ? ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).build()
         : ResponseEntity.ok().build();

@@ -40,12 +40,11 @@ class SelfPermissionServiceTest {
           "dev", null,
           new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration(null,
               new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration.Css(
-                  null, null, null, null, 22261,
+                  null, null, null, null, 12345,
                   new ca.bc.gov.nrs.fam.configuration.FamProperties.Integration.Css
                       .IdpAliases(null, null),
                   null),
-              null, null),
-          null);
+              null, null));
 
   @InjectMocks private SelfPermissionService service;
 
@@ -70,7 +69,7 @@ class SelfPermissionServiceTest {
   private void givenIntegrations() {
     when(cssApiService.getIntegrations()).thenReturn(List.of(
         new CssIntegrationDto(22264, "FREP", null, List.of("dev", "prod"), "applied", null, null),
-        new CssIntegrationDto(6538, "FOM", null, List.of("dev"), "applied", null, null)));
+        new CssIntegrationDto(54321, "FOM", null, List.of("dev"), "applied", null, null)));
   }
 
   @Test
@@ -95,7 +94,7 @@ class SelfPermissionServiceTest {
     givenIntegrations();
 
     assertThat(service.getSelfPermissions(
-        requesterWith("APP_ADMIN_22264_DEV", "DELEGATED_ADMIN_6538_DEV")))
+        requesterWith("APP_ADMIN_22264_DEV", "DELEGATED_ADMIN_54321_DEV")))
         .extracting(SelfPermissionDto::applicationName, SelfPermissionDto::role)
         .containsExactlyInAnyOrder(
             org.assertj.core.groups.Tuple.tuple("FREP", AdminRoleAuthGroup.APP_ADMIN),
@@ -194,10 +193,10 @@ class SelfPermissionServiceTest {
           assertThat(target.cssEnvironment()).isEqualTo("dev");
         });
 
-    assertThat(FamAdminRole.targetOf(FamAdminRole.delegatedAdmin(6538, "prod")))
+    assertThat(FamAdminRole.targetOf(FamAdminRole.delegatedAdmin(54321, "prod")))
         .get()
         .satisfies(target -> {
-          assertThat(target.cssIntegrationId()).isEqualTo(6538);
+          assertThat(target.cssIntegrationId()).isEqualTo(54321);
           assertThat(target.cssEnvironment()).isEqualTo("prod");
         });
 
@@ -218,7 +217,7 @@ class SelfPermissionServiceTest {
     // A wrong username silently returns nothing rather than failing, so the
     // exact value matters more than usual.
     verify(cssApiService).getUserRoles(22264, "dev", CSS_USERNAME);
-    verify(cssApiService).getUserRoles(6538, "dev", CSS_USERNAME);
+    verify(cssApiService).getUserRoles(54321, "dev", CSS_USERNAME);
   }
 
   @Test
@@ -298,9 +297,9 @@ class SelfPermissionServiceTest {
     givenIntegrations();
     when(cssApiService.getUserRoles(22264, "dev", CSS_USERNAME))
         .thenThrow(new RuntimeException("CSS down"));
-    when(cssApiService.getUserRoles(6538, "dev", CSS_USERNAME))
+    when(cssApiService.getUserRoles(54321, "dev", CSS_USERNAME))
         .thenReturn(List.of(role("FOM_SUBMITTER")));
-    when(cssApiService.getRoles(6538, "dev")).thenReturn(List.of());
+    when(cssApiService.getRoles(54321, "dev")).thenReturn(List.of());
 
     assertThat(service.getSelfApplicationRoles(requesterWith()))
         .extracting(SelfApplicationRoleDto::roleName)

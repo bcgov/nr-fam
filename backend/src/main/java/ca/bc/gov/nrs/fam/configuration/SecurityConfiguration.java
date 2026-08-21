@@ -39,11 +39,7 @@ public class SecurityConfiguration {
       "/v3/api-docs/**",
       "/docs/**",
       "/swagger-ui/**",
-      "/smoke_test/**",
-      // Authenticated by the X-API-Key shared secret in the controller, not by a
-      // bearer token: it is called by a scheduled job with no signed-in user.
-      // The controller fails closed when no key is configured.
-      "/users/users-information"
+      "/smoke_test/**"
   };
 
   private final FamProperties famProperties;

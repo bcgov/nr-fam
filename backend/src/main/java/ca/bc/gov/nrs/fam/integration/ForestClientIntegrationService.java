@@ -57,9 +57,23 @@ public class ForestClientIntegrationService {
           env == ApiInstanceEnv.PROD ? config.prod() : config.test();
 
       if (instance == null || instance.baseUrl() == null || instance.baseUrl().isBlank()) {
-        // A FAM environment that never calls the PROD instance has no PROD config.
-        // Skip it rather than failing startup; calling it later fails loudly.
-        log.info("Forest Client API {} instance not configured", env);
+        // Skip rather than failing startup; a call to a disabled instance fails
+        // loudly on its own. The level differs because the two absences mean
+        // opposite things.
+        if (env == ApiInstanceEnv.PROD) {
+          // Expected everywhere but the PROD deployment - a lower environment
+          // holding no PROD endpoint is the point, not a misconfiguration.
+          log.info("Forest Client API PROD instance not configured, which is "
+              + "expected outside the PROD deployment.");
+        } else {
+          // Every environment uses the TEST instance, so this is always wrong.
+          // Named after the variable that sets it, because the usual cause is
+          // that the variable was never created.
+          log.warn("Forest Client API TEST instance not configured: "
+              + "FC_API_BASE_URL_TEST is blank, so forest-client search will fail "
+              + "for every non-PROD application. Set the fc_api_base_url_test "
+              + "repository variable.");
+        }
         continue;
       }
 
@@ -126,8 +140,35 @@ public class ForestClientIntegrationService {
     }
   }
 
+  /**
+   * Search by organisation name rather than by number.
+   *
+   * <p>The same {@code /api/clients/search} endpoint, which takes {@code name} as
+   * well as {@code id} - so a person can type what they know. Matching is the
+   * API's own: partial and case-insensitive, unlike {@code id}, which matches a
+   * whole number exactly.
+   *
+   * <p>No retry, like the number search behind the picker: this runs on every
+   * keystroke pause and latency matters more than a second attempt.
+   */
+  public List<Map<String, Object>> searchByName(
+      String name, int size, ApiInstanceEnv apiInstanceEnv) {
+
+    try {
+      return doSearch(List.of(), name, size, apiInstanceEnv);
+    } catch (ResourceAccessException e) {
+      log.error("Forest Client API name search failed", e);
+      throw errorTranslator.connectivityFailure(UPSTREAM, e);
+    }
+  }
+
   private List<Map<String, Object>> doSearch(
       List<String> forestClientNumbers, int size, ApiInstanceEnv apiInstanceEnv) {
+    return doSearch(forestClientNumbers, null, size, apiInstanceEnv);
+  }
+
+  private List<Map<String, Object>> doSearch(
+      List<String> forestClientNumbers, String name, int size, ApiInstanceEnv apiInstanceEnv) {
 
     RestClient client = clientFor(apiInstanceEnv);
 
@@ -136,6 +177,10 @@ public class ForestClientIntegrationService {
         .queryParam("size", size);
     // Repeated "id" parameters, one per client number: &id=00001011&id=00001012
     forestClientNumbers.forEach(number -> uri.queryParam("id", number));
+
+    if (name != null && !name.isBlank()) {
+      uri.queryParam("name", name);
+    }
 
     ResponseEntity<byte[]> response = client.get()
         .uri(uri.build().toUriString())

@@ -22,12 +22,6 @@
 export interface SelfDto {
     /**
      * 
-     * @type {number}
-     * @memberof SelfDto
-     */
-    'user_id'?: number;
-    /**
-     * 
      * @type {string}
      * @memberof SelfDto
      */

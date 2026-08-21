@@ -44,7 +44,7 @@ class TargetOrganizationGuardTest {
   @Mock private UserLookupClient userLookupClient;
 
   private final AuthorizationService authorizationService =
-      new AuthorizationService(new FamProperties("dev", null, null, null));
+      new AuthorizationService(new FamProperties("dev", null, null));
 
   private TargetOrganizationGuard guard;
 

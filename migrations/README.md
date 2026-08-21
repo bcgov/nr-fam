@@ -31,15 +31,37 @@ If your security posture requires keeping it, the alternative is to run Flyway
 as a separate job again — set `spring.flyway.enabled=false` on the app and apply
 `backend/src/main/resources/db/migration` with the Flyway CLI as `fam_owner`.
 
+## The baseline was rewritten
+
+`V1__baseline.sql` was restated rather than amended - audit columns on every
+table, `IDIR`/`BCEID_BUS` user type codes, UUID keys - and `V2` was folded into
+it. Flyway checksums what it applied, so **any database that already ran the old
+V1 will refuse to start**:
+
+```
+Migration checksum mismatch for migration version 1
+Detected applied migration not resolved locally: delete role change type
+```
+
+The fix is to drop the schema and let the application rebuild it. This is only
+safe because FAM is not yet in use; it destroys every row.
+
+```sql
+DROP SCHEMA app_fam CASCADE;
+```
+
+Then re-run `dba/01_create_roles.sql` and `dba/02_app_user_grants.sql` (they
+create the schema with the right ownership and default privileges) and restart
+the backend, which applies the baseline.
+
 ## No local seed data
 
-There is none, deliberately. `fam_user` rows are created by signing in - the
-first `POST /auth/login` provisions the caller - so a local database needs no
-seeding to be usable.
+There is none, and there is nothing left to seed: the only tables are the audit
+trail and its code table, and the code table is populated by the baseline itself.
 
-A `db/local` seed used to exist and was applied under the `local` profile. It was
-removed because it bought nothing (nothing reads `fam_user` except the caller's
-own provisioning and the user-info refresh batch) and cost something real: a
+A `db/local` seed used to exist and was applied under the `local` profile. It
+seeded `fam_user`, a table that no longer exists. It was removed before that
+because it bought nothing and cost something real: a
 developer whose `local` profile pointed at a deployed environment's database
 seeded that database, and the next deployment could not resolve the migration:
 
@@ -47,16 +69,10 @@ seeded that database, and the next deployment could not resolve the migration:
 Detected applied migration not resolved locally: seed local test users
 ```
 
-`spring.flyway.ignore-migration-patterns: repeatable:missing` is kept for exactly
-that case - a database that already has the seed in its history starts cleanly
-without anyone editing `flyway_schema_history`. A *versioned* migration going
-missing still fails the deployment loudly.
-
-If a seeded row is unwanted, it can go:
-
-```sql
-DELETE FROM app_fam.fam_user WHERE user_name LIKE 'LOCAL%';
-```
+No `ignore-migration-patterns` setting is carried for it. That was a transitional
+allowance while a deployed database still had the seed in its history, and it is
+gone along with the schema it applied to. Every migration is now resolved
+locally, and one going missing fails the deployment loudly - which is the point.
 
 ### Keep the `local` profile off a deployed environment's database
 

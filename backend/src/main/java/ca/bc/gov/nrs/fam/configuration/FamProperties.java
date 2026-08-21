@@ -22,8 +22,7 @@ public record FamProperties(
      */
     String deploymentEnvironment,
     Cors cors,
-    Integration integration,
-    UpdateUserInfo updateUserInfo) {
+    Integration integration) {
 
   public record Cors(List<String> allowedOrigins) {}
 
@@ -147,6 +146,4 @@ public record FamProperties(
     public record Timeouts(Duration connect, Duration read) {}
   }
 
-  /** Shared-secret access for the CMENG user-info update endpoint. */
-  public record UpdateUserInfo(String apiKey, String requesterName) {}
 }

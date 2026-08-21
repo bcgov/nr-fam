@@ -37,7 +37,7 @@ function normalizeIdirItem(
         lastName,
         email: item.email ?? "",
         fullName: [firstName, lastName].filter(Boolean).join(" "),
-        sourceDomain: UserType.I,
+        sourceDomain: UserType.Idir,
     };
 }
 
@@ -51,7 +51,7 @@ function normalizeBceidItem(item: UserLookupBceidUserDto): SelectedUser {
         lastName,
         email: item.email ?? "",
         fullName: [firstName, lastName].filter(Boolean).join(" "),
-        sourceDomain: UserType.B,
+        sourceDomain: UserType.BceidBus,
     };
 }
 
@@ -61,7 +61,7 @@ export function useUserSearchApiService() {
     const searchMutation = useMutation({
         retry: 1,
         mutationFn: async (params: UserSearchParams): Promise<SelectedUser[]> => {
-            if (params.domain === UserType.I) {
+            if (params.domain === UserType.Idir) {
                 const firstName =
                     params.searchType === "firstName" ? params.searchText : undefined;
                 const lastName =

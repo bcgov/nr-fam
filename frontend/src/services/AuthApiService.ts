@@ -1,15 +1,13 @@
 /**
- * The FAM sign-in bootstrap.
+ * The caller's FAM identity and access roles.
  *
- * AWS Cognito ran a pre-token-generation Lambda on every login that created the
- * user's `fam_user` row and injected their FAM roles into the token. A BC Gov SSO
- * realm cannot run application code at token time, so the backend does both
- * itself and exposes them here.
+ * `POST /auth/login` used to be mandatory - it provisioned the caller's
+ * `fam_user` row, and every other endpoint answered `403 requester_not_exists`
+ * until it had run. FAM keeps no user table now and the gate is gone, so a valid
+ * token is enough on the very first request.
  *
- * `POST /auth/login` MUST be called once after a successful Keycloak sign-in and
- * before any other API call. Until it is, a first-time user holds a valid token
- * but has no FAM identity, and every other endpoint answers
- * `403 requester_not_exists`.
+ * The call is kept because the frontend wants identity and roles at sign-in
+ * anyway; it is simply no longer a precondition for anything.
  */
 
 import axios from "axios";
@@ -21,12 +19,10 @@ const environmentSettings = new EnvironmentSettings();
 /**
  * The caller's FAM identity and effective access roles.
  *
- * `accessRoles` was the `cognito:groups` token claim. It is now resolved from the
- * database per request, so a revocation takes effect immediately rather than at
- * the next token refresh.
+ * `accessRoles` was the `cognito:groups` token claim; it is now the token's
+ * `client_roles`, so a revocation in CSS takes effect at the next token refresh.
  */
 export interface FamSelf {
-    user_id: number;
     user_name: string;
     user_type_code: string | null;
     first_name: string | null;
