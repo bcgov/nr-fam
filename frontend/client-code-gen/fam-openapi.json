@@ -1265,6 +1265,67 @@
         },
         "required" : [ "error_count", "rows", "valid_count" ]
       },
+      "CssBulkGrantRowDto" : {
+        "properties" : {
+          "line_number" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "user_guid" : {
+            "type" : "string"
+          },
+          "role_code" : {
+            "type" : "string"
+          },
+          "user_type" : {
+            "$ref" : "#/components/schemas/UserType"
+          },
+          "user_name" : {
+            "type" : "string"
+          },
+          "first_name" : {
+            "type" : "string"
+          },
+          "last_name" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "organization" : {
+            "type" : "string"
+          },
+          "role_display_name" : {
+            "type" : "string"
+          },
+          "valid" : {
+            "type" : "boolean"
+          },
+          "error" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "line_number", "role_code", "user_guid", "valid" ]
+      },
+      "CssBulkGrantPreviewDto" : {
+        "properties" : {
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/CssBulkGrantRowDto"
+            }
+          },
+          "valid_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "error_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "error_count", "rows", "valid_count" ]
+      },
       "CssAdministratorAppointRequest" : {
         "properties" : {
           "user_guid" : {
