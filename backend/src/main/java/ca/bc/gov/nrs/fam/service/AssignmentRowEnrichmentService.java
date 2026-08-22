@@ -157,7 +157,6 @@ public class AssignmentRowEnrichmentService {
         user.email(),
         row.roleName(),
         row.roleDisplayName(),
-        row.scopeType(),
-        row.scopeValue());
+        row.scopes());
   }
 }

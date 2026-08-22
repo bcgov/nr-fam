@@ -42,7 +42,7 @@ class CssIntegrationControllerTest {
 
   private static CssUserRoleRevokeRequest revokeRequest(String roleName) {
     return new CssUserRoleRevokeRequest(
-        "AABB1122", ca.bc.gov.nrs.fam.constants.UserType.IDIR, roleName, null, null);
+        "AABB1122", ca.bc.gov.nrs.fam.constants.UserType.IDIR, roleName, java.util.List.of());
   }
 
   private static CssRoleCreateRequest createRequest() {

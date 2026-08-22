@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePermissionToast } from "@/composables/usePermissionToast";
 import TableSkeleton from "@/components/Skeletons/TableSkeleton.vue";
 import { TABLE_DATATABLE_PT } from "@/passthrough/datatable/datatablePassThrough";
 import TableHeaderTitle from "@/components/Table/TableHeaderTitle.vue";
@@ -36,6 +37,7 @@ import {
     NEW_ACCESS_STYLE_IN_TABLE,
     permissionsTableHeaders,
     roleLabel,
+    scopeText,
     toRevokeRequest,
 } from "./utils";
 
@@ -85,6 +87,7 @@ const confirmTextProps = ref<{
 const router = useRouter();
 const confirm = useConfirm();
 const queryClient = useQueryClient();
+const permissionToast = usePermissionToast();
 
 const assignmentsQuery = useQuery({
     queryKey: computed(() => [
@@ -113,10 +116,18 @@ const fullName = (row: CssUserRoleRowDto) =>
  * it. Sorting on the description alone would gather every role without one at
  * a single end, in no order a person would expect.
  */
-type PermissionRow = CssUserRoleRowDto & { role_label: string };
+type PermissionRow = CssUserRoleRowDto & {
+    role_label: string;
+    /** Scopes joined, so the column sorts and the keyword search matches. */
+    scope_text: string;
+};
 
 const tableRows = computed<PermissionRow[]>(() =>
-    rows.value.map((row) => ({ ...row, role_label: roleLabel(row) }))
+    rows.value.map((row) => ({
+        ...row,
+        role_label: roleLabel(row),
+        scope_text: scopeText(row),
+    }))
 );
 
 const filteredRows = computed<PermissionRow[]>(() => {
@@ -136,6 +147,10 @@ const filteredRows = computed<PermissionRow[]>(() => {
             row.role_label,
             row.role_name,
             row.domain,
+            // Scope was never searchable, which was tolerable when it was one
+            // quiet column. It is chips now, and a district code is the obvious
+            // thing to look for.
+            row.scope_text,
         ]
             .filter(Boolean)
             .some((field) => String(field).toLowerCase().includes(term))
@@ -194,8 +209,18 @@ const revokeMutation = useMutation({
             props.environment,
             toRevokeRequest(row)
         ),
-    onSuccess: () => {
+    onSuccess: (_result, row) => {
         revokeError.value = null;
+
+        // Said out loud, because the only other evidence is a row vanishing -
+        // which on a paginated table can happen off-screen.
+        const scope = scopeText(row);
+        permissionToast.succeeded(
+            "Permission removed",
+            `${row.role_label}${scope ? ` for ${scope}` : ""} was removed from `
+                + `${row.username} in ${props.appName}.`
+        );
+
         queryClient.invalidateQueries({
             queryKey: [
                 "css-user-role-assignments",
@@ -226,7 +251,7 @@ const confirmRevoke = (row: PermissionRow) => {
     confirmTextProps.value = {
         userName: row.username,
         role: row.role_label,
-        scope: row.scope_value,
+        scope: scopeText(row),
         appName: props.appName,
     };
 
@@ -280,7 +305,7 @@ const confirmRevoke = (row: PermissionRow) => {
                 :disabled="filteredRows.length === 0"
                 @click="downloadCsv"
                 outlined
-                label="Download table as CSV file&nbsp;&nbsp;"
+                label="Download table as CSV file"
                 :icon="DownloadIcon"
                 aria-label="Download table as CSV file"
             />
@@ -343,9 +368,24 @@ const confirmRevoke = (row: PermissionRow) => {
                     </template>
                 </Column>
 
-                <Column header="Scope" field="scope_value" sortable>
+                <!--
+                    A chip per scope. A role scoped by a district AND a forest
+                    client carries both, and collapsing them to one string would
+                    read as a single odd value rather than two conditions.
+
+                    Sorted on scope_text, because a list of chips has nothing to
+                    compare; that field is the same text, joined.
+                -->
+                <Column header="Scope" field="scope_text" sortable>
                     <template #body="{ data }">
-                        {{ data.scope_value ?? PLACE_HOLDER }}
+                        <span v-if="!data.scopes?.length">{{ PLACE_HOLDER }}</span>
+                        <span v-else class="scope-chips">
+                            <Chip
+                                v-for="scope in data.scopes"
+                                :key="`${scope.type}-${scope.value}`"
+                                :label="scope.label || scope.value"
+                            />
+                        </span>
                     </template>
                 </Column>
 
@@ -386,6 +426,7 @@ const confirmRevoke = (row: PermissionRow) => {
 
 <style lang="scss">
 @use "@/passthrough/datatable/datatablePassThrough.scss";
+@use "./permissionsTable.scss";
 .fam-table {
     /*
         Ported from legacy's ManagePermissionsTable. The differences from what
@@ -423,40 +464,5 @@ const confirmRevoke = (row: PermissionRow) => {
         }
     }
 
-    .action-button-group {
-        gap: 0.25rem;
-
-        .btn-icon {
-            background: none;
-            border: none;
-            padding: 0.25rem;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-
-            svg {
-                fill: var(--semantic-color-link-primary);
-            }
-
-            &:disabled {
-                cursor: not-allowed;
-                svg {
-                    fill: var(--semantic-color-text-disabled);
-                }
-            }
-        }
-    }
-
-    .nowrap-cell {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 0.5rem;
-        white-space: nowrap;
-    }
-
-    .p-datatable-emptymessage {
-        background-color: var(--semantic-color-surface-layer-1);
-    }
 }
 </style>

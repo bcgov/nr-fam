@@ -3,6 +3,7 @@ import ProtectedLayout from "@/layouts/ProtectedLayout.vue";
 import AuthProvider from "@/providers/AuthProvider.vue";
 import { VueQueryDevtools } from "@tanstack/vue-query-devtools";
 import DynamicDialog from "primevue/dynamicdialog";
+import Toast from "primevue/toast";
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 
@@ -23,6 +24,13 @@ const layoutComponent = computed(() => {
         <router-view v-else />
         <VueQueryDevtools />
         <DynamicDialog />
+        <!--
+            Mounted once, above the router view, so a toast raised just before a
+            redirect survives it. Granting navigates back to Manage permissions
+            the moment it succeeds; a Toast inside either screen would be
+            unmounted mid-flight and the confirmation would never be seen.
+        -->
+        <Toast position="top-right" />
     </AuthProvider>
 </template>
 

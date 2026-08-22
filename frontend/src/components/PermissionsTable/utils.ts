@@ -20,9 +20,26 @@ export const toRevokeRequest = (
     user_guid: row.user_guid ?? "",
     user_type: row.domain === "BCEID" ? UserType.BceidBus : UserType.Idir,
     role_name: row.role_name,
-    scope_type: row.scope_type ?? undefined,
-    scope_value: row.scope_value ?? undefined,
+    // Every scope, one value each. A compound role revoked with only one of its
+    // scopes names a role nobody holds, and the removal quietly does nothing.
+    scopes: (row.scopes ?? []).map((scope) => ({
+        type: scope.type,
+        values: [scope.value],
+    })),
 });
+
+/**
+ * A row's scopes as readable text, e.g. `DCC, 00001012`.
+ *
+ * Prefers the resolved label - a district's or forest client's name - and falls
+ * back to the raw value, which is what a row carries before enrichment or when
+ * the upstream lookup is unavailable.
+ *
+ * Used for sorting, filtering and the CSV, where a list of chips has to collapse
+ * to one comparable string.
+ */
+export const scopeText = (row: CssUserRoleRowDto): string =>
+    (row.scopes ?? []).map((scope) => scope.label || scope.value).join(", ");
 
 /**
  * How a role reads on a permission pill: its short name when it has one.
@@ -71,16 +88,20 @@ export const newlyGrantedKeys = (
     if (!summary) {
         return [];
     }
-    const role = summary.roleName.toUpperCase();
     return summary.outcomes
         // Only the ones that landed. Tagging a refused user "New" would say
         // they have access they were not given.
         .filter(wasGranted)
-        .flatMap((outcome) =>
-            [outcome.user.guid, outcome.user.userId]
+        .flatMap((outcome) => {
+            // Per outcome, because a grant now names several roles: one key for
+            // every user/role pair that actually landed. Keyed on the summary's
+            // single role, granting two roles marked both rows new even when
+            // only one of them succeeded.
+            const role = outcome.role.name.toUpperCase();
+            return [outcome.user.guid, outcome.user.userId]
                 .filter(Boolean)
-                .map((id) => `${String(id).toUpperCase()}|${role}`)
-        );
+                .map((id) => `${String(id).toUpperCase()}|${role}`);
+        });
 };
 
 /** Whether this row is one the grant just created. */
@@ -126,7 +147,7 @@ export const toCsv = (rows: CssUserRoleRowDto[]): string => {
             row.domain,
             [row.first_name, row.last_name].filter(Boolean).join(" "),
             row.email,
-            row.scope_value,
+            scopeText(row),
             // What the table shows, so the file matches what was exported from.
             roleLabel(row),
         ]

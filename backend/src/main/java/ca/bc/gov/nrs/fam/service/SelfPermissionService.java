@@ -6,6 +6,7 @@ import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.dto.CssIntegrationDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
+import ca.bc.gov.nrs.fam.dto.ScopeDto;
 import ca.bc.gov.nrs.fam.dto.SelfApplicationRoleDto;
 import ca.bc.gov.nrs.fam.dto.SelfPermissionDto;
 import ca.bc.gov.nrs.fam.integration.CssApiService;
@@ -211,8 +212,7 @@ public class SelfPermissionService {
           parsed.baseRoleName(),
           displayNames.get(parsed.baseRoleName()),
           descriptions.get(parsed.baseRoleName()),
-          parsed.scopeType(),
-          parsed.scopeValue()));
+          parsed.scopes().stream().map(ScopeDto::of).toList()));
     }
     return rows;
   }

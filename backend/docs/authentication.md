@@ -36,18 +36,22 @@ token refresh. This is stricter than the Cognito behaviour, not looser.
 
 ### A non-prod deployment cannot touch production
 
-All FAM deployments share one CSS, so an integration's `prod` environment is
-reachable from any of them and the admin role that authorises it
-(`APP_ADMIN_<id>_PROD`) is held per deployment — granting one in FAM TEST is
-enough. `ProductionEnvironmentGuard` is the only thing comparing the requested
-environment against the deployment's own: it refuses `prod` from anything that is
-not the production deployment, returning 403.
+**This is settled by credentials, not by application code.** Each deployment has
+its own CSS API account, and each account sees only its own set of integrations:
+the lower environments have a full parallel set of integrations for FAM and for
+the applications they administer, and only the PROD deployment holds the account
+that can see the production ones. A `prod` environment named by FAM DEV is the
+`prod` environment of a *lower-environment* integration, which is not production
+anything.
 
-It is a `HandlerInterceptor` over `/**` rather than a call in each controller,
-because seventeen endpoints name an environment today and an eighteenth must not
-be able to opt out by forgetting it. It matches on parameter name
-(`environment`, `cssEnvironment`), and a test enumerates the controllers to
-confirm no endpoint uses a third name.
+FAM once carried a `ProductionEnvironmentGuard` — a `HandlerInterceptor` over
+`/**` refusing any request naming `environment=prod` unless
+`FAM_DEPLOYMENT_ENVIRONMENT` was `prod`. It existed because every deployment then
+shared one CSS account, so an integration's `prod` environment really was
+reachable from FAM TEST and a grant made there was a real production grant. The
+separate integration sets removed that premise, and the guard with it: it could
+now only refuse requests that were already harmless, while making a lower
+environment unable to exercise its own `prod` environment at all.
 
 ### No login bootstrap
 

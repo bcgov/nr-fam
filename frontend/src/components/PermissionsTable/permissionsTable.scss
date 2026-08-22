@@ -1,0 +1,54 @@
+/*
+    Shared by the tables under this folder - the users table and the two
+    administrator tables.
+
+    They lived in CssPermissionsTable's own style block, which is not scoped, so
+    the administrator table appeared to inherit them. It only did while that
+    component happened to be mounted; on a tab where it is not, the same markup
+    rendered unstyled. Both files @use this now, the way the datatable
+    passthrough is already shared.
+*/
+.fam-table {
+    /* Chips sit in a row and wrap; a compound scope is two of them. */
+    .scope-chips {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    .action-button-group {
+        gap: 0.25rem;
+
+        .btn-icon {
+            background: none;
+            border: none;
+            padding: 0.25rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+
+            svg {
+                fill: var(--semantic-color-link-primary);
+            }
+
+            &:disabled {
+                cursor: not-allowed;
+                svg {
+                    fill: var(--semantic-color-text-disabled);
+                }
+            }
+        }
+    }
+
+    .nowrap-cell {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+        white-space: nowrap;
+    }
+
+    .p-datatable-emptymessage {
+        background-color: var(--semantic-color-surface-layer-1);
+    }
+}

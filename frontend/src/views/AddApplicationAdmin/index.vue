@@ -139,7 +139,8 @@ const applicationName = computed(
         display: flex;
         justify-content: flex-end;
         gap: 1rem;
-        margin-top: 2rem;
+        /* The rule above already separates these from the form. */
+        margin-top: 0.5rem;
     }
 
     .field-error {

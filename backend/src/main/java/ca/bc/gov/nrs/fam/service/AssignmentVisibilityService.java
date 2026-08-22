@@ -152,8 +152,7 @@ public class AssignmentVisibilityService {
         first(user.email(), row.email()),
         row.roleName(),
         row.roleDisplayName(),
-        row.scopeType(),
-        row.scopeValue());
+        row.scopes());
   }
 
   private static String first(String preferred, String fallback) {

@@ -91,7 +91,7 @@ class PermissionAuditWriteServiceTest {
     // is no target_user_type_code: the directory is in the prefix, so a separate
     // column would be a second copy of it that could disagree.
     service.storeCssGranted(requester, TARGET_GUID, UserType.BCEID, 54321, "dev",
-        "R", null, List.of(assigned("R")));
+        "R", List.of(assigned("R")));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getTargetUser()).isEqualTo("BCEID_BUS\\" + TARGET_GUID);
@@ -110,7 +110,7 @@ class PermissionAuditWriteServiceTest {
             true, "BJONES", TARGET_GUID, "Bob", "Jones", "bob@gov.bc.ca")));
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
-        "R", null, List.of(assigned("R")));
+        "R", List.of(assigned("R")));
 
     assertThat(captureSaved().getChangeTargetUserDetails())
         .contains("BJONES").contains("Bob").contains("Jones")
@@ -126,7 +126,7 @@ class PermissionAuditWriteServiceTest {
         .thenThrow(new RuntimeException("directory down"));
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
-        "R", null, List.of(assigned("R")));
+        "R", List.of(assigned("R")));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getTargetUser()).isEqualTo("IDIR\\" + TARGET_GUID);
@@ -139,7 +139,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
-        "CHR_FREP_EDITOR", "DISTRICT", List.of(assigned("CHR_FREP_EDITOR_DISTRICT-DCC")));
+        "CHR_FREP_EDITOR", List.of(assigned("CHR_FREP_EDITOR_DISTRICT-DCC")));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getCssIntegrationId()).isEqualTo(54321);
@@ -157,7 +157,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
-        "R", "DISTRICT",
+        "R",
         List.of(assigned("R_DISTRICT-DCC"), failed("R_DISTRICT-DQU")));
 
     assertThat(captureSaved().getPrivilegeDetails())
@@ -169,7 +169,7 @@ class PermissionAuditWriteServiceTest {
   @DisplayName("writes nothing when no assignment succeeded")
   void writesNothingWhenAllFailed() {
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
-        "R", "DISTRICT", List.of(failed("R_DISTRICT-DCC")));
+        "R", List.of(failed("R_DISTRICT-DCC")));
 
     verify(auditRepository, never()).save(any());
   }
@@ -181,7 +181,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
-        "FOM_SUBMITTER", "FOREST_CLIENT",
+        "FOM_SUBMITTER",
         List.of(assigned("FOM_SUBMITTER_FOREST_CLIENT-00001018")));
 
     assertThat(captureSaved().getPrivilegeDetails()).contains("00001018");
@@ -193,7 +193,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
-        "FREP_ADMINISTRATOR", null, List.of(assigned("FREP_ADMINISTRATOR")));
+        "FREP_ADMINISTRATOR", List.of(assigned("FREP_ADMINISTRATOR")));
 
     String details = captureSaved().getPrivilegeDetails();
     assertThat(details).contains("FREP_ADMINISTRATOR");
@@ -207,7 +207,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 1, "dev",
-        "R", null, List.of(assigned("R")));
+        "R", List.of(assigned("R")));
 
     assertThat(captureSaved().getChangePerformerUserDetails())
         .contains("JSMITH").contains("jane@gov.bc.ca");
@@ -219,7 +219,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
-        "CHR_FREP_EDITOR", "DISTRICT", List.of("CHR_FREP_EDITOR_DISTRICT-DCC"));
+        "CHR_FREP_EDITOR", List.of("CHR_FREP_EDITOR_DISTRICT-DCC"));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getPrivilegeDetails()).contains("DCC");
@@ -229,7 +229,7 @@ class PermissionAuditWriteServiceTest {
   @Test
   @DisplayName("writes nothing when a revocation removed nothing")
   void revocationOfNothingWritesNothing() {
-    service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 1, "dev", "R", null, List.of());
+    service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 1, "dev", "R", List.of());
 
     verify(auditRepository, never()).save(any());
   }
@@ -240,7 +240,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeCssGranted(null, TARGET_GUID, UserType.IDIR, 1, "dev",
-        "R", null, List.of(assigned("R")));
+        "R", List.of(assigned("R")));
 
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getCreateUser()).isEqualTo("system");
@@ -286,7 +286,7 @@ class PermissionAuditWriteServiceTest {
   void recordsRequiredScope() {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, "DISTRICT");
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, List.of("DISTRICT"));
 
     assertThat(captureSaved().getPrivilegeDetails()).contains("District");
   }
@@ -299,10 +299,10 @@ class PermissionAuditWriteServiceTest {
     // recording it as CLIENT would misstate what was created.
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
-    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, null);
+    service.storeRoleCreated(requester, 1, "dev", "R_ONE", "Role one", null, List.of());
 
     assertThat(captureSaved().getPrivilegeDetails())
-        .contains("\"required_scope_type\":null")
+        .contains("\"required_scope_types\":[]")
         .doesNotContain("Client");
   }
 
@@ -316,7 +316,7 @@ class PermissionAuditWriteServiceTest {
     when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
 
     service.storeRoleCreated(requester, 1, "dev",
-        "FREP_ADMINISTRATOR", "FREP Administrator", null, "DISTRICT");
+        "FREP_ADMINISTRATOR", "FREP Administrator", null, List.of("DISTRICT"));
 
     String json = captureSaved().getPrivilegeDetails();
 

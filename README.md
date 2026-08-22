@@ -299,16 +299,14 @@ should be a settings change rather than a code change. They are public hostnames
 published in the portal directory, so they are variables rather than secrets -
 only the keys are secret, and they travel as `X-API-KEY`.
 
-**A non-prod FAM cannot act on a production application.** Every deployment talks
-to the same CSS, so an integration's `prod` environment is reachable from FAM DEV
-and FAM TEST as readily as from FAM PROD, and a grant made there would be a real
-production grant — scoped, because the API instance is chosen from the
-deployment, using Forest Client *test* client numbers. `ProductionEnvironmentGuard`
-refuses any request naming `environment=prod` unless
-`FAM_DEPLOYMENT_ENVIRONMENT` is `prod`, which is what makes the split above safe
-rather than merely conservative: a lower environment can never need the PROD key,
-because it can never reach a PROD application. Reading your own access is
-untouched — it names no environment.
+**A non-prod FAM cannot act on a production application**, and that is settled by
+credentials rather than by code. Each deployment has its own CSS API account and
+sees only its own integrations: the lower environments run against a full
+parallel set, for FAM itself and for the applications they administer, and only
+the PROD deployment holds the account that can see the production ones. A `prod`
+environment named by FAM DEV is the `prod` environment of a lower-environment
+integration, which is not production anything — so a lower environment can never
+need the PROD Forest Client key.
 
 A blank base URL disables that instance outright. The application logs
 `Forest Client API <ENV> instance not configured` at start-up and every

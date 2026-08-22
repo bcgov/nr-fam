@@ -50,5 +50,11 @@ export interface CssApplicationOptionDto {
      * @memberof CssApplicationOptionDto
      */
     'status'?: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CssApplicationOptionDto
+     */
+    'fam_application': boolean;
 }
 

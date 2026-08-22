@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import { ScopeDto } from './scope-dto';
 
 /**
  * 
@@ -64,15 +67,9 @@ export interface SelfApplicationRoleDto {
     'role_description'?: string;
     /**
      * 
-     * @type {string}
+     * @type {Array<ScopeDto>}
      * @memberof SelfApplicationRoleDto
      */
-    'scope_type'?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof SelfApplicationRoleDto
-     */
-    'scope_value'?: string;
+    'scopes': Array<ScopeDto>;
 }
 

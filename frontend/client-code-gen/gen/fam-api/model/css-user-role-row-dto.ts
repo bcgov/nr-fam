@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import { ScopeDto } from './scope-dto';
 
 /**
  * 
@@ -70,15 +73,9 @@ export interface CssUserRoleRowDto {
     'role_display_name'?: string;
     /**
      * 
-     * @type {string}
+     * @type {Array<ScopeDto>}
      * @memberof CssUserRoleRowDto
      */
-    'scope_type'?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof CssUserRoleRowDto
-     */
-    'scope_value'?: string;
+    'scopes': Array<ScopeDto>;
 }
 

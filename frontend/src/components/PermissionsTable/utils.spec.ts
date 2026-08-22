@@ -76,7 +76,7 @@ describe("toCsv", () => {
 
     it("exports the scope value when a role has one", () => {
         const lines = toCsv([
-            row({ scope_type: "DISTRICT", scope_value: "DCC" }),
+            row({ scopes: [{ type: "DISTRICT", value: "DCC", label: undefined }] }),
         ]).split("\r\n");
 
         expect(lines[1]).toContain('"DCC"');
@@ -128,14 +128,18 @@ describe("roleLabel", () => {
 });
 
 describe("newly granted highlighting", () => {
-    const summary = (
-        outcomes: unknown[],
-        roleName = "FREP_ADMINISTRATOR"
-    ): AppPermissionGrantSummary =>
-        ({ applicationName: "FREP (DEV)", roleName, outcomes }) as any;
+    const summary = (outcomes: unknown[]): AppPermissionGrantSummary =>
+        ({ applicationName: "FREP (DEV)", outcomes }) as any;
 
-    const grantedUser = (userId: string, guid: string) => ({
+    // The role travels on the outcome, not on the summary: one grant can name
+    // several, and they do not share a fate.
+    const grantedUser = (
+        userId: string,
+        guid: string,
+        roleName = "FREP_ADMINISTRATOR"
+    ) => ({
         user: { userId, guid },
+        role: { name: roleName },
         results: [{ assigned: true }],
     });
 
@@ -189,21 +193,62 @@ describe("newly granted highlighting", () => {
     it("marks every scope row of one scoped grant", () => {
         // A district-scoped grant creates a row per district, all of them new.
         const keys = newlyGrantedKeys(
-            summary([grantedUser("JSMITH", "AAA1")], "CHR_FREP_EDITOR")
+            summary([grantedUser("JSMITH", "AAA1", "CHR_FREP_EDITOR")])
         );
 
         expect(
             isNewlyGranted(
-                row({ username: "JSMITH", role_name: "CHR_FREP_EDITOR", scope_value: "DCC" }),
+                row({ username: "JSMITH", role_name: "CHR_FREP_EDITOR", scopes: [{ type: "DISTRICT", value: "DCC", label: undefined }] }),
                 keys
             )
         ).toBe(true);
         expect(
             isNewlyGranted(
-                row({ username: "JSMITH", role_name: "CHR_FREP_EDITOR", scope_value: "DQU" }),
+                row({ username: "JSMITH", role_name: "CHR_FREP_EDITOR", scopes: [{ type: "DISTRICT", value: "DQU", label: undefined }] }),
                 keys
             )
         ).toBe(true);
+    });
+
+    it("marks every role that landed, not just the first", () => {
+        // A grant now names several roles. Keyed on one of them, the rows for
+        // the others would go unmarked while claiming to be handled.
+        const keys = newlyGrantedKeys(
+            summary([
+                grantedUser("JSMITH", "AAA1", "ROLE_A"),
+                grantedUser("JSMITH", "AAA1", "ROLE_B"),
+            ])
+        );
+
+        expect(
+            isNewlyGranted(row({ username: "JSMITH", role_name: "ROLE_A" }), keys)
+        ).toBe(true);
+        expect(
+            isNewlyGranted(row({ username: "JSMITH", role_name: "ROLE_B" }), keys)
+        ).toBe(true);
+    });
+
+    it("marks only the roles that succeeded for that user", () => {
+        // Two roles for one person, one refused. Marking the refused row would
+        // say they have access they were not given.
+        const keys = newlyGrantedKeys(
+            summary([
+                grantedUser("JSMITH", "AAA1", "ROLE_A"),
+                {
+                    user: { userId: "JSMITH", guid: "AAA1" },
+                    role: { name: "ROLE_B" },
+                    results: [],
+                    error: "different organization",
+                },
+            ])
+        );
+
+        expect(
+            isNewlyGranted(row({ username: "JSMITH", role_name: "ROLE_A" }), keys)
+        ).toBe(true);
+        expect(
+            isNewlyGranted(row({ username: "JSMITH", role_name: "ROLE_B" }), keys)
+        ).toBe(false);
     });
 
     it("marks nothing when there was no grant", () => {
@@ -229,21 +274,19 @@ describe("toRevokeRequest", () => {
         const request = toRevokeRequest(
             row({
                 role_name: "CHR_FREP_EDITOR",
-                scope_type: "DISTRICT",
-                scope_value: "DCC",
+                scopes: [{ type: "DISTRICT", value: "DCC", label: undefined }],
             })
         );
 
         expect(request.role_name).toBe("CHR_FREP_EDITOR");
-        expect(request.scope_type).toBe("DISTRICT");
-        expect(request.scope_value).toBe("DCC");
+        expect(request.scopes?.[0]?.type).toBe("DISTRICT");
+        expect(request.scopes?.[0]?.values).toEqual(["DCC"]);
     });
 
     it("omits the scope for an unscoped assignment", () => {
-        const request = toRevokeRequest(row({ scope_type: undefined, scope_value: undefined }));
+        const request = toRevokeRequest(row({ scopes: [] }));
 
-        expect(request.scope_type).toBeUndefined();
-        expect(request.scope_value).toBeUndefined();
+        expect(request.scopes).toEqual([]);
     });
 
     it("maps the domain onto the user type the backend expects", () => {

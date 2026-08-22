@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     applyScopeChoice,
+    describeScope,
     getDefaultFormData,
     toCreateRequest,
     validateManageRolesForm,
@@ -66,18 +67,28 @@ describe("role code validation", () => {
 });
 
 describe("scope selection", () => {
-    it("clears the other scope when one is ticked", () => {
-        // A grant carries a single scope type. Marked both, the role would
-        // silently behave as district scoped and its client side would be
-        // unreachable, so the pair is never allowed to exist.
-        const districtOnly = applyScopeChoice(
+    it("keeps the other scope when one is ticked", () => {
+        // A role may be scoped by a district AND a forest client; it is granted
+        // against the pair. Ticking one used to clear the other, back when a
+        // grant could only carry a single scope type.
+        const both = applyScopeChoice(
             form({ requiresForestClient: true }),
             "requiresDistrict",
             true
         );
 
-        expect(districtOnly.requiresDistrict).toBe(true);
-        expect(districtOnly.requiresForestClient).toBe(false);
+        expect(both.requiresDistrict).toBe(true);
+        expect(both.requiresForestClient).toBe(true);
+    });
+
+    it("says a compound role is granted for each pair", () => {
+        // Three districts and two clients is six permissions, not five. Saying
+        // so on the form is the only warning before the count multiplies.
+        const text = describeScope(
+            form({ requiresDistrict: true, requiresForestClient: true })
+        );
+
+        expect(text).toContain("each pair");
     });
 
     it("leaves the other scope alone when one is unticked", () => {

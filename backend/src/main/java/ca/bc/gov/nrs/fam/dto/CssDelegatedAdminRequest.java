@@ -2,6 +2,7 @@ package ca.bc.gov.nrs.fam.dto;
 
 import ca.bc.gov.nrs.fam.constants.UserType;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
@@ -32,20 +33,21 @@ public record CssDelegatedAdminRequest(
      */
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) @NotBlank String roleName,
 
-    /** Required when {@code scopeValues} is non-empty; ignored otherwise. */
-    String scopeType,
-
     /**
-     * District codes or forest client numbers.
+     * One entry per scope dimension, each with the values being delegated.
      *
      * <p>Empty delegates the role itself, which is what an unscoped role needs.
      * For a scoped role it must not be empty: delegating the bare base role would
      * authorise nothing, because a scoped grant only ever assigns per-scope roles.
+     *
+     * <p>A role scoped by district <em>and</em> forest client delegates every
+     * pair, exactly as a grant of it would assign every pair - if the two derived
+     * the names differently the delegation would authorise nothing.
      */
-    List<String> scopeValues) {
+    @Valid List<CssScopeSelection> scopes) {
 
   /** Never null, so callers can iterate without a guard. */
-  public List<String> scopeValues() {
-    return scopeValues == null ? List.of() : scopeValues;
+  public List<CssScopeSelection> scopes() {
+    return scopes == null ? List.of() : scopes;
   }
 }

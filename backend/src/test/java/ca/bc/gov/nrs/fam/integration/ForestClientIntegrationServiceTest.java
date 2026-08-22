@@ -283,32 +283,100 @@ class ForestClientIntegrationServiceTest {
   }
 
   @Test
-  @DisplayName("searches by name on the same endpoint, without any id parameter")
-  void buildsNameSearchRequest() throws Exception {
+  @DisplayName("searches name and number together on the substring endpoint")
+  void buildsSubstringSearchRequest() throws Exception {
     server.enqueue(json(200, "[]"));
 
-    service.searchByName("Acme Forestry", 10, ApiInstanceEnv.TEST);
+    service.searchByNumberOrName("Acme Forestry", 10, ApiInstanceEnv.TEST);
 
     RecordedRequest request = server.takeRequest();
+    // Not /api/clients/search/by, which looks right from its parameter list but
+    // matches names by Jaro-Winkler similarity and numbers exactly - so "ser"
+    // answered with REYBURN and SWAIN, and "000" answered with nothing.
+    // findByClientNumberOrName is the one whose query is a LIKE %term% across
+    // both fields.
     assertThat(request.getPath())
-        .contains("/api/clients/search")
-        .contains("name=Acme")
-        .contains("size=10");
-    // The upstream ANDs its criteria, so an id sent alongside a name would
-    // narrow the search to nothing rather than widening it.
-    assertThat(request.getPath()).doesNotContain("id=");
+        .startsWith("/api/clients/findByClientNumberOrName/")
+        .contains("size=10")
+        .doesNotContain("search/by");
   }
 
   @Test
-  @DisplayName("returns what the name search matched")
+  @DisplayName("upper-cases the term, because the endpoint does not")
+  void upperCasesTheTerm() throws Exception {
+    server.enqueue(json(200, "[]"));
+
+    service.searchByNumberOrName("acme", 10, ApiInstanceEnv.TEST);
+
+    // The endpoint passes the term to the database untouched and the legacy
+    // names are stored upper-case, so a lower-case term matches nothing at all.
+    assertThat(server.takeRequest().getPath()).contains("/ACME");
+  }
+
+  @Test
+  @DisplayName("encodes a term that would otherwise break the path")
+  void encodesThePathSegment() throws Exception {
+    server.enqueue(json(200, "[]"));
+
+    // The term travels in the path, not the query string, and people type
+    // slashes and spaces into a search box.
+    service.searchByNumberOrName("a/b c", 10, ApiInstanceEnv.TEST);
+
+    String path = server.takeRequest().getPath();
+    assertThat(path).doesNotContain("/A/B");
+    assertThat(path).contains("%2FB");
+  }
+
+  @Test
+  @DisplayName("searches a partial number without padding it")
+  void buildsNumberSearchRequest() throws Exception {
+    server.enqueue(json(200, "[]"));
+
+    service.searchByNumberOrName("123", 10, ApiInstanceEnv.TEST);
+
+    RecordedRequest request = server.takeRequest();
+    // A substring match finds 00001234 from "123" on its own; padding to
+    // 00000123 would turn that into a lookup for a different client.
+    assertThat(request.getPath())
+        .contains("/123")
+        .doesNotContain("00000123");
+  }
+
+  @Test
+  @DisplayName("looks an acronym up on its own endpoint")
+  void buildsAcronymSearchRequest() throws Exception {
+    server.enqueue(json(200, "[]"));
+
+    service.searchByAcronym("bcts", 10, ApiInstanceEnv.TEST);
+
+    RecordedRequest request = server.takeRequest();
+    // No substring endpoint covers the acronym, and the match is exact, so this
+    // stays on search/by - upper-cased, since the stored acronyms are.
+    assertThat(request.getPath())
+        .startsWith("/api/clients/search/by")
+        .contains("acronym=BCTS");
+  }
+
+  @Test
+  @DisplayName("returns what the search matched")
   void returnsNameMatches() throws Exception {
     server.enqueue(json(200, """
         [{"clientNumber":"00001011","clientName":"ACME FORESTRY LTD.",
           "clientStatusCode":"ACT"}]"""));
 
-    assertThat(service.searchByName("acme", 10, ApiInstanceEnv.TEST))
+    assertThat(service.searchByNumberOrName("acme", 10, ApiInstanceEnv.TEST))
         .singleElement()
         .satisfies(client ->
             assertThat(client.get("clientName")).isEqualTo("ACME FORESTRY LTD."));
+  }
+
+  @Test
+  @DisplayName("a refusal from the search endpoint is no match, not an error")
+  void treatsRefusalAsNoMatch() throws Exception {
+    // The API answers 400 and 404 for "nothing matched". Surfacing those as
+    // errors would put a failure banner over an ordinary empty search.
+    server.enqueue(json(400, "{}"));
+
+    assertThat(service.searchByNumberOrName("nothing", 10, ApiInstanceEnv.TEST)).isEmpty();
   }
 }

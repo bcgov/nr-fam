@@ -1,5 +1,7 @@
 package ca.bc.gov.nrs.fam.dto;
 
+import java.util.ArrayList;
+import java.util.List;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -59,14 +61,23 @@ public record CssRoleCreateRequest(
    * both would silently be treated as district scoped and its forest client side
    * would be unreachable.
    */
-  public String scopeType() {
-    if (requiresDistrict && requiresForestClient) {
-      throw new IllegalArgumentException(
-          "A role is scoped by district or by forest client, not both.");
-    }
+  /**
+   * Every scope this role is defined by, in no particular order - the caller
+   * canonicalises.
+   *
+   * <p>A role may require both. A submitter for a district <em>and</em> a forest
+   * client is granted against the pair, and its generated role name carries both
+   * suffixes. This used to throw when both were ticked, back when a grant could
+   * only carry one scope type.
+   */
+  public List<String> scopeTypes() {
+    List<String> types = new ArrayList<>();
     if (requiresDistrict) {
-      return "DISTRICT";
+      types.add("DISTRICT");
     }
-    return requiresForestClient ? "FOREST_CLIENT" : null;
+    if (requiresForestClient) {
+      types.add("FOREST_CLIENT");
+    }
+    return List.copyOf(types);
   }
 }

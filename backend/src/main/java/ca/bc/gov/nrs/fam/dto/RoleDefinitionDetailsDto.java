@@ -40,12 +40,12 @@ public record RoleDefinitionDetailsDto(
     String description,
 
     /** What must be chosen when the role is granted. Null for an unscoped role. */
-    PrivilegeDetailsScopeType requiredScopeType) {
+    List<PrivilegeDetailsScopeType> requiredScopeTypes) {
 
   /** Builds the document, keeping the two representations of the code in step. */
   public static RoleDefinitionDetailsDto of(
       String roleCode, String roleName, String description,
-      PrivilegeDetailsScopeType requiredScopeType) {
+      List<PrivilegeDetailsScopeType> requiredScopeTypes) {
 
     return new RoleDefinitionDetailsDto(
         PrivilegeDetailsPermissionType.ROLE_DEFINITION,
@@ -53,6 +53,6 @@ public record RoleDefinitionDetailsDto(
         roleCode,
         roleName,
         description,
-        requiredScopeType);
+        requiredScopeTypes);
   }
 }

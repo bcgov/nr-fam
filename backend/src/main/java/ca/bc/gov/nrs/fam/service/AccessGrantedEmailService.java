@@ -98,10 +98,16 @@ public class AccessGrantedEmailService {
     for (CssUserRoleAssignmentResult result : assigned) {
       CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(result.roleName());
       body.append("  - ").append(parsed.baseRoleName());
-      if (parsed.scopeValue() != null) {
+      if (parsed.isScoped()) {
         // The scope only exists in the generated role name, so it is read back
-        // out rather than passed alongside.
-        body.append(" (").append(parsed.scopeValue()).append(")");
+        // out rather than passed alongside. A role scoped by more than one thing
+        // lists them all: naming only the district would tell somebody they hold
+        // access they do not.
+        body.append(" (")
+            .append(parsed.scopes().stream()
+                .map(CssRoleNaming.Scope::value)
+                .collect(java.util.stream.Collectors.joining(", ")))
+            .append(")");
       }
       body.append("\n");
     }

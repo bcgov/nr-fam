@@ -305,7 +305,7 @@ class BulkGrantServiceTest {
 
     assertThat(captor.getValue().userGuid()).isEqualTo(GUID);
     assertThat(captor.getValue().userType()).isEqualTo(UserType.IDIR);
-    assertThat(captor.getValue().scopeValues()).isEmpty();
+    assertThat(captor.getValue().scopes()).isEmpty();
   }
 
   @Test

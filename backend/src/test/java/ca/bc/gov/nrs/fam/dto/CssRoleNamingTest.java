@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import java.util.List;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -93,6 +94,76 @@ class CssRoleNamingTest {
     // FAM stores GUIDs upper case; Keycloak's federated usernames are lower case.
     assertThat(CssRoleNaming.buildUsername(guid, userType, "azureidir", "bceidbusiness"))
         .isEqualTo(expected);
+  }
+
+  @Test
+  @DisplayName("writes a compound scope in a fixed order, whatever order it is given")
+  void compoundNameIsCanonical() {
+    // The name is the authorisation. Two spellings of the same pair would mean
+    // granting it twice and revoking only one of them.
+    String districtFirst = CssRoleNaming.buildScopedRoleName("FOM_SUBMITTER", List.of(
+        new CssRoleNaming.Scope("DISTRICT", "DCC"),
+        new CssRoleNaming.Scope("FOREST_CLIENT", "00001012")));
+    String clientFirst = CssRoleNaming.buildScopedRoleName("FOM_SUBMITTER", List.of(
+        new CssRoleNaming.Scope("FOREST_CLIENT", "00001012"),
+        new CssRoleNaming.Scope("DISTRICT", "DCC")));
+
+    assertThat(districtFirst).isEqualTo("FOM_SUBMITTER_DISTRICT-DCC_FOREST_CLIENT-00001012");
+    assertThat(clientFirst).isEqualTo(districtFirst);
+  }
+
+  @Test
+  @DisplayName("reads both scopes back out of a compound name")
+  void parsesCompoundName() {
+    CssRoleNaming.ScopedRoleName parsed =
+        CssRoleNaming.parse("FOM_SUBMITTER_DISTRICT-DCC_FOREST_CLIENT-00001012");
+
+    assertThat(parsed.baseRoleName()).isEqualTo("FOM_SUBMITTER");
+    assertThat(parsed.scopes()).containsExactly(
+        new CssRoleNaming.Scope("DISTRICT", "DCC"),
+        new CssRoleNaming.Scope("FOREST_CLIENT", "00001012"));
+  }
+
+  @Test
+  @DisplayName("round-trips every combination")
+  void roundTrips() {
+    List<List<CssRoleNaming.Scope>> cases = List.of(
+        List.of(),
+        List.of(new CssRoleNaming.Scope("DISTRICT", "DCC")),
+        List.of(new CssRoleNaming.Scope("FOREST_CLIENT", "00001012")),
+        List.of(new CssRoleNaming.Scope("DISTRICT", "DCC"),
+            new CssRoleNaming.Scope("FOREST_CLIENT", "00001012")));
+
+    for (List<CssRoleNaming.Scope> scopes : cases) {
+      String name = CssRoleNaming.buildScopedRoleName("FOM_SUBMITTER", scopes);
+      CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(name);
+      assertThat(parsed.baseRoleName()).as(name).isEqualTo("FOM_SUBMITTER");
+      assertThat(parsed.scopes()).as(name).isEqualTo(scopes);
+    }
+  }
+
+  @Test
+  @DisplayName("a base role containing a hyphen is still not mistaken for a scope")
+  void hyphenInBaseRoleSurvivesCompoundParsing() {
+    // The peel-one-at-a-time loop must stop at a hyphen that is not a scope
+    // separator, or a role like SOME-ROLE would lose its tail.
+    CssRoleNaming.ScopedRoleName parsed =
+        CssRoleNaming.parse("SOME-ROLE_DISTRICT-DCC");
+
+    assertThat(parsed.baseRoleName()).isEqualTo("SOME-ROLE");
+    assertThat(parsed.scopes())
+        .containsExactly(new CssRoleNaming.Scope("DISTRICT", "DCC"));
+  }
+
+  @Test
+  @DisplayName("markers are produced for every scope a role carries")
+  void markersForBothScopes() {
+    assertThat(CssRoleNaming.markersFor(List.of("FOREST_CLIENT", "DISTRICT")))
+        .containsExactly(CssRoleNaming.MARKER_DISTRICT, CssRoleNaming.MARKER_FOREST_CLIENT);
+    assertThat(CssRoleNaming.markersFor(List.of("DISTRICT")))
+        .containsExactly(CssRoleNaming.MARKER_DISTRICT);
+    assertThat(CssRoleNaming.markersFor(List.of())).isEmpty();
+    assertThat(CssRoleNaming.markersFor(List.of("NONSENSE"))).isEmpty();
   }
 
   @Test

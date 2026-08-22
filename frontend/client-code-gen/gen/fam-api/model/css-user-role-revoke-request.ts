@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import { CssScopeSelection } from './css-scope-selection';
+// May contain unused imports in some cases
+// @ts-ignore
 import { UserType } from './user-type';
 
 /**
@@ -43,16 +46,10 @@ export interface CssUserRoleRevokeRequest {
     'role_name': string;
     /**
      * 
-     * @type {string}
+     * @type {Array<CssScopeSelection>}
      * @memberof CssUserRoleRevokeRequest
      */
-    'scope_type'?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof CssUserRoleRevokeRequest
-     */
-    'scope_value'?: string;
+    'scopes'?: Array<CssScopeSelection>;
 }
 
 

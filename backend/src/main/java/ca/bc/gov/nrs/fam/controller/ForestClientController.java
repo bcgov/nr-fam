@@ -1,6 +1,7 @@
 package ca.bc.gov.nrs.fam.controller;
 
 import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
+import ca.bc.gov.nrs.fam.constants.FamConstants;
 import ca.bc.gov.nrs.fam.dto.FamForestClientDto;
 import ca.bc.gov.nrs.fam.dto.FamForestClientStatusDto;
 import ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService;
@@ -72,15 +73,12 @@ public class ForestClientController {
    * Autocomplete a forest client by number or by name.
    *
    * <p>One field, either kind of term - which is the point. A person adding an
-   * organisation knows its name far more often than its eight-digit number, and
-   * the number search matches whole numbers exactly, so a partial number found
-   * nothing and a name found nothing either.
+   * organisation knows its name far more often than its eight-digit number.
    *
-   * <p><b>A numeric term is zero-padded and searched as a number</b>; anything
-   * else is searched as a name. The upstream ANDs its criteria rather than ORing
-   * them, so the two cannot be sent together and the term has to be classified
-   * first. "1011" therefore finds client 00001011, not an organisation with 1011
-   * in its name.
+   * <p>The term is matched as a <b>substring of the name or of the number</b>,
+   * so "eren" finds SERENPET and "58846" finds 00058846. Nothing is classified
+   * as one kind of term or the other beforehand: digits appear in company names
+   * too, and the upstream matches both fields in a single query.
    *
    * <p>Three characters minimum, so a single keystroke does not fan out into a
    * search returning most of the province.
@@ -98,22 +96,123 @@ public class ForestClientController {
     ApiInstanceEnv apiInstanceEnv = apiInstanceEnvResolver.resolve(environment);
     String trimmed = term.trim();
 
-    List<Map<String, Object>> results = trimmed.chars().allMatch(Character::isDigit)
-        // The number column is eight characters wide and matched whole, so a
-        // shorter number has to be padded to stand a chance of matching.
-        ? forestClientIntegrationService.search(
-            List.of(padClientNumber(trimmed)), AUTOCOMPLETE_LIMIT, apiInstanceEnv, false)
-        : forestClientIntegrationService.searchByName(
-            trimmed, AUTOCOMPLETE_LIMIT, apiInstanceEnv);
+    // One rule, whatever was typed: show the active organisations whose name or
+    // number contains it, closest match first. The upstream now does the
+    // containment itself, so refining is only ordering the answer and covering
+    // the acronym arm, which matches on a field the substring query does not.
+    List<Map<String, Object>> candidates = gather(trimmed, apiInstanceEnv);
 
-    return results.stream().map(ForestClientController::toDto).toList();
+    return refine(candidates, trimmed).stream()
+        .filter(ForestClientController::isActive)
+        .limit(AUTOCOMPLETE_LIMIT)
+        .map(ForestClientController::toDto)
+        .toList();
+  }
+
+  /**
+   * Every row the upstream will offer for this term, deduplicated.
+   *
+   * <p>The substring search covers name and number together in one call. The
+   * acronym search is added only when the term could be an acronym, because it
+   * costs a second round trip on every keystroke pause and can only ever answer
+   * a fully-typed one.
+   */
+  private List<Map<String, Object>> gather(String term, ApiInstanceEnv apiInstanceEnv) {
+    Map<String, Map<String, Object>> byNumber = new java.util.LinkedHashMap<>();
+
+    collect(byNumber, forestClientIntegrationService.searchByNumberOrName(
+        term, AUTOCOMPLETE_FETCH, apiInstanceEnv));
+
+    if (couldBeAcronym(term)) {
+      collect(byNumber, forestClientIntegrationService.searchByAcronym(
+          term, AUTOCOMPLETE_FETCH, apiInstanceEnv));
+    }
+
+    return List.copyOf(byNumber.values());
+  }
+
+  /** Acronyms are short, unspaced and alphabetic; anything else cannot match one. */
+  private static boolean couldBeAcronym(String term) {
+    return term.length() <= MAX_ACRONYM_LENGTH && term.chars().allMatch(Character::isLetter);
+  }
+
+  /** Keyed by client number, so the same client found twice is listed once. */
+  private static void collect(
+      Map<String, Map<String, Object>> into, List<Map<String, Object>> rows) {
+    rows.forEach(row -> into.putIfAbsent(text(row, "clientNumber"), row));
   }
 
   /** Enough rows to choose from without turning the list into a second search. */
   private static final int AUTOCOMPLETE_LIMIT = 10;
 
-  private static String padClientNumber(String number) {
-    return number.length() >= 8 ? number : "0".repeat(8 - number.length()) + number;
+  /**
+   * How many rows to ask for before refining.
+   *
+   * <p>More than are shown, because the upstream returns them in client-number
+   * order rather than by relevance: asking for ten and filtering would often
+   * leave nothing, having thrown away the one row that matched.
+   */
+  private static final int AUTOCOMPLETE_FETCH = 50;
+
+  /**
+   * Order what came back: matches that <em>start</em> with the term come first.
+   *
+   * <p>Ordering, not filtering - the upstream already matched on containment, and
+   * a row reached by the acronym arm is kept by the acronym check here. Nothing
+   * that legitimately matched is dropped.
+   *
+   * <p>It sorts because the upstream returns rows in client-number order rather
+   * than by relevance, so without this "BC" leads with whichever containing name
+   * happens to hold the lowest number rather than with the names that begin
+   * "BC".
+   */
+  private static List<Map<String, Object>> refine(
+      List<Map<String, Object>> results, String term) {
+
+    String needle = term.toUpperCase(java.util.Locale.ROOT);
+
+    List<Map<String, Object>> startsWith = new java.util.ArrayList<>();
+    List<Map<String, Object>> contains = new java.util.ArrayList<>();
+
+    for (Map<String, Object> result : results) {
+      String name = text(result, "clientName").toUpperCase(java.util.Locale.ROOT);
+      String number = text(result, "clientNumber").toUpperCase(java.util.Locale.ROOT);
+      String acronym = text(result, "acronym").toUpperCase(java.util.Locale.ROOT);
+
+      if (name.startsWith(needle) || number.startsWith(needle)
+          || acronym.startsWith(needle)) {
+        startsWith.add(result);
+      } else if (name.contains(needle) || number.contains(needle)
+          || acronym.contains(needle)) {
+        contains.add(result);
+      }
+      // Anything reaching neither branch matched on a field not shown - it is
+      // dropped rather than offered as a result nobody can account for.
+    }
+
+    List<Map<String, Object>> refined = new java.util.ArrayList<>(startsWith);
+    refined.addAll(contains);
+    return refined;
+  }
+
+  /** The longest acronym the upstream holds. */
+  private static final int MAX_ACRONYM_LENGTH = 8;
+
+  /**
+   * Only organisations that can actually be granted.
+   *
+   * <p>An inactive one is findable upstream but refused on selection, so
+   * offering it is offering a dead end. Filtered after refining so an inactive
+   * near-match cannot take a slot from an active one.
+   */
+  private static boolean isActive(Map<String, Object> result) {
+    return FamConstants.FOREST_CLIENT_STATUS_CODE_ACTIVE
+        .equals(text(result, "clientStatusCode"));
+  }
+
+  private static String text(Map<String, Object> result, String key) {
+    Object value = result.get(key);
+    return value == null ? "" : String.valueOf(value);
   }
 
   private static FamForestClientDto toDto(Map<String, Object> result) {

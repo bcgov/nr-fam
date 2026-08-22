@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import RoleSelectTable from "@/components/AddPermissions/RoleSelectTable.vue";
+import RoleMultiSelectTable from "@/components/AddPermissions/RoleMultiSelectTable.vue";
+import RoleScopeCard from "@/components/AddPermissions/RoleScopeCard.vue";
+import Chip from "@/components/UI/Chip.vue";
 import UserSearch from "@/components/Search/UserSearch.vue";
 import Button from "@/components/UI/Button.vue";
 import PageTitle from "@/components/UI/PageTitle.vue";
 import StepContainer from "@/components/UI/StepContainer.vue";
+import { usePermissionToast } from "@/composables/usePermissionToast";
 import { ManagePermissionsRoute } from "@/router/routes";
+import { toGrantToast } from "@/views/ManagePermissionsView/utils";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import type { SelectedUser } from "@/types/SelectUserType";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
@@ -16,11 +20,17 @@ import { selectedApp } from "@/store/ApplicationState";
 import {
     AddAppUserPermissionSuccessQuerykey,
     describeGrantError,
-    generateCssRequests,
     getDefaultFormData,
+    newRoleScopeSelection,
+    planGrants,
+    requiresScope,
+    roleLabel,
+    selectionsOverTheLimit,
+    totalPermissions,
     validateAppPermissionForm,
     type AppPermissionFormType,
     type AppPermissionGrantSummary,
+    type RoleOption,
     type UserGrantOutcome,
 } from "./utils";
 
@@ -38,6 +48,7 @@ const props = defineProps<{
 
 const router = useRouter();
 const queryClient = useQueryClient();
+const permissionToast = usePermissionToast();
 
 const rolesQuery = useQuery({
     queryKey: computed(() => [
@@ -68,29 +79,29 @@ const grantMutation = useMutation({
     mutationFn: async (
         formData: AppPermissionFormType
     ): Promise<AppPermissionGrantSummary> => {
-        const requests = generateCssRequests(formData);
+        const planned = planGrants(formData);
 
-        // One call per user. Sequential rather than concurrent: each may create
-        // scope roles, and CSS treats creation as find-or-create, so overlapping
-        // calls would race on the same role.
+        // One call per user per role. Sequential rather than concurrent: each
+        // may create scope roles, and CSS treats creation as find-or-create, so
+        // overlapping calls would race on the same role.
         const outcomes: UserGrantOutcome[] = [];
-        for (let i = 0; i < requests.length; i++) {
-            const user = formData.users[i];
+        for (const { user, role, request } of planned) {
             try {
                 const res =
                     await AdminMgmtApiService.cssIntegrationsApi.createCssUserRoleAssignment(
                         props.integrationId,
                         props.environment,
-                        requests[i]
+                        request
                     );
-                outcomes.push({ user, results: res.data });
+                outcomes.push({ user, role, results: res.data });
             } catch (error) {
-                // Recorded and carried on with. One user being refused - at
-                // another organisation, say - must not discard the grants that
-                // already succeeded for everybody else, which have happened in
-                // CSS and cannot be taken back by failing here.
+                // Recorded and carried on with. One pair being refused - a user
+                // at another organisation, or a role they may not be given -
+                // must not discard the grants that already succeeded, which have
+                // happened in CSS and cannot be taken back by failing here.
                 outcomes.push({
                     user,
+                    role,
                     results: [],
                     error: describeGrantError(error),
                 });
@@ -99,20 +110,37 @@ const grantMutation = useMutation({
 
         return {
             applicationName: selectedApp.value?.description ?? props.environment,
-            roleName: formData.role?.name ?? "",
             outcomes,
         };
     },
     onSuccess: (summary) => {
+        // `refetchType: "all"` because the table is not mounted yet - the
+        // redirect is still to come. Invalidating alone only marks it stale, and
+        // whether a stale query refetches on mount depends on options set three
+        // files away; asking for the refetch outright does not.
         queryClient.invalidateQueries({
             queryKey: [
                 "css-user-role-assignments",
                 props.integrationId,
                 props.environment,
             ],
+            refetchType: "all",
         });
-        // Left for Manage permissions to pick up after the redirect, which is
-        // where the outcome is reported.
+
+        // Raised before the redirect and survives it: the Toast lives in App.vue,
+        // above the router view.
+        const toast = toGrantToast(summary);
+        if (toast) {
+            const notify =
+                toast.severity === "success"
+                    ? permissionToast.succeeded
+                    : permissionToast.partiallySucceeded;
+            notify(toast.summary, toast.detail);
+        }
+
+        // Still left for Manage permissions to pick up: the rows to mark "New",
+        // and the banner for anything that failed. Only the plain success half
+        // became a toast.
         queryClient.setQueryData([AddAppUserPermissionSuccessQuerykey], summary);
         router.push({ name: ManagePermissionsRoute.name });
     },
@@ -126,6 +154,12 @@ const grantMutation = useMutation({
 const onSubmit = handleSubmit(
     (formData) => {
         submitError.value = null;
+
+        if (selectionsOverTheLimit(formData.roles).length > 0) {
+            submitError.value =
+                "One of the roles covers more scopes than a single grant can carry. Narrow it before granting.";
+            return;
+        }
         grantMutation.mutate(formData);
     },
     () => {
@@ -140,6 +174,73 @@ const onSubmit = handleSubmit(
 const setSelectedUsers = (users: SelectedUser[]) => {
     setFieldValue("users", users);
 };
+
+/**
+ * Nothing beyond the first step is worth showing before somebody is chosen.
+ *
+ * The roles and their scope are what those people are being given, so the step
+ * reads as an unanswerable question without them - and it put a role table and
+ * an empty scope picker in front of somebody who had not yet said who this was
+ * for.
+ */
+const hasUser = computed(() => values.users.length > 0);
+
+const selectedRoles = computed(() => values.roles ?? []);
+
+const selectedRoleNames = computed(() =>
+    selectedRoles.value.map((selection) => selection.role.name)
+);
+
+/** Only these need a card; the rest are granted outright. */
+const scopedSelections = computed(() =>
+    selectedRoles.value.filter((selection) => requiresScope(selection.role))
+);
+
+const unscopedSelections = computed(() =>
+    selectedRoles.value.filter((selection) => !requiresScope(selection.role))
+);
+
+/**
+ * Ticking a role adds it; unticking drops it and everything chosen for it.
+ *
+ * The scope goes with the role rather than being kept in case it comes back: a
+ * silently retained selection would be re-submitted by somebody who thought they
+ * had cleared it.
+ */
+const toggleRole = (role: RoleOption) => {
+    const existing = selectedRoles.value.findIndex(
+        (selection) => selection.role.name === role.name
+    );
+
+    if (existing >= 0) {
+        setFieldValue(
+            "roles",
+            selectedRoles.value.filter((_, index) => index !== existing)
+        );
+        return;
+    }
+    setFieldValue("roles", [
+        ...selectedRoles.value,
+        newRoleScopeSelection(role),
+    ]);
+};
+
+const removeRole = (roleName: string) => {
+    setFieldValue(
+        "roles",
+        selectedRoles.value.filter(
+            (selection) => selection.role.name !== roleName
+        )
+    );
+};
+
+/** Where this role sits in the form, so its pickers can address their fields. */
+const fieldPathOf = (roleName: string) =>
+    `roles[${selectedRoleNames.value.indexOf(roleName)}]`;
+
+const permissionTotal = computed(() => totalPermissions(values));
+
+const overTheLimit = computed(() => selectionsOverTheLimit(values.roles ?? []));
 
 /**
  * Keep the form's domain in step with the search.
@@ -184,24 +285,95 @@ const cancel = () => router.push({ name: ManagePermissionsRoute.name });
                 </span>
             </StepContainer>
 
-            <StepContainer title="Select a role" divider>
-                <RoleSelectTable
-                    :environment="props.environment"
+            <StepContainer
+                v-if="hasUser"
+                title="Select the roles to grant"
+                divider
+            >
+                <p class="step-note">
+                    Everybody chosen above gets every role selected here. Pick as
+                    many as they should have.
+                </p>
+
+                <span v-if="errors.roles" class="field-error">
+                    {{ errors.roles }}
+                </span>
+
+                <RoleMultiSelectTable
                     :role-options="roleOptions"
-                    role-field-id="role"
-                    forest-clients-field-id="forestClients"
-                    districts-field-id="districts"
-                    :set-field-value="(field: string, value: any) => setFieldValue(field as any, value)"
-                    :form-values="values"
+                    :selected-role-names="selectedRoleNames"
+                    :on-toggle="toggleRole"
+                />
+
+                <!--
+                    The roles that need nothing further, listed here rather than
+                    given an empty card below. A card with no pickers in it reads
+                    as one that failed to load.
+                -->
+                <div v-if="unscopedSelections.length" class="unscoped-summary">
+                    <span class="unscoped-label">
+                        Granted for the whole application:
+                    </span>
+                    <Chip
+                        v-for="selection in unscopedSelections"
+                        :key="selection.role.name"
+                        :label="roleLabel(selection.role)"
+                    />
+                </div>
+            </StepContainer>
+
+            <!--
+                Only when something actually needs narrowing. A role granted
+                outright has nothing to choose, so the step would be an empty
+                heading.
+            -->
+            <StepContainer
+                v-if="scopedSelections.length"
+                title="Choose what each role applies to"
+                divider
+            >
+                <p class="step-note">
+                    Each of these roles is scoped, so it is granted for the
+                    districts or organizations you choose and no others.
+                </p>
+
+                <RoleScopeCard
+                    v-for="selection in scopedSelections"
+                    :key="selection.role.name"
+                    :selection="selection"
+                    :field-path="fieldPathOf(selection.role.name)"
+                    :environment="props.environment"
+                    :set-field-value="
+                        (field: string, value: any) =>
+                            setFieldValue(field as any, value)
+                    "
+                    :on-remove="() => removeRole(selection.role.name)"
+                    district-title="Districts this role is granted for"
+                    district-subtitle="Select one or more districts for this role"
+                    client-title="Organizations this role is granted for"
+                    client-subtitle="Add one or more organizations for this role"
                 />
             </StepContainer>
+
+            <!--
+                The running total, where the decision is made. Every user gets
+                every role, and a compound role applies per district/organization
+                pair, so the number grows faster than the selections suggest.
+            -->
+            <p v-if="permissionTotal > 0" class="permission-total">
+                This will create
+                <strong>{{ permissionTotal }}</strong>
+                {{ permissionTotal === 1 ? "permission" : "permissions" }}.
+            </p>
 
             <div class="form-actions">
                 <Button label="Cancel" severity="secondary" @click="cancel" />
                 <Button
                     label="Grant permission"
                     type="submit"
-                    :disabled="grantMutation.isPending.value"
+                    :disabled="
+                        grantMutation.isPending.value || overTheLimit.length > 0
+                    "
                 />
             </div>
 
@@ -212,6 +384,29 @@ const cancel = () => router.push({ name: ManagePermissionsRoute.name });
 
 <style lang="scss">
 .add-app-permission-container {
+    .step-note {
+        margin-bottom: 1.5rem;
+        max-width: 46rem;
+        color: var(--semantic-color-text-secondary);
+    }
+
+    .unscoped-summary {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1.25rem;
+    }
+
+    .unscoped-label {
+        color: var(--semantic-color-text-secondary);
+    }
+
+    .permission-total {
+        margin-top: 1.25rem;
+        color: var(--semantic-color-text-secondary);
+    }
+
     .form-actions {
         display: flex;
         justify-content: flex-end;
