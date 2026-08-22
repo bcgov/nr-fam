@@ -2,6 +2,8 @@ package ca.bc.gov.nrs.fam.dto;
 
 import ca.bc.gov.nrs.fam.constants.UserType;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -21,13 +23,19 @@ public record CssUserRoleRevokeRequest(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) @NotBlank String roleName,
 
     /**
-     * Scope of the assignment being removed, when it has one.
+     * Every scope of the assignment being removed, one value each.
      *
-     * <p>Together with {@code scopeValue} this reconstructs the concrete role
-     * CSS holds - {@code CHR_FREP_EDITOR_DISTRICT-DCC} - which the listing split
-     * apart to display. Revoking the base role instead would take away nothing,
-     * because that is not what the user was assigned.
+     * <p>These reconstruct the concrete role CSS holds -
+     * {@code CHR_FREP_EDITOR_DISTRICT-DCC} - which the listing split apart to
+     * display. Revoking the base role instead would take away nothing, because
+     * that is not what the user was assigned.
+     *
+     * <p>All of a compound role's scopes are required: named with only one, the
+     * rebuilt name is a role nobody holds and the removal quietly does nothing.
      */
-    String scopeType,
+    @Valid List<CssScopeSelection> scopes) {
 
-    String scopeValue) {}
+  public List<CssScopeSelection> scopes() {
+    return scopes == null ? List.of() : scopes;
+  }
+}

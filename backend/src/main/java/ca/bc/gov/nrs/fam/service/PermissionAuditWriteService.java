@@ -74,7 +74,6 @@ public class PermissionAuditWriteService {
       int cssIntegrationId,
       String cssEnvironment,
       String roleName,
-      String scopeType,
       List<CssUserRoleAssignmentResult> results) {
 
     List<CssUserRoleAssignmentResult> assigned =
@@ -87,7 +86,7 @@ public class PermissionAuditWriteService {
 
     save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.GRANT,
-        toCssDetails(roleName, scopeType, assigned));
+        toCssDetails(roleName, assigned));
   }
 
   /**
@@ -104,7 +103,6 @@ public class PermissionAuditWriteService {
       int cssIntegrationId,
       String cssEnvironment,
       String roleName,
-      String scopeType,
       List<String> revokedRoleNames) {
 
     if (revokedRoleNames.isEmpty()) {
@@ -119,7 +117,7 @@ public class PermissionAuditWriteService {
 
     save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.REVOKE,
-        toCssDetails(roleName, scopeType, asResults));
+        toCssDetails(roleName, asResults));
   }
 
   /**
@@ -149,12 +147,16 @@ public class PermissionAuditWriteService {
       String roleCode,
       String roleName,
       String description,
-      String scopeType) {
+      List<String> scopeTypes) {
 
     save(requester, null, null, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.CREATE_ROLE,
         RoleDefinitionDetailsDto.of(
-            roleCode, roleName, description, toRequiredScopeType(scopeType)));
+            roleCode, roleName, description,
+            (scopeTypes == null ? List.<String>of() : scopeTypes).stream()
+                .map(PermissionAuditWriteService::toRequiredScopeType)
+                .filter(java.util.Objects::nonNull)
+                .toList()));
   }
 
   /**
@@ -281,15 +283,16 @@ public class PermissionAuditWriteService {
    * null rather than carrying a value the underlying system will not honour.
    */
   private PrivilegeDetailsDto toCssDetails(
-      String roleName, String scopeType, List<CssUserRoleAssignmentResult> assigned) {
+      String roleName, List<CssUserRoleAssignmentResult> assigned) {
 
-    PrivilegeDetailsScopeType detailScopeType = toDetailScopeType(scopeType);
-
+    // Every scope on every role actually assigned, read back out of the names.
+    // Derived rather than taken from the request: a compound role carries two
+    // scopes, and the name is the only record of which pair was granted.
     List<PrivilegeDetailsScopeDto> scopes = assigned.stream()
         .map(result -> ca.bc.gov.nrs.fam.dto.CssRoleNaming.parse(result.roleName()))
-        .filter(parsed -> parsed.scopeValue() != null)
-        .map(parsed -> new PrivilegeDetailsScopeDto(
-            detailScopeType, parsed.scopeValue(), null, null))
+        .flatMap(parsed -> parsed.scopes().stream())
+        .map(scope -> new PrivilegeDetailsScopeDto(
+            toDetailScopeType(scope.type()), scope.value(), null, null))
         .toList();
 
     PrivilegeDetailsRoleDto roleDetails = scopes.isEmpty()

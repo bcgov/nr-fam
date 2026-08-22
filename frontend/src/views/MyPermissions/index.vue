@@ -46,9 +46,14 @@ const applicationRoles = computed<SelfApplicationRoleDto[]>(
     () => applicationRolesQuery.data.value ?? []
 );
 
-/** "DCC" or "00001018", or an em dash when the role is not scoped. */
+/**
+ * Every scope the role is held under, joined - "DCC", or "DCC, 00001018" for a
+ * role scoped by both. An em dash when it is not scoped.
+ */
 const scopeOf = (role: SelfApplicationRoleDto): string =>
-    role.scope_value ? role.scope_value : "—";
+    role.scopes?.length
+        ? role.scopes.map((scope) => scope.label || scope.value).join(", ")
+        : "—";
 </script>
 
 <template>
@@ -114,7 +119,7 @@ const scopeOf = (role: SelfApplicationRoleDto): string =>
                 -->
                 <Column header="District / client">
                     <template #body="{ data }">
-                        <span v-if="data.scope_value">{{ scopeOf(data) }}</span>
+                        <span v-if="data.scopes?.length">{{ scopeOf(data) }}</span>
                         <span v-else class="not-applicable">—</span>
                     </template>
                 </Column>

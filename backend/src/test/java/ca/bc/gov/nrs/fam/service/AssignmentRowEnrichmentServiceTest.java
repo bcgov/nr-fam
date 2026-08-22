@@ -7,6 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ca.bc.gov.nrs.fam.dto.ScopeDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.exception.UpstreamException;
@@ -48,12 +49,12 @@ class AssignmentRowEnrichmentServiceTest {
   /** A user CSS has never seen sign in: a username and nothing else. */
   private static CssUserRoleRowDto unnamed(String guid, String roleName) {
     return new CssUserRoleRowDto(
-        guid.toLowerCase() + "@azureidir", guid, "IDIR", null, null, null, roleName, null, null, null);
+        guid.toLowerCase() + "@azureidir", guid, "IDIR", null, null, null, roleName, null, List.of());
   }
 
   private static CssUserRoleRowDto named() {
     return new CssUserRoleRowDto(
-        "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, null, null);
+        "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, List.of());
   }
 
   private void directoryKnows(String guid, String userId, String first, String last) {
@@ -124,7 +125,7 @@ class AssignmentRowEnrichmentServiceTest {
 
     CssUserRoleRowDto scoped = new CssUserRoleRowDto(
         GUID.toLowerCase() + "@azureidir", GUID, "IDIR", null, null, null,
-        "CHR_FREP_EDITOR", "Submitter (CHR)", "DISTRICT", "DCC");
+        "CHR_FREP_EDITOR", "Submitter (CHR)", List.of(new ScopeDto("DISTRICT", "DCC", null)));
 
     assertThat(service.withResolvedNames(List.of(scoped)))
         .singleElement()
@@ -133,8 +134,8 @@ class AssignmentRowEnrichmentServiceTest {
           // Naming the user rebuilds the row; everything about the role has to
           // survive that, including what the table labels it with.
           assertThat(row.roleDisplayName()).isEqualTo("Submitter (CHR)");
-          assertThat(row.scopeType()).isEqualTo("DISTRICT");
-          assertThat(row.scopeValue()).isEqualTo("DCC");
+          assertThat(row.scopes())
+              .containsExactly(new ScopeDto("DISTRICT", "DCC", null));
         });
   }
 
@@ -190,7 +191,7 @@ class AssignmentRowEnrichmentServiceTest {
   @DisplayName("does not resolve BCeID rows")
   void skipsBceidRows() {
     CssUserRoleRowDto bceid = new CssUserRoleRowDto(
-        "abc@bceidbusiness", "ABC", "BCEID", null, null, null, "R", null, null, null);
+        "abc@bceidbusiness", "ABC", "BCEID", null, null, null, "R", null, List.of());
 
     service.withResolvedNames(List.of(bceid));
 

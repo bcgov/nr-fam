@@ -16,6 +16,9 @@
 // May contain unused imports in some cases
 // @ts-ignore
 import { AdminRoleAuthGroup } from './admin-role-auth-group';
+// May contain unused imports in some cases
+// @ts-ignore
+import { ScopeDto } from './scope-dto';
 
 /**
  * 
@@ -77,6 +80,18 @@ export interface CssAdministratorRowDto {
      * @memberof CssAdministratorRowDto
      */
     'delegated_role_name'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssAdministratorRowDto
+     */
+    'delegated_role_display_name'?: string;
+    /**
+     * 
+     * @type {Array<ScopeDto>}
+     * @memberof CssAdministratorRowDto
+     */
+    'scopes': Array<ScopeDto>;
 }
 
 

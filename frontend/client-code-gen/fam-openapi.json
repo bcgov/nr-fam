@@ -1052,6 +1052,22 @@
   },
   "components" : {
     "schemas" : {
+      "CssScopeSelection" : {
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "example" : "DISTRICT",
+            "minLength" : 1
+          },
+          "values" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "type", "values" ]
+      },
       "CssUserRoleAssignmentRequest" : {
         "properties" : {
           "user_guid" : {
@@ -1069,13 +1085,10 @@
             "type" : "string",
             "format" : "email"
           },
-          "scope_type" : {
-            "type" : "string"
-          },
-          "scope_values" : {
+          "scopes" : {
             "type" : "array",
             "items" : {
-              "type" : "string"
+              "$ref" : "#/components/schemas/CssScopeSelection"
             }
           }
         },
@@ -1182,13 +1195,10 @@
             "type" : "string",
             "minLength" : 1
           },
-          "scope_type" : {
-            "type" : "string"
-          },
-          "scope_values" : {
+          "scopes" : {
             "type" : "array",
             "items" : {
-              "type" : "string"
+              "$ref" : "#/components/schemas/CssScopeSelection"
             }
           }
         },
@@ -1564,9 +1574,12 @@
           },
           "status" : {
             "type" : "string"
+          },
+          "fam_application" : {
+            "type" : "boolean"
           }
         },
-        "required" : [ "description", "environment", "integration_id", "name" ]
+        "required" : [ "description", "environment", "fam_application", "integration_id", "name" ]
       },
       "CssUserRoleRowDto" : {
         "properties" : {
@@ -1594,14 +1607,30 @@
           "role_display_name" : {
             "type" : "string"
           },
-          "scope_type" : {
-            "type" : "string"
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ScopeDto"
+            }
+          }
+        },
+        "required" : [ "role_name", "scopes", "username" ]
+      },
+      "ScopeDto" : {
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "example" : "DISTRICT"
           },
-          "scope_value" : {
+          "value" : {
+            "type" : "string",
+            "example" : "DCC"
+          },
+          "label" : {
             "type" : "string"
           }
         },
-        "required" : [ "role_name", "username" ]
+        "required" : [ "type", "value" ]
       },
       "CssRoleMemberCountDto" : {
         "properties" : {
@@ -1647,9 +1676,18 @@
           },
           "delegated_role_name" : {
             "type" : "string"
+          },
+          "delegated_role_display_name" : {
+            "type" : "string"
+          },
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ScopeDto"
+            }
           }
         },
-        "required" : [ "role_name", "tier", "username" ]
+        "required" : [ "role_name", "scopes", "tier", "username" ]
       },
       "SelfPermissionDto" : {
         "properties" : {
@@ -1699,14 +1737,14 @@
           "role_description" : {
             "type" : "string"
           },
-          "scope_type" : {
-            "type" : "string"
-          },
-          "scope_value" : {
-            "type" : "string"
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ScopeDto"
+            }
           }
         },
-        "required" : [ "application_name", "base_role_name", "css_integration_id", "environment", "role_name" ]
+        "required" : [ "application_name", "base_role_name", "css_integration_id", "environment", "role_name", "scopes" ]
       },
       "CssUserRoleRevokeRequest" : {
         "properties" : {
@@ -1721,11 +1759,11 @@
             "type" : "string",
             "minLength" : 1
           },
-          "scope_type" : {
-            "type" : "string"
-          },
-          "scope_value" : {
-            "type" : "string"
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/CssScopeSelection"
+            }
           }
         },
         "required" : [ "role_name", "user_guid", "user_type" ]

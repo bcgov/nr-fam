@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { UserGrantOutcome } from "@/views/AddAppPermission/utils";
+import { roleLabel } from "@/utils/ScopeUtils";
 import { describeUser, failedRoles } from "@/views/ManagePermissionsView/utils";
 import DotMarkIcon from "@carbon/icons-vue/es/dot-mark/16";
 import MisuseIcon from "@carbon/icons-vue/es/misuse/20";
@@ -13,9 +14,13 @@ import { computed, ref } from "vue";
  * directory is down", and an administrator needs to know which they are looking
  * at.
  */
+/**
+ * The role is per outcome now, not per banner: one grant can name several roles
+ * and they do not share a fate, so "FREP_EDITOR was not added for these users"
+ * was only ever true of one of them.
+ */
 const props = defineProps<{
     outcomes: UserGrantOutcome[];
-    roleName: string;
     applicationName: string;
 }>();
 
@@ -46,8 +51,8 @@ const reason = (outcome: UserGrantOutcome): string => {
         <MisuseIcon />
         <div class="notification-body">
             <div class="notification-header">
-                <strong>Failed</strong>: {{ roleName }} was not added in
-                {{ applicationName }} for the following users
+                <strong>Failed</strong>: some permissions were not added in
+                {{ applicationName }}
             </div>
 
             <button
@@ -62,11 +67,14 @@ const reason = (outcome: UserGrantOutcome): string => {
             <ul class="notification-list">
                 <li
                     v-for="outcome in visibleOutcomes"
-                    :key="outcome.user.userId"
+                    :key="`${outcome.user.userId}|${outcome.role.name}`"
                     class="notification-list-item"
                 >
                     <DotMarkIcon class="dot-mark-icon" />
-                    <span>{{ describeUser(outcome) }} - {{ reason(outcome) }}</span>
+                    <span>
+                        {{ describeUser(outcome) }} -
+                        {{ roleLabel(outcome.role) }} - {{ reason(outcome) }}
+                    </span>
                 </li>
             </ul>
 

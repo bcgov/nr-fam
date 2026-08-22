@@ -1,7 +1,10 @@
 package ca.bc.gov.nrs.fam.dto;
 
 import ca.bc.gov.nrs.fam.constants.UserType;
+import java.util.Collection;
+import java.util.Set;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -53,6 +56,15 @@ public final class CssRoleNaming {
    * the more specific one.
    */
   private static final List<String> SCOPE_TYPES = List.of("FOREST_CLIENT", "DISTRICT");
+
+  /**
+   * The order scope suffixes are written in, which is not the parsing order.
+   *
+   * <p>Parsing works longest-first so {@code FOREST_CLIENT} is not read as
+   * {@code CLIENT}; writing works in this fixed order so a district-and-client
+   * role always produces one name rather than two spellings of the same thing.
+   */
+  private static final List<String> SCOPE_TYPE_ORDER = List.of("DISTRICT", "FOREST_CLIENT");
 
   /**
    * Marks a role as a description carrier rather than something grantable.
@@ -198,6 +210,48 @@ public final class CssRoleNaming {
     });
   }
 
+  /**
+   * Markers for every scope type a role carries, in canonical order.
+   *
+   * <p>A role may be scoped by more than one thing at once - a submitter for a
+   * district <em>and</em> a forest client - and each scope contributes its own
+   * marker to the composite chain. Unrecognised types are dropped rather than
+   * failing: the markers describe what FAM understands about a role, and a role
+   * FAM only partly understands is still a role.
+   */
+  public static List<String> markersFor(Collection<String> scopeTypes) {
+    if (scopeTypes == null) {
+      return List.of();
+    }
+    return canonicalise(scopeTypes).stream()
+        .map(CssRoleNaming::markerFor)
+        .flatMap(Optional::stream)
+        .toList();
+  }
+
+  /**
+   * Scope types uppercased, de-duplicated, and put in a fixed order.
+   *
+   * <p>The order matters because it decides the generated role name: the same
+   * pair of scopes must always produce the same name, or a grant would create a
+   * second role for an authorisation that already exists.
+   */
+  public static List<String> canonicalise(Collection<String> scopeTypes) {
+    if (scopeTypes == null) {
+      return List.of();
+    }
+    Set<String> given = scopeTypes.stream()
+        .filter(t -> t != null && !t.isBlank())
+        .map(t -> t.trim().toUpperCase(Locale.ROOT))
+        .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+
+    List<String> ordered = new java.util.ArrayList<>(
+        SCOPE_TYPE_ORDER.stream().filter(given::contains).toList());
+    // Anything FAM does not know keeps its given order, after what it does.
+    given.stream().filter(t -> !SCOPE_TYPE_ORDER.contains(t)).forEach(ordered::add);
+    return List.copyOf(ordered);
+  }
+
   /** A sidecar's text and the role code it belongs to. */
   public record RoleLabel(String roleCode, String text) {}
 
@@ -208,6 +262,34 @@ public final class CssRoleNaming {
    */
   public static String buildScopedRoleName(String baseRoleName, String scopeType, String value) {
     return "%s_%s-%s".formatted(baseRoleName, scopeType, value);
+  }
+
+  /**
+   * Name for a role scoped by more than one thing at once.
+   *
+   * <pre>FOM_SUBMITTER + [DISTRICT=DCC, FOREST_CLIENT=00001012]
+   *   -&gt; FOM_SUBMITTER_DISTRICT-DCC_FOREST_CLIENT-00001012</pre>
+   *
+   * <p>Suffixes are written in {@link #SCOPE_TYPE_ORDER}, never the caller's
+   * order: the name <em>is</em> the authorisation, so the same pair of scopes
+   * must always spell the same role. Two spellings would mean granting the same
+   * thing twice and revoking only one of them.
+   */
+  public static String buildScopedRoleName(String baseRoleName, List<Scope> scopes) {
+    if (scopes == null || scopes.isEmpty()) {
+      return baseRoleName;
+    }
+    Map<String, String> byType = new java.util.LinkedHashMap<>();
+    for (Scope scope : scopes) {
+      if (scope != null && scope.type() != null && scope.value() != null) {
+        byType.put(scope.type().trim().toUpperCase(Locale.ROOT), scope.value());
+      }
+    }
+    StringBuilder name = new StringBuilder(baseRoleName);
+    for (String type : canonicalise(byType.keySet())) {
+      name.append('_').append(type).append('-').append(byType.get(type));
+    }
+    return name.toString();
   }
 
   /**
@@ -224,9 +306,31 @@ public final class CssRoleNaming {
    * </pre>
    */
   public static ScopedRoleName parse(String roleName) {
+    List<Scope> scopes = new java.util.ArrayList<>();
+    String remaining = roleName;
+
+    // Strip one suffix at a time from the right. A compound name is just a
+    // scoped name whose base happens to be scoped too, so peeling repeatedly
+    // reads both without the parser needing to know how many there are.
+    while (true) {
+      Optional<ScopeSplit> split = stripOneScope(remaining);
+      if (split.isEmpty()) {
+        break;
+      }
+      scopes.add(split.get().scope());
+      remaining = split.get().head();
+    }
+
+    // Peeled right to left, so reverse to get the order the name was written in.
+    java.util.Collections.reverse(scopes);
+    return new ScopedRoleName(remaining, List.copyOf(scopes));
+  }
+
+  /** One scope suffix taken off the end, or empty when the name ends in none. */
+  private static Optional<ScopeSplit> stripOneScope(String roleName) {
     int hyphen = roleName.lastIndexOf('-');
     if (hyphen < 0) {
-      return new ScopedRoleName(roleName, null, null);
+      return Optional.empty();
     }
 
     String head = roleName.substring(0, hyphen);
@@ -235,14 +339,17 @@ public final class CssRoleNaming {
     for (String scopeType : SCOPE_TYPES) {
       String suffix = "_" + scopeType;
       if (head.endsWith(suffix) && head.length() > suffix.length()) {
-        return new ScopedRoleName(
-            head.substring(0, head.length() - suffix.length()), scopeType, value);
+        return Optional.of(new ScopeSplit(
+            head.substring(0, head.length() - suffix.length()),
+            new Scope(scopeType, value)));
       }
     }
 
     // A hyphen that is not a scope separator: the name is its own base role.
-    return new ScopedRoleName(roleName, null, null);
+    return Optional.empty();
   }
+
+  private record ScopeSplit(String head, Scope scope) {}
 
   /**
    * The CSS/Keycloak username for a FAM user.
@@ -321,6 +428,27 @@ public final class CssRoleNaming {
     });
   }
 
-  /** Result of {@link #parse}; scope fields are null for an unscoped role. */
-  public record ScopedRoleName(String baseRoleName, String scopeType, String scopeValue) {}
+  /** One dimension a role is scoped by, e.g. {@code DISTRICT} of {@code DCC}. */
+  public record Scope(String type, String value) {}
+
+  /**
+   * Result of {@link #parse}: the base role and every scope its name carries,
+   * in the order they appear. {@code scopes} is empty for an unscoped role.
+   */
+  public record ScopedRoleName(String baseRoleName, List<Scope> scopes) {
+
+    /** The first scope's type, for the many callers that show only one. */
+    public String scopeType() {
+      return scopes.isEmpty() ? null : scopes.get(0).type();
+    }
+
+    /** The first scope's value. See {@link #scopeType()}. */
+    public String scopeValue() {
+      return scopes.isEmpty() ? null : scopes.get(0).value();
+    }
+
+    public boolean isScoped() {
+      return !scopes.isEmpty();
+    }
+  }
 }

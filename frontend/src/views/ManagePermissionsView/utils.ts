@@ -1,5 +1,4 @@
 import GrantFailureNtfnTemplate from "@/components/NotificationContent/GrantFailureNtfnTemplate.vue";
-import GrantSuccessNtfnTemplate from "@/components/NotificationContent/GrantSuccessNtfnTemplate.vue";
 import {
     Severity,
     type PermissionNotificationType,
@@ -10,6 +9,7 @@ import {
     type AppPermissionGrantSummary,
     type UserGrantOutcome,
 } from "@/views/AddAppPermission/utils";
+import { roleLabel } from "@/utils/ScopeUtils";
 import type { QueryClient } from "@tanstack/vue-query";
 import { EmailSendingStatus } from "fam-api/model";
 import { h, type Ref } from "vue";
@@ -51,10 +51,61 @@ export const emailFailed = (outcome: UserGrantOutcome): boolean =>
     );
 
 /**
+ * What the toast says about one grant, or null when there is nothing to celebrate.
+ *
+ * Null when nobody was granted anything: that case is entirely a failure, and
+ * the banner reports it. A toast saying "0 users" would be noise on top of it.
+ */
+export const toGrantToast = (
+    summary: AppPermissionGrantSummary | null
+): { severity: "success" | "warn"; summary: string; detail: string } | null => {
+    if (!summary || summary.outcomes.length === 0) {
+        return null;
+    }
+
+    const granted = summary.outcomes.filter(wasGranted);
+    if (granted.length === 0) {
+        return null;
+    }
+
+    const failedCount = summary.outcomes.length - granted.length;
+
+    // Counted over distinct people and distinct roles, not over outcomes: three
+    // roles granted to two people is six outcomes, and "6 users" would be wrong
+    // twice over.
+    const users = new Set(granted.map((outcome) => outcome.user.userId));
+    const roles = new Set(granted.map((outcome) => outcome.role.name));
+
+    // One of each is named; more are counted. Naming five roles and five people
+    // would push the toast taller than the table it sits over, and the banner
+    // names them all when any of them failed.
+    const detail =
+        users.size === 1 && roles.size === 1
+            ? `${roleLabel(granted[0].role)} was granted to ${describeUser(granted[0])} `
+                  + `in ${summary.applicationName}.`
+            : `${plural(roles.size, "role")} granted to ${plural(users.size, "user")} `
+                  + `in ${summary.applicationName}.`;
+
+    return failedCount > 0
+        ? {
+              severity: "warn",
+              summary: "Some permissions were not granted",
+              detail: `${detail} ${failedCount} could not be granted - see the message below.`,
+          }
+        : { severity: "success", summary: "Permission granted", detail };
+};
+
+const plural = (count: number, noun: string) =>
+    count === 1 ? `1 ${noun}` : `${count} ${noun}s`;
+
+/**
  * The banners for one grant.
  *
- * Up to two: what succeeded and what did not. Both can appear at once, because
- * a grant to several users is several calls and they do not share a fate.
+ * <b>Only what somebody has to act on.</b> The plain success case is a toast -
+ * see {@link toGrantToast} - because the granted rows are already visible in the
+ * table, marked "New". What stays here is a grant that was refused, and a grant
+ * that landed but whose email did not: both leave something outstanding, and a
+ * banner waits to be dismissed rather than expiring on its own.
  */
 export const toGrantNotifications = (
     summary: AppPermissionGrantSummary | null
@@ -68,18 +119,6 @@ export const toGrantNotifications = (
     const emailFailures = granted.filter(emailFailed);
 
     const notifications: PermissionNotificationType[] = [];
-
-    if (granted.length > 0) {
-        notifications.push({
-            severity: Severity.Success,
-            message: h(GrantSuccessNtfnTemplate, {
-                outcomes: granted,
-                roleName: summary.roleName,
-                applicationName: summary.applicationName,
-            }),
-            hasFullMsg: false,
-        });
-    }
 
     // Separate from the failure banner: these people do have access, so listing
     // them as failures would be wrong, but somebody still has to tell them.
@@ -98,7 +137,6 @@ export const toGrantNotifications = (
             severity: Severity.Error,
             message: h(GrantFailureNtfnTemplate, {
                 outcomes: failed,
-                roleName: summary.roleName,
                 applicationName: summary.applicationName,
             }),
             hasFullMsg: false,

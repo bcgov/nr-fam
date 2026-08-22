@@ -13,6 +13,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const preview = vi.fn();
 const apply = vi.fn();
 
+const downloadTemplate = vi.fn();
+vi.mock("./utils", async () => ({
+    ...(await vi.importActual<typeof import("./utils")>("./utils")),
+    downloadTemplateCsv: () => downloadTemplate(),
+}));
+
 vi.mock("@/services/ApiServiceFactory", () => ({
     AdminMgmtApiService: {
         cssIntegrationsApi: {
@@ -106,6 +112,15 @@ const clickButton = async (wrapper: any, match: string) => {
     await settle();
 };
 
+/** Drops a file on the zone the way a drag-and-drop does. */
+const dropFile = async (wrapper: any, text: string) => {
+    const file = { name: "dropped.csv", text: () => Promise.resolve(text) };
+    await wrapper.find(".dnd-zone").trigger("drop", {
+        dataTransfer: { files: [file] },
+    });
+    await settle();
+};
+
 describe("BulkGrant", () => {
     beforeEach(() => {
         preview.mockReset().mockResolvedValue({
@@ -113,6 +128,21 @@ describe("BulkGrant", () => {
         });
         apply.mockReset().mockResolvedValue({ data: [VALID_ROW] });
         push.mockReset();
+        downloadTemplate.mockReset();
+    });
+
+    it("offers the template as a link in the instructions", async () => {
+        // The template used to be an outlined button below the example. It is a
+        // link inside the sentence now, so the wiring is worth holding onto:
+        // silently losing it would leave people to invent the format.
+        const wrapper = await mountView();
+        const link = wrapper.find(".template-link");
+
+        expect(link.exists()).toBe(true);
+        expect(link.text()).toContain("Download the template");
+
+        await link.trigger("click");
+        expect(downloadTemplate).toHaveBeenCalled();
     });
 
     it("previews the chosen file without granting anything", async () => {
@@ -197,6 +227,46 @@ describe("BulkGrant", () => {
         await chooseFile(wrapper, "csv");
 
         expect(wrapper.text()).toContain("most that can be uploaded");
+    });
+
+    it("accepts a dropped file exactly as a chosen one", async () => {
+        // The drop zone is the visible control; a file arriving that way must
+        // take the same path, preview included, or dragging would look like it
+        // worked and do nothing.
+        const wrapper = await mountView();
+        await dropFile(wrapper, "guid,role\nAABB,FSPTS_VIEW_ALL");
+
+        expect(preview).toHaveBeenCalledWith(
+            54321,
+            "dev",
+            "guid,role\nAABB,FSPTS_VIEW_ALL"
+        );
+        expect(wrapper.text()).toContain("dropped.csv");
+    });
+
+    it("highlights the zone while a file is over it", async () => {
+        const wrapper = await mountView();
+        const zone = wrapper.find(".dnd-zone");
+
+        await zone.trigger("dragover");
+        expect(zone.classes()).toContain("dnd-zone--drag");
+
+        await zone.trigger("dragleave");
+        expect(zone.classes()).not.toContain("dnd-zone--drag");
+    });
+
+    it("removing the file clears the preview with it", async () => {
+        // Leaving the parsed rows on screen after the file is gone would offer a
+        // Grant button for a file the person just removed.
+        const wrapper = await mountView();
+        await chooseFile(wrapper, "csv");
+        expect(wrapper.text()).toContain("Jane Smith");
+
+        await wrapper.find(".file-chip__remove").trigger("click");
+        await settle();
+
+        expect(wrapper.text()).not.toContain("Jane Smith");
+        expect(wrapper.text()).not.toContain("grants.csv");
     });
 
     it("shows outcomes after granting", async () => {

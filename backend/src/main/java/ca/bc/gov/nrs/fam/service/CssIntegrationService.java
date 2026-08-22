@@ -16,6 +16,8 @@ import ca.bc.gov.nrs.fam.dto.CssRoleDeleteResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleMemberCountDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
+import ca.bc.gov.nrs.fam.dto.CssScopeSelection;
+import ca.bc.gov.nrs.fam.dto.ScopeDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleOptionDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
@@ -64,6 +66,15 @@ import org.springframework.stereotype.Service;
 public class CssIntegrationService {
 
   /**
+   * The most scoped roles one grant or delegation may create.
+   *
+   * <p>Compound scopes multiply: ten districts and twenty clients is two hundred
+   * CSS roles, each a create and an assign. Fifty is generous for real use and
+   * still fails fast on a mistake.
+   */
+  private static final int MAX_SCOPE_COMBINATIONS = 50;
+
+  /**
    * Above this many roles, the per-role fan-out is logged as a warning. Not a
    * limit - nothing is truncated - but the read is linear in role count and
    * roles accumulate permanently, so it is worth surfacing before it hurts.
@@ -86,6 +97,8 @@ public class CssIntegrationService {
    * that is decided from the requester's own token.
    */
   public List<CssApplicationOptionDto> getApplications() {
+    Integer ownIntegrationId = configuredOwnIntegrationId();
+
     List<CssApplicationOptionDto> options = cssApiService.getIntegrations().stream()
         .flatMap(integration -> integration.environments().stream()
             .map(environment -> new CssApplicationOptionDto(
@@ -94,7 +107,8 @@ public class CssIntegrationService {
                 integration.projectName(),
                 "%s (%s)".formatted(integration.projectName(),
                     environment.toUpperCase(java.util.Locale.ROOT)),
-                integration.status())))
+                integration.status(),
+                isOwnIntegration(integration.id(), ownIntegrationId))))
         .toList();
 
     log.debug("Returning {} application option(s) from CSS integrations.", options.size());
@@ -114,6 +128,22 @@ public class CssIntegrationService {
    */
   public List<CssRoleOptionDto> getRoles(int integrationId, String environment) {
     List<CssRoleDto> roles = cssApiService.getRoles(integrationId, environment);
+
+    // On FAM's own integration, the roles recording who administers every other
+    // application are not roles anybody grants here - see
+    // #administersAnotherApplication. Offering them let an administrator be
+    // appointed from the ordinary grant screen, bypassing the guards on the
+    // screens that exist for it, and let one be delegated a role that is itself
+    // a delegation. FAM_ADMIN is kept: granting it is how a FAM administrator is
+    // made.
+    //
+    // Dropped before the composite fan-out below, so they cost no requests
+    // either.
+    if (isOwnIntegration(integrationId, configuredOwnIntegrationId())) {
+      roles = roles.stream()
+          .filter(role -> !administersAnotherApplication(role.name()))
+          .toList();
+    }
 
     Map<String, String> displayNames = sidecarText(roles, CssRoleNaming::parseLabel);
     Map<String, String> descriptions = sidecarText(roles, CssRoleNaming::parseDescription);
@@ -236,9 +266,32 @@ public class CssIntegrationService {
    *
    * @return the new role as the picker will see it
    */
+  /**
+   * FAM does not manage its own roles through the role screens.
+   *
+   * <p>Its integration holds {@code FAM_ADMIN} and the {@code APP_ADMIN_...} and
+   * {@code DELEGATED_ADMIN_...} roles FAM generates as it appoints
+   * administrators. Nothing there is an application role: creating one would put
+   * a role in FAM's namespace that FAM never reads, and deleting
+   * {@code APP_ADMIN_22264_PROD} would strip every administrator of that
+   * application at once, with no screen anywhere saying that is what happened.
+   *
+   * <p>The picker hides FAM for the same reason, but that only shapes what is
+   * offered. This is what makes it true - the endpoints take an integration id
+   * from the caller.
+   */
+  private void refuseSelfRoleManagement(int integrationId) {
+    if (isOwnIntegration(integrationId, configuredOwnIntegrationId())) {
+      throw FamHttpException.badRequest(ErrorCode.INVALID_OPERATION,
+          "FAM's own roles are not managed here. They are created and removed by "
+              + "appointing and removing administrators.");
+    }
+  }
+
   public CssRoleOptionDto createRole(
       int integrationId, String environment, CssRoleCreateRequest request, Requester requester) {
 
+    refuseSelfRoleManagement(integrationId);
     RoleDefinition definition = validate(request);
 
     requireRoleAbsent(integrationId, environment, definition.roleCode());
@@ -249,7 +302,7 @@ public class CssIntegrationService {
     // introduced it. A failure here is not swallowed - see storeRoleCreated.
     auditWriteService.storeRoleCreated(requester, integrationId, environment,
         definition.roleCode(), definition.displayName(), definition.description(),
-        definition.scopeType());
+        definition.scopeTypes());
 
     return definition.asOption();
   }
@@ -281,6 +334,7 @@ public class CssIntegrationService {
   public CssRoleBulkCreateResultDto createRoleInAllEnvironments(
       int integrationId, CssRoleCreateRequest request, Requester requester) {
 
+    refuseSelfRoleManagement(integrationId);
     RoleDefinition definition = validate(request);
 
     List<String> environments = cssApiService.getIntegrations().stream()
@@ -321,29 +375,34 @@ public class CssIntegrationService {
     for (String environment : environments) {
       auditWriteService.storeRoleCreated(requester, integrationId, environment,
           definition.roleCode(), definition.displayName(), definition.description(),
-          definition.scopeType());
+          definition.scopeTypes());
     }
 
     log.info("Created CSS role {} ({}) on integration {} in {}, scope {}.",
         definition.roleCode(), definition.displayName(), integrationId,
         String.join(", ", environments),
-        definition.scopeType() == null ? "none" : definition.scopeType());
+        describeScopes(definition.scopeTypes()));
 
     return new CssRoleBulkCreateResultDto(
         definition.roleCode(), definition.displayName(), environments, definition.asOption());
   }
 
   /** A validated, normalised role definition. */
+  /** Scopes as one readable phrase for a log line, e.g. "DISTRICT, FOREST_CLIENT". */
+  private static String describeScopes(List<String> scopeTypes) {
+    return scopeTypes.isEmpty() ? "none" : String.join(", ", scopeTypes);
+  }
+
   private record RoleDefinition(
-      String roleCode, String displayName, String description, String scopeType) {
+      String roleCode, String displayName, String description, List<String> scopeTypes) {
 
     CssRoleOptionDto asOption() {
       return new CssRoleOptionDto(
           roleCode, displayName, description, null,
-          scopeType != null,
-          CssRoleNaming.markerFor(scopeType).map(List::of).orElseGet(List::of),
-          "DISTRICT".equals(scopeType),
-          "FOREST_CLIENT".equals(scopeType));
+          !scopeTypes.isEmpty(),
+          CssRoleNaming.markersFor(scopeTypes),
+          scopeTypes.contains("DISTRICT"),
+          scopeTypes.contains("FOREST_CLIENT"));
     }
   }
 
@@ -353,12 +412,7 @@ public class CssIntegrationService {
     String displayName = request.roleName().trim();
     String description = request.description() == null ? null : request.description().trim();
 
-    String scopeType;
-    try {
-      scopeType = request.scopeType();
-    } catch (IllegalArgumentException e) {
-      throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER, e.getMessage());
-    }
+    List<String> scopeTypes = CssRoleNaming.canonicalise(request.scopeTypes());
 
     if (!CssRoleNaming.isValidRoleCode(roleCode)) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
@@ -370,7 +424,7 @@ public class CssIntegrationService {
           "%s is reserved: it is how FAM marks a role as scoped.".formatted(roleCode));
     }
 
-    return new RoleDefinition(roleCode, displayName, description, scopeType);
+    return new RoleDefinition(roleCode, displayName, description, scopeTypes);
   }
 
   private boolean roleExists(int integrationId, String environment, String roleCode) {
@@ -415,14 +469,13 @@ public class CssIntegrationService {
       cssApiService.createRole(integrationId, environment, definition.roleCode());
       created.add(definition.roleCode());
 
-      Optional<String> marker = CssRoleNaming.markerFor(definition.scopeType());
-      if (marker.isPresent()) {
-        if (!existing.contains(marker.get())
-            && cssApiService.createRole(integrationId, environment, marker.get())) {
-          created.add(marker.get());
+      for (String marker : CssRoleNaming.markersFor(definition.scopeTypes())) {
+        if (!existing.contains(marker)
+            && cssApiService.createRole(integrationId, environment, marker)) {
+          created.add(marker);
         }
         cssApiService.addRoleComposites(
-            integrationId, environment, definition.roleCode(), List.of(marker.get()));
+            integrationId, environment, definition.roleCode(), List.of(marker));
       }
 
       if (!existing.contains(labelRole)
@@ -442,7 +495,7 @@ public class CssIntegrationService {
 
     log.info("Created CSS role {} ({}) on integration {} ({}), scope {}.",
         definition.roleCode(), definition.displayName(), integrationId, environment,
-        definition.scopeType() == null ? "none" : definition.scopeType());
+        describeScopes(definition.scopeTypes()));
 
     return created;
   }
@@ -478,6 +531,7 @@ public class CssIntegrationService {
   public CssRoleDeleteResultDto deleteRole(
       int integrationId, String environment, String roleName, Requester requester) {
 
+    refuseSelfRoleManagement(integrationId);
     if (roleName == null || roleName.isBlank()) {
       throw FamHttpException.badRequest(
           ErrorCode.INVALID_REQUEST_PARAMETER, "A role name is required.");
@@ -508,7 +562,7 @@ public class CssIntegrationService {
         .filter(name -> !name.equals(roleName))
         .filter(name -> {
           CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(name);
-          return parsed.scopeType() != null && roleName.equals(parsed.baseRoleName());
+          return parsed.isScoped() && roleName.equals(parsed.baseRoleName());
         })
         .toList();
 
@@ -675,7 +729,7 @@ public class CssIntegrationService {
 
     auditWriteService.storeCssGranted(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, request.roleName(), request.scopeType(), results);
+        integrationId, environment, request.roleName(), results);
 
     return results;
   }
@@ -732,7 +786,7 @@ public class CssIntegrationService {
 
     auditWriteService.storeCssGranted(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, roleName, null, List.of(result));
+        integrationId, environment, roleName, List.of(result));
 
     return result;
   }
@@ -757,7 +811,7 @@ public class CssIntegrationService {
 
     auditWriteService.storeCssRevoked(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, roleName, null, List.of(roleName));
+        integrationId, environment, roleName, List.of(roleName));
   }
 
   /**
@@ -789,29 +843,146 @@ public class CssIntegrationService {
 
     auditWriteService.storeCssRevoked(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, request.roleName(), request.scopeType(), delegations);
+        integrationId, environment, request.roleName(), delegations);
   }
 
   /** The delegation roles a request describes, one per scope value. */
   private static List<String> delegationRoleNames(
       int integrationId, String environment, CssDelegatedAdminRequest request) {
 
-    if (request.scopeValues().isEmpty()) {
-      return List.of(FamAdminRole.delegation(integrationId, environment, request.roleName()));
-    }
-    if (request.scopeType() == null || request.scopeType().isBlank()) {
+    // Mirrors the grant path exactly: a delegation must name the role a grant
+    // will actually assign, or it authorises nothing.
+    return scopedRoleNames(request.roleName(), request.scopes()).stream()
+        .map(roleName -> FamAdminRole.delegation(integrationId, environment, roleName))
+        .toList();
+  }
+
+
+  /**
+   * Every concrete scope combination a request names, as role-name suffixes.
+   *
+   * <p>A role scoped by district <em>and</em> forest client is granted against a
+   * <em>pair</em>, so three districts and two clients authorise six pairs. The
+   * cross-product is the honest reading of a compound scope: being a submitter
+   * for DCC and for client 00001012 is not the same as being one for either.
+   *
+   * <p>It also multiplies fast, and each combination is a CSS role to create and
+   * assign. {@link #MAX_SCOPE_COMBINATIONS} refuses a request that would run
+   * away rather than spending minutes on API calls somebody did not intend.
+   */
+  private static List<List<CssRoleNaming.Scope>> scopeCombinations(
+      List<CssScopeSelection> scopes) {
+
+    List<CssScopeSelection> present = scopes.stream()
+        .filter(scope -> !scope.values().isEmpty())
+        .toList();
+
+    // Values with no type would fall through to the base role - a grant that
+    // looks scoped and is not. The old shape guarded this with a scope_type
+    // check; the guard has to survive the shape change.
+    boolean untyped = present.stream()
+        .anyMatch(scope -> scope.type() == null || scope.type().isBlank());
+    if (untyped) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
-          "scope_type is required when scope_values are given.");
+          "Each scope must name its type, e.g. DISTRICT, alongside its values.");
     }
-    // Distinct, for the same reason the grant path dedupes: two identical scope
-    // values would name the same delegation twice and report it twice.
-    return new ArrayList<>(new LinkedHashSet<>(request.scopeValues().stream()
-        .map(value -> FamAdminRole.delegation(integrationId, environment,
-            CssRoleNaming.buildScopedRoleName(request.roleName(), request.scopeType(), value)))
+    if (present.isEmpty()) {
+      return List.of();
+    }
+
+    long total = 1;
+    for (CssScopeSelection scope : present) {
+      // Distinct first: a repeated value would inflate the count and then name
+      // the same role twice.
+      total *= new LinkedHashSet<>(scope.values()).size();
+    }
+    if (total > MAX_SCOPE_COMBINATIONS) {
+      throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
+          ("This would create %d scoped roles, more than the %d allowed in one request. "
+              + "A role scoped by more than one thing is granted for every combination, "
+              + "so the values multiply. Grant it in smaller batches.")
+              .formatted(total, MAX_SCOPE_COMBINATIONS));
+    }
+
+    List<List<CssRoleNaming.Scope>> combinations = new ArrayList<>();
+    combinations.add(List.of());
+    for (CssScopeSelection scope : present) {
+      List<List<CssRoleNaming.Scope>> next = new ArrayList<>();
+      for (List<CssRoleNaming.Scope> so_far : combinations) {
+        for (String value : new LinkedHashSet<>(scope.values())) {
+          List<CssRoleNaming.Scope> extended = new ArrayList<>(so_far);
+          extended.add(new CssRoleNaming.Scope(scope.type(), value));
+          next.add(List.copyOf(extended));
+        }
+      }
+      combinations = next;
+    }
+    return List.copyOf(combinations);
+  }
+
+  /** Concrete role names for a request, one per scope combination. */
+  private static List<String> scopedRoleNames(String roleName, List<CssScopeSelection> scopes) {
+    List<List<CssRoleNaming.Scope>> combinations = scopeCombinations(scopes);
+    if (combinations.isEmpty()) {
+      return List.of(roleName);
+    }
+    // Distinct, because two identical combinations would name the same role
+    // twice and report it twice.
+    return List.copyOf(new LinkedHashSet<>(combinations.stream()
+        .map(combination -> CssRoleNaming.buildScopedRoleName(roleName, combination))
         .toList()));
   }
 
   /** FAM's own integration, where every administrative role lives. */
+  /**
+   * FAM's own integration id, or null when it has not been configured.
+   *
+   * <p>Unlike {@link #ownIntegrationId()} this does not throw. Reading the
+   * application picker must not fail because the id is missing - the picker is
+   * how somebody would reach the screen that tells them so.
+   */
+  private Integer configuredOwnIntegrationId() {
+    return famProperties.integration() == null
+        || famProperties.integration().css() == null
+        ? null
+        : famProperties.integration().css().ownIntegrationId();
+  }
+
+  /**
+   * Whether a role on FAM's own integration is really about another application.
+   *
+   * <p>FAM's integration carries two unlike things. {@code FAM_ADMIN} is access
+   * to FAM - a person holding it is a FAM user, and belongs on FAM's user list.
+   * {@code APP_ADMIN_22264_DEV} and {@code DELEGATED_ADMIN_22264_DEV__ROLE} are
+   * not: they record who administers FREP, and they live here only because a
+   * token carries just the roles of the client it was issued to, so an
+   * administrator's role has to sit on FAM's integration to reach FAM at all.
+   *
+   * <p>Listing their holders as FAM users put every application administrator
+   * and every delegated administrator in the province on FAM's Users tab. They
+   * already have their own tabs, per application, which is where the question
+   * "who administers FREP" is actually asked.
+   *
+   * <p>Keyed on the tier, not on {@link FamAdminRole#targetOf}. That parses the
+   * integration id out of the suffix and answers empty when it cannot - so an
+   * {@code APP_ADMIN_} role somebody typed by hand in the CSS console would fail
+   * to parse and be kept, which is the one case this most needs to catch. The
+   * tier is decided by the prefix alone and has no such gap.
+   *
+   * <p>Anything that is not an administrative role at all is kept, so
+   * {@code FAM_ADMIN} stays and so would a role FAM defines for itself later.
+   */
+  private static boolean administersAnotherApplication(String roleName) {
+    return FamAdminRole.tierOf(roleName)
+        .filter(tier -> tier != AdminRoleAuthGroup.FAM_ADMIN)
+        .isPresent();
+  }
+
+  /** Null-safe on both sides: an unconfigured id matches no integration. */
+  private static boolean isOwnIntegration(Integer integrationId, Integer ownIntegrationId) {
+    return integrationId != null && integrationId.equals(ownIntegrationId);
+  }
+
   private Integer ownIntegrationId() {
     Integer ownIntegrationId = famProperties.integration() == null
         || famProperties.integration().css() == null
@@ -892,8 +1063,26 @@ public class CssIntegrationService {
           "FAM administrators are not specific to an application.");
     };
 
+    // What each delegated role is called, as opposed to what it is coded.
+    //
+    // Read from the APPLICATION's integration, not FAM's own: the delegation
+    // roles live on FAM's, but the label is held in a sidecar beside the role
+    // it names, which is the application's. Fetched once, and only for the tier
+    // that has a role to name - an application administrator is delegated none.
+    Map<String, String> displayNames = tier == AdminRoleAuthGroup.DELEGATED_ADMIN
+        ? sidecarText(cssApiService.getRoles(integrationId, environment),
+            CssRoleNaming::parseLabel)
+        : Map.of();
+
     List<CssAdministratorRowDto> rows = new ArrayList<>();
     for (String roleName : roleNames) {
+      // Empty for an application administrator, who is not delegated any single
+      // role - they administer everything the application defines. Split here
+      // rather than per holder: it depends only on the role.
+      CssRoleNaming.ScopedRoleName delegation = FamAdminRole.delegatedRoleOf(roleName)
+          .map(CssRoleNaming::parse)
+          .orElse(null);
+
       for (CssApiService.CssUserDto user
           : holdersOf(ownIntegrationId, famEnvironment, roleName)) {
 
@@ -906,9 +1095,11 @@ public class CssIntegrationService {
             user.email(),
             tier,
             roleName,
-            // Null for an application administrator, who is not delegated any
-            // single role - they administer everything the application defines.
-            FamAdminRole.delegatedRoleOf(roleName).orElse(null)));
+            delegation == null ? null : delegation.baseRoleName(),
+            delegation == null ? null : displayNames.get(delegation.baseRoleName()),
+            delegation == null
+                ? List.of()
+                : delegation.scopes().stream().map(ScopeDto::of).toList()));
       }
     }
 
@@ -1196,7 +1387,7 @@ public class CssIntegrationService {
 
     auditWriteService.storeCssGranted(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, request.roleName(), request.scopeType(), results);
+        integrationId, environment, request.roleName(), results);
 
     return results;
   }
@@ -1235,10 +1426,15 @@ public class CssIntegrationService {
 
     // The concrete role CSS holds, which the listing split into a base role and
     // a scope to display it.
-    String cssRoleName = request.scopeValue() == null || request.scopeValue().isBlank()
-        ? request.roleName()
-        : CssRoleNaming.buildScopedRoleName(
-            request.roleName(), request.scopeType(), request.scopeValue());
+    // Rebuilt from every scope the request names. A compound role revoked with
+    // only one of its scopes would name a role that does not exist, and the
+    // removal would quietly do nothing.
+    List<String> cssRoleNames = scopedRoleNames(request.roleName(), request.scopes());
+    if (cssRoleNames.size() != 1) {
+      throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
+          "A revocation names exactly one role; give one value per scope.");
+    }
+    String cssRoleName = cssRoleNames.get(0);
 
     // Revoking is delegated the same way granting is: taking a role away is as
     // much a change to somebody's access as giving it, and legacy checked both.
@@ -1253,8 +1449,7 @@ public class CssIntegrationService {
     // After the removal and only for what was actually removed.
     auditWriteService.storeCssRevoked(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, request.roleName(), request.scopeType(),
-        List.of(cssRoleName));
+        integrationId, environment, request.roleName(), List.of(cssRoleName));
   }
 
   /**
@@ -1269,19 +1464,7 @@ public class CssIntegrationService {
   }
 
   private static List<String> resolveTargetRoles(CssUserRoleAssignmentRequest request) {
-    if (request.scopeValues().isEmpty()) {
-      return List.of(request.roleName());
-    }
-    if (request.scopeType() == null || request.scopeType().isBlank()) {
-      throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
-          "scope_type is required when scope_values are given.");
-    }
-    // Distinct: two identical scope values would otherwise create the same role
-    // twice and report it twice.
-    return new ArrayList<>(new LinkedHashSet<>(request.scopeValues().stream()
-        .map(value -> CssRoleNaming.buildScopedRoleName(
-            request.roleName(), request.scopeType(), value))
-        .toList()));
+    return scopedRoleNames(request.roleName(), request.scopes());
   }
 
   /**
@@ -1293,6 +1476,10 @@ public class CssIntegrationService {
   public List<CssUserRoleRowDto> getUserRoleAssignments(
       int integrationId, String environment, Requester requester) {
     List<CssRoleDto> roles = cssApiService.getRoles(integrationId, environment);
+
+    // Viewing FAM itself shows only FAM's own access, not the bookkeeping it
+    // keeps about every other application. See #administersAnotherApplication.
+    boolean viewingFam = isOwnIntegration(integrationId, configuredOwnIntegrationId());
 
     if (roles.size() > FAN_OUT_WARN_THRESHOLD) {
       log.warn("Reading assignments for integration {} ({}) needs {} requests, one per role. "
@@ -1311,6 +1498,11 @@ public class CssIntegrationService {
         continue;
       }
 
+      // Skipped before the per-role request, so the fan-out shrinks with them.
+      if (viewingFam && administersAnotherApplication(role.name())) {
+        continue;
+      }
+
       CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(role.name());
 
       for (CssApiService.CssUserDto user
@@ -1325,8 +1517,7 @@ public class CssIntegrationService {
             user.email(),
             parsed.baseRoleName(),
             displayNames.get(parsed.baseRoleName()),
-            parsed.scopeType(),
-            parsed.scopeValue()));
+            parsed.scopes().stream().map(ScopeDto::of).toList()));
       }
     }
 

@@ -36,7 +36,7 @@ import TabList from "primevue/tablist";
 import TabPanel from "primevue/tabpanel";
 import TabPanels from "primevue/tabpanels";
 import Tabs from "primevue/tabs";
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 /**
@@ -74,6 +74,16 @@ const selfPermissionsQuery = useQuery({
 });
 
 const canSeeAdminTabs = computed(() => {
+    // FAM has neither tier. Its integration does carry APP_ADMIN and
+    // DELEGATED_ADMIN roles, but every one of them records who administers some
+    // OTHER application - that is the only place such a role can sit and still
+    // reach FAM's token. A tab here would ask "who are FAM's delegated admins",
+    // which is not a thing: FAM's own administrators hold FAM_ADMIN, and they
+    // are on the Users tab.
+    if (selectedApp.value?.fam_application) {
+        return false;
+    }
+
     const permissions = selfPermissionsQuery.data.value ?? [];
     if (permissions.some((permission) => permission.role === "FAM_ADMIN")) {
         return true;
@@ -84,6 +94,25 @@ const canSeeAdminTabs = computed(() => {
             permission.css_integration_id === selectedApp.value?.integration_id &&
             permission.environment === selectedApp.value?.environment
     );
+});
+
+/**
+ * Which tab is open, held here rather than left to Tabs' own default.
+ *
+ * The admin tabs come and go with the chosen application, and an uncontrolled
+ * Tabs keeps its value when the tab it names disappears - switching from FREP's
+ * Delegated admins tab to FAM left the strip showing Users while the panel below
+ * rendered nothing at all.
+ */
+const activeTab = ref("0");
+
+const USERS_TAB = "0";
+
+// Whenever the admin tabs go away, so does any selection of one.
+watch(canSeeAdminTabs, (visible) => {
+    if (!visible) {
+        activeTab.value = USERS_TAB;
+    }
 });
 
 const router = useRouter();
@@ -244,7 +273,7 @@ const goToAddPermission = () => {
             <TablePlaceholder v-if="!selectedApp" />
 
             <div v-else class="tab-view-container">
-                <Tabs value="0">
+                <Tabs v-model:value="activeTab">
                     <TabList>
                         <Tab value="0">
                             <component :is="UserIcon" />

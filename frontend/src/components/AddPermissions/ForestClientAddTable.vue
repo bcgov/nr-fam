@@ -3,7 +3,7 @@ import Button from "@/components/UI/Button.vue";
 import { FOREST_CLIENT_SEARCH_MIN_LENGTH } from "@/constants/constants";
 import { AppActlApiService } from "@/services/ApiServiceFactory";
 import { getAxiosErrorStatus } from "@/utils/ApiUtils";
-import type { AppPermissionFormType } from "@/views/AddAppPermission/utils";
+import type { TextInputType } from "@/types/InputTypes";
 import type { FamForestClientDto } from "fam-api";
 import TrashIcon from "@carbon/icons-vue/es/trash-can/16";
 import Column from "primevue/column";
@@ -18,23 +18,45 @@ import SubsectionTitle from "../UI/SubsectionTitle.vue";
 import { HttpStatusCode } from "axios";
 import FCServiceUnavailableNotification from "../NotificationContent/ServiceUnavailableNtfnTemplate.vue";
 
-const props = defineProps<{
-    environment: string;
-    fieldId: string;
-    formValues: AppPermissionFormType;
-    setFieldValue: (field: string, value: any) => void;
-}>();
+/** The search box's own state: what is typed, and whether it is complaining. */
+export type ForestClientInput = TextInputType & { isVerifying: boolean };
+
+/**
+ * Organisation picker, bound to whichever fields it is pointed at.
+ *
+ * Both the chosen organisations and the search box's own state used to be read
+ * from fixed keys, so two of these on one screen would have shared a search box:
+ * typing in one would echo in the other. Appointing a delegated admin needs one
+ * per client-scoped role, so both travel as paths now.
+ */
+const props = withDefaults(
+    defineProps<{
+        environment: string;
+        /** Form path holding the chosen organisations. */
+        fieldId: string;
+        selected: FamForestClientDto[];
+        /** Form path holding this picker's own search-box state. */
+        inputFieldId: string;
+        input: ForestClientInput;
+        setFieldValue: (field: string, value: any) => void;
+        title?: string;
+        subtitle?: string;
+    }>(),
+    {
+        title: "Restrict access by organizations",
+        subtitle:
+            "Add one or more organizations for this user to have access to",
+    }
+);
 
 const { setErrors: setForestClientsError } = useField(props.fieldId);
 
 // State for Forest Client Service down warning
 const isForestClientServiceDown = ref(false);
 
-const updateForestClientInput = (
-    updates: Partial<AppPermissionFormType["forestClientInput"]>
-) => {
-    props.setFieldValue("forestClientInput", {
-        ...props.formValues.forestClientInput,
+const updateForestClientInput = (updates: Partial<ForestClientInput>) => {
+    props.setFieldValue(props.inputFieldId, {
+        ...props.input,
         ...updates,
     });
 };
@@ -86,7 +108,7 @@ const onSearch = async (event: { query: string }) => {
         // Already-added organisations are dropped rather than offered and then
         // refused on selection.
         const chosen = new Set(
-            props.formValues.forestClients.map(
+            props.selected.map(
                 (client) => client.forest_client_number
             )
         );
@@ -109,9 +131,9 @@ const onSearch = async (event: { query: string }) => {
 /**
  * Adds the chosen organisation.
  *
- * The status check is the one the verify button used to make: an inactive
- * organisation is findable but not grantable, and saying so is more use than
- * hiding it from the results.
+ * The status check stays even though the search now returns only active
+ * organisations: it is a backstop against a suggestion that has gone stale
+ * between the search and the click, not the reason inactive ones are hidden.
  */
 const onSelect = (event: { value: FamForestClientDto }) => {
     const client = event.value;
@@ -121,8 +143,8 @@ const onSelect = (event: { value: FamForestClientDto }) => {
             "This organization can't be added due to its status"
         );
     } else {
-        props.setFieldValue("forestClients", [
-            ...props.formValues.forestClients,
+        props.setFieldValue(props.fieldId, [
+            ...props.selected,
             client,
         ]);
     }
@@ -132,8 +154,8 @@ const onSelect = (event: { value: FamForestClientDto }) => {
 
 const removeForestClientFromList = (clientNumber: string) => {
     props.setFieldValue(
-        "forestClients",
-        props.formValues.forestClients.filter(
+        props.fieldId,
+        props.selected.filter(
             (client) => client.forest_client_number !== clientNumber
         )
     );
@@ -143,10 +165,7 @@ const removeForestClientFromList = (clientNumber: string) => {
 
 <template>
     <div class="foresnt-client-add-table-container">
-        <SubsectionTitle
-            title="Restrict access by organizations"
-            subtitle="Add one or more organizations for this user to have access to"
-        />
+        <SubsectionTitle :title="props.title" :subtitle="props.subtitle" />
 
         <FCServiceUnavailableNotification
             v-if="isForestClientServiceDown"
@@ -154,15 +173,15 @@ const removeForestClientFromList = (clientNumber: string) => {
         />
 
         <Label
-            for="forestClientInput"
+            :for="props.input.id"
             label-text="Organization"
             required
         />
         <Field
             :name="props.fieldId"
             v-slot="{ errorMessage }"
-            :model-value="props.formValues.forestClients"
-            @update:model-value="(value) => props.setFieldValue('forestClients', value)"
+            :model-value="props.selected"
+            @update:model-value="(value) => props.setFieldValue(props.fieldId, value)"
         >
             <!--
                 One field, either kind of term. `option-label` is what lands in
@@ -170,9 +189,9 @@ const removeForestClientFromList = (clientNumber: string) => {
                 because a number alone is not something anybody recognises.
             -->
             <AutoComplete
-                :id="props.formValues.forestClientInput.id"
+                :id="props.input.id"
                 class="w-100 forest-client-autocomplete"
-                :model-value="props.formValues.forestClientInput.value"
+                :model-value="props.input.value"
                 @update:model-value="
                     (value: any) =>
                         updateForestClientInput({
@@ -185,22 +204,23 @@ const removeForestClientFromList = (clientNumber: string) => {
                 :delay="300"
                 :complete-on-focus="false"
                 placeholder="Search by organization name or client number"
-                :invalid="!!(errorMessage || !props.formValues.forestClientInput.isValid)"
+                :invalid="!!(errorMessage || !props.input.isValid)"
                 @complete="onSearch"
                 @item-select="onSelect"
             >
                 <template #option="{ option }">
                     <span class="option-name">{{ option.client_name }}</span>
-                    <span class="option-number">
-                        {{ option.forest_client_number }}
-                    </span>
-                    <!-- Findable but not grantable; say so before it is chosen. -->
-                    <span
-                        v-if="option.status?.status_code !== 'A'"
-                        class="option-inactive"
-                    >
-                        {{ option.status?.description ?? "Inactive" }}
-                    </span>
+                    <!--
+                        The separator is inside the interpolation, not template
+                        text. Vue condenses whitespace between and around nodes,
+                        so a leading space written in the markup is dropped and
+                        the dash ends up against the name; inside the expression
+                        it survives. It is real text rather than a ::before so
+                        it is copied and announced with the option.
+                    -->
+                    <span class="option-number">{{
+                        ` - ${option.forest_client_number}`
+                    }}</span>
                 </template>
 
                 <template #empty>No organization found</template>
@@ -209,20 +229,20 @@ const removeForestClientFromList = (clientNumber: string) => {
             <HelperText
                 :text="
                     errorMessage ||
-                    props.formValues.forestClientInput.errorMsg ||
+                    props.input.errorMsg ||
                     'Type an organization name or client number, then choose from the list'
                 "
                 :is-error="
                     !!(
                         errorMessage ||
-                        !props.formValues.forestClientInput.isValid
+                        !props.input.isValid
                     )
                 "
             />
         </Field>
 
         <!-- Table section -->
-        <DataTable class="fam-table" :value="props.formValues.forestClients">
+        <DataTable class="fam-table" :value="props.selected">
             <template #empty>No organization added yet</template>
 
             <Column header="Client number" field="forest_client_number" />
@@ -259,6 +279,33 @@ const removeForestClientFromList = (clientNumber: string) => {
 </template>
 
 <style lang="scss">
+/*
+    Outside the component's container on purpose.
+
+    AutoComplete's appendTo defaults to "body", so the overlay - and every
+    option in it - is teleported out of this component's DOM. Rules nested
+    under the container never matched it, which is why the number showed in
+    the default colour with no gap however the markup was written.
+
+    Scoped to PrimeVue's own overlay class rather than left bare, so
+    .option-number does not become a global.
+*/
+.p-autocomplete-overlay {
+    .option-number {
+        /*
+            The margin is what separates the name from the dash. The text also
+            carries a leading space, but an option is a flex row and a flex
+            item's leading whitespace is trimmed - the span measures 4px
+            narrower - so the space survives a copy but never reaches the
+            screen. Both are needed: the margin for the eye, the space for
+            anything reading or copying the text.
+        */
+        margin-left: 0.25rem;
+        color: var(--semantic-color-text-secondary);
+    }
+
+}
+
 .foresnt-client-add-table-container {
     .forest-client-autocomplete {
         max-width: 32rem;
@@ -266,16 +313,6 @@ const removeForestClientFromList = (clientNumber: string) => {
         .p-autocomplete-input {
             width: 100%;
         }
-    }
-
-    .option-number {
-        margin-left: 0.5rem;
-        color: var(--semantic-color-text-secondary);
-    }
-
-    .option-inactive {
-        margin-left: 0.5rem;
-        color: var(--semantic-color-text-error);
     }
 
     .subsection-title-container {

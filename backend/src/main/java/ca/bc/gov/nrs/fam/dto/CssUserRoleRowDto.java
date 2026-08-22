@@ -1,6 +1,7 @@
 package ca.bc.gov.nrs.fam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 
 /**
  * One user's assignment of one role, for the permissions table.
@@ -48,5 +49,10 @@ public record CssUserRoleRowDto(
     String roleDisplayName,
 
     /** Recovered from the role name, the only place it is recorded. */
-    String scopeType,
-    String scopeValue) {}
+    /** Every scope this assignment carries; empty for an unscoped role. */
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<ScopeDto> scopes) {
+
+  public List<ScopeDto> scopes() {
+    return scopes == null ? List.of() : scopes;
+  }
+}

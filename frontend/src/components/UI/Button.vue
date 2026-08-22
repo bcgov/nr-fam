@@ -93,6 +93,22 @@ const handleKeyDown = (event: KeyboardEvent) => {
             width: 1rem;
             height: 1rem;
         }
+
+        /*
+            The spinner replaces the icon while loading, but unlike an icon it
+            brings no spacing of its own. `space-between` gives none either: the
+            button is sized to its content, so there is no free space to
+            distribute and the two end up touching.
+
+            Applied between the pair rather than as a gap on the container, so
+            buttons that already pad their label do not gain a second gap.
+        */
+        .button-label + .spinner-container,
+        .spinner-container + .button-label,
+        .button-label + .button-icon,
+        .button-icon + .button-label {
+            margin-left: 0.5rem;
+        }
     }
 }
 

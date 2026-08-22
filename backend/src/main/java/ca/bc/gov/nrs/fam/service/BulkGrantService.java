@@ -121,7 +121,7 @@ public class BulkGrantService {
       List<CssUserRoleAssignmentResult> results = cssIntegrationService.assignUserRoles(
           integrationId, environment,
           new CssUserRoleAssignmentRequest(
-              row.userGuid(), row.userType(), row.roleCode(), row.email(), null, List.of()),
+              row.userGuid(), row.userType(), row.roleCode(), row.email(), List.of()),
           requester);
 
       Optional<CssUserRoleAssignmentResult> failure =

@@ -1,56 +1,130 @@
-import type { CssDelegatedAdminRequest } from "fam-api/model";
-import type { AppPermissionFormType } from "@/views/AddAppPermission/utils";
+import type { SelectedUser } from "@/types/SelectUserType";
+import {
+    MAX_SCOPE_COMBINATIONS,
+    newRoleScopeSelection,
+    requiresScope,
+    roleLabel,
+    scopeCombinationCount,
+    selectionsOverTheLimit,
+    toScopeSelections,
+    type RoleScopeSelection,
+} from "@/utils/ScopeUtils";
+import type { RoleOption } from "@/views/AddAppPermission/utils";
+import {
+    UserType,
+    type CssDelegatedAdminRequest,
+    type FamDistrictDto,
+    type FamForestClientDto,
+} from "fam-api/model";
+import { array, mixed, object, string } from "yup";
 
 /**
- * Appointing a delegated administrator collects the same fields as granting a
- * role - a user, a role, and the scope values that role needs - so the form
- * shape is shared with the grant screen rather than duplicated.
+ * One role this person may hand out, with what they may hand it out for.
  *
- * What differs is what the answers mean. On the grant screen the districts are
- * the ones the person is *getting*; here they are the ones the person may
- * *hand out*. That difference is in the wording, not the data.
+ * The shape is shared with the grant screen - see {@link RoleScopeSelection}.
+ * What differs is what the answers mean: there the districts are what somebody
+ * is being given, here they are what they may hand out.
  */
-export type DelegatedAdminFormType = AppPermissionFormType;
+export type DelegatedRoleSelection = RoleScopeSelection;
 
-/** Delegating a role that is not scoped, or one scope value at a time. */
+export type DelegatedAdminFormType = {
+    domain: UserType;
+    users: SelectedUser[];
+    roles: DelegatedRoleSelection[];
+};
+
+/** Named for this screen; the arithmetic is the shared one. */
+export const delegationCount = scopeCombinationCount;
+export const MAX_DELEGATIONS_PER_ROLE = MAX_SCOPE_COMBINATIONS;
+export const newRoleSelection = newRoleScopeSelection;
+export { requiresScope, roleLabel };
+
+/** Every delegation the form will create, across all its roles. */
+export const totalDelegations = (form: DelegatedAdminFormType): number =>
+    form.roles.reduce((total, selection) => total + delegationCount(selection), 0);
+
+/** Roles whose scope selection has already outgrown what the backend accepts. */
+export const rolesOverTheLimit = (
+    form: DelegatedAdminFormType
+): DelegatedRoleSelection[] => selectionsOverTheLimit(form.roles);
+
+/**
+ * One request per role.
+ *
+ * Not one per scope combination: a request carries every scope it needs and the
+ * backend expands the cross-product, exactly as the grant path does. Splitting
+ * here would mean the two derived different role names, and a delegation whose
+ * name does not match what a grant assigns authorises nothing.
+ */
 export const toDelegatedAdminRequests = (
     form: DelegatedAdminFormType
 ): CssDelegatedAdminRequest[] => {
     const user = form.users[0];
-    if (!user || !form.role) {
+    if (!user) {
         return [];
     }
 
-    // Mirrors generateCssRequests on the grant screen deliberately: a delegation
-    // has to name the role a grant will actually assign, so if the two derived
-    // scope values differently a delegation would authorise nothing.
-    const districtScoped = Boolean(form.role.role_type_district);
-    const clientScoped = Boolean(form.role.role_type_client);
-
-    const scopeType = districtScoped
-        ? "DISTRICT"
-        : clientScoped
-          ? "FOREST_CLIENT"
-          : undefined;
-
-    const scopeValues = districtScoped
-        ? form.districts.map((district) => district.org_unit_code)
-        : clientScoped
-          ? form.forestClients.map((client) => client.forest_client_number)
-          : [];
-
-    // One request carries every scope value: the backend creates one delegation
-    // per value, matching how a scoped grant creates one role per value.
-    return [
-        {
-            user_guid: user.guid ?? "",
-            user_type: form.domain,
-            role_name: form.role.name,
-            scope_type: scopeType,
-            scope_values: scopeValues,
-        },
-    ];
+    return form.roles.map((selection) => ({
+        user_guid: user.guid ?? "",
+        user_type: form.domain,
+        role_name: selection.role.name,
+        // The same builder the grant screen uses, not a copy of its logic.
+        scopes: toScopeSelections(
+            selection.role,
+            selection.districts,
+            selection.forestClients
+        ),
+    }));
 };
+
+export const getDefaultFormData = (
+    domain: UserType
+): DelegatedAdminFormType => ({
+    domain,
+    users: [],
+    roles: [],
+});
+
+export const validateDelegatedAdminForm = () =>
+    object({
+        domain: string().required(),
+        users: array()
+            .of(mixed<SelectedUser>().required())
+            .min(1, "Select the user who will be a delegated admin"),
+        roles: array()
+            .of(
+                object({
+                    role: mixed<RoleOption>().required(),
+                    // Required only for the roles that are scoped that way, so
+                    // ticking an unscoped role never blocks the form.
+                    districts: array()
+                        .of(mixed<FamDistrictDto>().required())
+                        .when("role", {
+                            is: (role: RoleOption) =>
+                                Boolean(role?.role_type_district),
+                            then: (schema) =>
+                                schema.min(
+                                    1,
+                                    "Choose at least one district for this role"
+                                ),
+                            otherwise: (schema) => schema.default([]),
+                        }),
+                    forestClients: array()
+                        .of(mixed<FamForestClientDto>().required())
+                        .when("role", {
+                            is: (role: RoleOption) =>
+                                Boolean(role?.role_type_client),
+                            then: (schema) =>
+                                schema.min(
+                                    1,
+                                    "Choose at least one organization for this role"
+                                ),
+                            otherwise: (schema) => schema.default([]),
+                        }),
+                })
+            )
+            .min(1, "Select at least one role they may grant"),
+    });
 
 /**
  * Why an appointment was refused, preferring the backend's own message.

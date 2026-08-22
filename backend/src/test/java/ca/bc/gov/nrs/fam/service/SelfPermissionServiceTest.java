@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ca.bc.gov.nrs.fam.dto.ScopeDto;
 import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.dto.CssIntegrationDto;
@@ -237,7 +238,7 @@ class SelfPermissionServiceTest {
           assertThat(row.environment()).isEqualTo("dev");
           assertThat(row.roleName()).isEqualTo("FREP_ADMINISTRATOR");
           assertThat(row.roleDisplayName()).isEqualTo("FREP Administrator");
-          assertThat(row.scopeType()).isNull();
+          assertThat(row.scopes()).isEmpty();
         });
   }
 
@@ -258,9 +259,11 @@ class SelfPermissionServiceTest {
         .allSatisfy(row -> {
           assertThat(row.baseRoleName()).isEqualTo("CHR_FREP_EDITOR");
           assertThat(row.roleDisplayName()).isEqualTo("Submitter (CHR)");
-          assertThat(row.scopeType()).isEqualTo("DISTRICT");
+          assertThat(row.scopes()).singleElement()
+              .extracting(ScopeDto::type).isEqualTo("DISTRICT");
         })
-        .extracting(SelfApplicationRoleDto::scopeValue)
+        .flatExtracting(SelfApplicationRoleDto::scopes)
+        .extracting(ScopeDto::value)
         .containsExactly("DCC", "DKA");
   }
 

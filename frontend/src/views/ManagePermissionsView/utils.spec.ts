@@ -10,6 +10,7 @@ import {
     emailFailed,
     failedRoles,
     toGrantNotifications,
+    toGrantToast,
     wasGranted,
 } from "./utils";
 
@@ -35,10 +36,24 @@ const notAssigned = (roleName: string, message: string | null = "boom") => ({
     email_sending_status: EmailSendingStatus.NotRequired,
 });
 
-const summary = (outcomes: UserGrantOutcome[]): AppPermissionGrantSummary => ({
+const ROLE = {
+    name: "FREP_ADMINISTRATOR",
+    display_name: "FREP Administrator",
+    composite: false,
+    composites: [],
+    role_type_district: false,
+    role_type_client: false,
+} as any;
+
+/** Each outcome carries its own role now, so a default is supplied here. */
+const summary = (
+    outcomes: Array<Partial<UserGrantOutcome>>
+): AppPermissionGrantSummary => ({
     applicationName: "FREP (DEV)",
-    roleName: "FREP_ADMINISTRATOR",
-    outcomes,
+    outcomes: outcomes.map((outcome) => ({
+        role: ROLE,
+        ...outcome,
+    })) as UserGrantOutcome[],
 });
 
 const severities = (s: AppPermissionGrantSummary | null) =>
@@ -86,7 +101,9 @@ describe("toGrantNotifications", () => {
         expect(toGrantNotifications(summary([]))).toEqual([]);
     });
 
-    it("shows one success banner when everybody was granted", () => {
+    it("shows no banner at all when everybody was granted", () => {
+        // Success is a toast now. A banner would sit there needing dismissal to
+        // report something the table below already shows, marked "New".
         expect(
             severities(
                 summary([
@@ -94,7 +111,7 @@ describe("toGrantNotifications", () => {
                     { user: user("B"), results: [assigned("R")] },
                 ] as any)
             )
-        ).toEqual([Severity.Success]);
+        ).toEqual([]);
     });
 
     it("shows one failure banner when nobody was granted", () => {
@@ -115,7 +132,7 @@ describe("toGrantNotifications", () => {
                     { user: user("B"), results: [], error: "different organization" },
                 ] as any)
             )
-        ).toEqual([Severity.Success, Severity.Error]);
+        ).toEqual([Severity.Error]);
     });
 
     it("warns separately when access was granted but no email went out", () => {
@@ -132,11 +149,10 @@ describe("toGrantNotifications", () => {
             ] as any)
         );
 
-        expect(notifications.map((n) => n.severity)).toEqual([
-            Severity.Success,
-            Severity.Warn,
-        ]);
-        expect(String(notifications[1].message)).toContain("Jane Smith (A)");
+        // Still a banner rather than a toast: somebody has to contact them, and
+        // a message that expires after six seconds is no place for a task.
+        expect(notifications.map((n) => n.severity)).toEqual([Severity.Warn]);
+        expect(String(notifications[0].message)).toContain("Jane Smith (A)");
     });
 
     it("does not warn about email when the grant itself failed", () => {
@@ -149,13 +165,13 @@ describe("toGrantNotifications", () => {
 
     it("counts a partly successful user as granted, not failed", () => {
         // They hold the role for one district; saying the grant failed would be
-        // false, and the shortfall is named on the success banner instead.
+        // false, so no failure banner is raised for them.
         const outcome = {
             user: user("A"),
             results: [assigned("R_DISTRICT-DCC"), notAssigned("R_DISTRICT-DQU")],
         } as any;
 
-        expect(severities(summary([outcome]))).toEqual([Severity.Success]);
+        expect(severities(summary([outcome]))).toEqual([]);
         expect(failedRoles(outcome)).toHaveLength(1);
     });
 });
@@ -176,5 +192,72 @@ describe("emailFailed", () => {
                 ],
             } as any)
         ).toBe(false);
+    });
+});
+
+describe("toGrantToast", () => {
+    it("names the one person granted", () => {
+        const toast = toGrantToast(
+            summary([
+                { user: user("A", "Jane", "Smith"), results: [assigned("R")] },
+            ] as any)
+        );
+
+        expect(toast?.severity).toBe("success");
+        expect(toast?.detail).toContain("Jane Smith (A)");
+    });
+
+    it("counts several rather than naming them all", () => {
+        // Five names would make the toast taller than the table it sits over.
+        const toast = toGrantToast(
+            summary([
+                { user: user("A"), results: [assigned("R")] },
+                { user: user("B"), results: [assigned("R")] },
+                { user: user("C"), results: [assigned("R")] },
+            ] as any)
+        );
+
+        expect(toast?.detail).toContain("3 users");
+    });
+
+    it("warns rather than celebrates when some were refused", () => {
+        const toast = toGrantToast(
+            summary([
+                { user: user("A"), results: [assigned("R")] },
+                { user: user("B"), results: [], error: "different organization" },
+            ] as any)
+        );
+
+        // The toast says how many; the banner underneath names them.
+        expect(toast?.severity).toBe("warn");
+        expect(toast?.detail).toContain("1 could not be granted");
+    });
+
+    it("says nothing when nobody was granted anything", () => {
+        // Entirely a failure, and the banner reports it. "0 users were granted"
+        // would be noise stacked on top of the real message.
+        expect(
+            toGrantToast(
+                summary([
+                    { user: user("A"), results: [], error: "refused" },
+                ] as any)
+            )
+        ).toBeNull();
+    });
+
+    it("says nothing when there was no grant at all", () => {
+        expect(toGrantToast(null)).toBeNull();
+        expect(toGrantToast(summary([] as any))).toBeNull();
+    });
+
+    it("names the role and the application", () => {
+        const toast = toGrantToast(
+            summary([{ user: user("A"), results: [assigned("R")] }] as any)
+        );
+
+        // Several applications can be administered from this screen, so a
+        // toast that named neither would not say what had just happened.
+        expect(toast?.detail).toContain("FREP Administrator");
+        expect(toast?.detail).toContain("FREP (DEV)");
     });
 });

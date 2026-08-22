@@ -115,6 +115,12 @@ class OpenApiSpecGeneratorTest {
 
     // camelCase here would mean the whole generated client mismatches the API.
     assertThat(row.get("properties").fieldNames()).toIterable()
-        .contains("first_name", "last_name", "role_name", "scope_type", "scope_value");
+        .contains("first_name", "last_name", "role_name", "scopes");
+
+    // The nested scope shape has to be snake_case too - it is what the chips read.
+    JsonNode scope = schemas.get("ScopeDto");
+    assertThat(scope).as("ScopeDto missing from spec").isNotNull();
+    assertThat(scope.get("properties").fieldNames()).toIterable()
+        .contains("type", "value", "label");
   }
 }

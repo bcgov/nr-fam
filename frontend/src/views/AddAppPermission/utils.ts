@@ -1,4 +1,13 @@
-import type { TextInputType } from "@/types/InputTypes";
+import {
+    MAX_SCOPE_COMBINATIONS,
+    newRoleScopeSelection,
+    requiresScope,
+    roleLabel,
+    scopeCombinationCount,
+    selectionsOverTheLimit,
+    toScopeSelections,
+    type RoleScopeSelection,
+} from "@/utils/ScopeUtils";
 import type { SelectedUser } from "@/types/SelectUserType";
 import {
     UserType,
@@ -23,10 +32,18 @@ export const AddAppUserPermissionErrorQuerykey = "app-user-mutation-error";
  * what lets the notification say who was granted what - flattening the results
  * together loses exactly that.
  */
+/**
+ * What happened for one user and one role.
+ *
+ * A pair rather than a user, because a grant now names several roles and CSS
+ * assigns one role to one user per call - so they do not share a fate.
+ * Reporting per user would have to pick one of several results to show.
+ */
 export type UserGrantOutcome = {
     user: SelectedUser;
+    role: RoleOption;
     results: CssUserRoleAssignmentResult[];
-    /** Set when the call for this user failed outright, so it has no results. */
+    /** Set when the call for this pair failed outright, so it has no results. */
     error?: string;
 };
 
@@ -49,7 +66,7 @@ export const describeGrantError = (error: unknown): string => {
 
 export type AppPermissionGrantSummary = {
     applicationName: string;
-    roleName: string;
+    /** One per user/role pair attempted. Each carries the role it was for. */
     outcomes: UserGrantOutcome[];
 };
 
@@ -67,53 +84,40 @@ export type RoleOption = CssRoleOptionDto;
 export type AppPermissionFormType = {
     domain: UserType;
     users: SelectedUser[];
-    forestClients: FamForestClientDto[];
-    districts: FamDistrictDto[];
-    role: RoleOption | null;
-    forestClientInput: TextInputType & {
-        /**
-         * Track if a verification of a client number is in progress. Role
-         * selection is disabled while verifying, otherwise a client could be
-         * added right after switching.
-         */
-        isVerifying: boolean;
-    };
+    /** One entry per chosen role, each carrying its own scope. */
+    roles: RoleScopeSelection[];
 };
+
+/** Re-exported so the grant screen has one import for its form vocabulary. */
+export {
+    MAX_SCOPE_COMBINATIONS,
+    newRoleScopeSelection,
+    requiresScope,
+    roleLabel,
+    scopeCombinationCount,
+    selectionsOverTheLimit,
+};
+
+/** Every permission the form will create, across all its roles and users. */
+export const totalPermissions = (form: AppPermissionFormType): number =>
+    form.users.length *
+    form.roles.reduce(
+        (total, selection) => total + scopeCombinationCount(selection),
+        0
+    );
 
 export type AppPermissionQueryErrorType = {
     error: Error;
     formData: AppPermissionFormType;
 };
 
-const defaultFormData: AppPermissionFormType = {
-    domain: UserType.BceidBus,
+export const getDefaultFormData = (
+    domain: UserType
+): AppPermissionFormType => ({
+    domain,
     users: [],
-    forestClients: [],
-    districts: [],
-    role: null,
-    forestClientInput: {
-        id: "forest-client-number-input",
-        value: "",
-        isValid: true,
-        errorMsg: "",
-        isVerifying: false,
-    },
-};
-
-export const getDefaultFormData = (domain: UserType): AppPermissionFormType => {
-    const copy = structuredClone(defaultFormData);
-    return { ...copy, domain };
-};
-
-/** True when a forest client must be chosen before the role can be granted. */
-export const isClientScopedRoleSelected = (
-    formData?: AppPermissionFormType
-): boolean => Boolean(formData?.role?.role_type_client);
-
-/** True when one or more districts must be chosen before the role can be granted. */
-export const isDistrictScopedRoleSelected = (
-    formData?: AppPermissionFormType
-): boolean => Boolean(formData?.role?.role_type_district);
+    roles: [],
+});
 
 export const validateAppPermissionForm = () =>
     object({
@@ -125,66 +129,89 @@ export const validateAppPermissionForm = () =>
                 MAX_USERS_GRANTING_ALLOWED,
                 `At most ${MAX_USERS_GRANTING_ALLOWED} users can be granted at once`
             ),
-        role: mixed<RoleOption>().required("Please select a role"),
-        forestClients: array()
-            .of(mixed<FamForestClientDto>().required())
-            .when("role", {
-                is: (role: RoleOption | null) => Boolean(role?.role_type_client),
-                then: (schema) =>
-                    schema.min(1, "At least one organization is required"),
-                otherwise: (schema) => schema.default([]).nullable(),
-            }),
-        districts: array()
-            .of(mixed<FamDistrictDto>().required())
-            .when("role", {
-                is: (role: RoleOption | null) =>
-                    Boolean(role?.role_type_district),
-                then: (schema) =>
-                    schema.min(1, "At least one district is required"),
-                otherwise: (schema) => schema.default([]).nullable(),
-            }),
+        roles: array()
+            .of(
+                object({
+                    role: mixed<RoleOption>().required(),
+                    // Required only for the roles scoped that way, so choosing
+                    // an unscoped role never blocks the form.
+                    districts: array()
+                        .of(mixed<FamDistrictDto>().required())
+                        .when("role", {
+                            is: (role: RoleOption) =>
+                                Boolean(role?.role_type_district),
+                            then: (schema) =>
+                                schema.min(
+                                    1,
+                                    "Choose at least one district for this role"
+                                ),
+                            otherwise: (schema) => schema.default([]),
+                        }),
+                    forestClients: array()
+                        .of(mixed<FamForestClientDto>().required())
+                        .when("role", {
+                            is: (role: RoleOption) =>
+                                Boolean(role?.role_type_client),
+                            then: (schema) =>
+                                schema.min(
+                                    1,
+                                    "Choose at least one organization for this role"
+                                ),
+                            otherwise: (schema) => schema.default([]),
+                        }),
+                })
+            )
+            .min(1, "Please select at least one role"),
     });
 
 /**
- * One CSS assignment request per selected user.
+ * One CSS assignment request per user, per role.
  *
- * CSS grants a role to one user at a time, so a multi-user selection becomes one
- * request each rather than a single batch call. Scope values travel as bare
- * strings; the backend turns each into a scope-specific role, because CSS roles
- * carry no attributes and the name is what reaches the token.
+ * CSS grants a single role to a single user at a time, so a grant of three roles
+ * to two people is six calls. The role travels with the request so the outcome
+ * can be attributed to the pair it came from - the calls do not share a fate,
+ * and reporting per user would have to pick one of several results to show.
+ *
+ * Scope values travel as bare strings; the backend turns each combination into a
+ * scope-specific role, because CSS roles carry no attributes and the name is
+ * what reaches the token.
  */
-export const generateCssRequests = (
+export type PlannedGrant = {
+    user: SelectedUser;
+    role: RoleOption;
+    request: CssUserRoleAssignmentRequest;
+};
+
+export const planGrants = (
     formData: AppPermissionFormType
-): CssUserRoleAssignmentRequest[] => {
-    const role = formData.role;
-    if (!role) {
-        return [];
+): PlannedGrant[] => {
+    const planned: PlannedGrant[] = [];
+
+    // Users outer, roles inner: a person being granted three roles sees them
+    // attempted together, so a failure part-way through leaves one person half
+    // done rather than every person half done.
+    for (const user of formData.users) {
+        for (const selection of formData.roles) {
+            planned.push({
+                user,
+                role: selection.role,
+                request: {
+                    user_guid: user.guid ?? "",
+                    user_type: formData.domain,
+                    role_name: selection.role.name,
+                    // The address travels with the request because the picker
+                    // already has it - the directory search returns it alongside
+                    // the GUID. It only addresses the notification; who gets
+                    // granted what comes from the GUID.
+                    target_user_email: user.email ?? undefined,
+                    scopes: toScopeSelections(
+                        selection.role,
+                        selection.districts,
+                        selection.forestClients
+                    ),
+                },
+            });
+        }
     }
-
-    const districtScoped = Boolean(role.role_type_district);
-    const clientScoped = Boolean(role.role_type_client);
-
-    const scopeType = districtScoped
-        ? "DISTRICT"
-        : clientScoped
-          ? "FOREST_CLIENT"
-          : undefined;
-
-    const scopeValues = districtScoped
-        ? formData.districts.map((d) => d.org_unit_code)
-        : clientScoped
-          ? formData.forestClients.map((c) => c.forest_client_number)
-          : [];
-
-    // The address travels with the request because the picker already has it -
-    // the directory search returns it alongside the GUID. It only addresses the
-    // notification; who gets granted what comes from the GUID.
-    return formData.users.map((user) => ({
-        user_guid: user.guid ?? "",
-        user_type: formData.domain,
-        role_name: role.name,
-        target_user_email: user.email ?? undefined,
-        scope_type: scopeType,
-        scope_values: scopeValues,
-    }));
+    return planned;
 };

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -141,23 +142,91 @@ public class ForestClientIntegrationService {
   }
 
   /**
-   * Search by organisation name rather than by number.
+   * Free-text lookup for the autocomplete: name or number, matched by substring.
    *
-   * <p>The same {@code /api/clients/search} endpoint, which takes {@code name} as
-   * well as {@code id} - so a person can type what they know. Matching is the
-   * API's own: partial and case-insensitive, unlike {@code id}, which matches a
-   * whole number exactly.
+   * <p>{@code /api/clients/findByClientNumberOrName/{term}} is the only endpoint
+   * that does what the picker needs. Its query is literally
+   * {@code CLIENT_NUMBER LIKE %term% OR CLIENT_NAME LIKE %term%}, so one term
+   * covers both fields and a partial number needs no zero-padding: "58846" is
+   * contained in "00058846".
    *
-   * <p>No retry, like the number search behind the picker: this runs on every
-   * keystroke pause and latency matters more than a second attempt.
+   * <p>Not {@code /api/clients/search/by}, which was tried first and looks right
+   * from its parameter list. Its name match is a Jaro-Winkler similarity at 80,
+   * and its number match is {@code CLIENT_NUMBER = :number} - exact. That is why
+   * "ser" answered with REYBURN and SWAIN while "000" answered with nothing.
+   *
+   * <p><b>The term is upper-cased</b> because this endpoint passes it to the
+   * database untouched and the legacy client names are stored upper-case; a
+   * lower-case term would match nothing. Digits are unaffected.
+   *
+   * <p>The term travels in the path, not the query string, so it is sent as a URI
+   * variable and left for the builder to encode.
+   *
+   * <p>No retry: this runs on every keystroke pause, where latency matters more
+   * than a second attempt.
    */
-  public List<Map<String, Object>> searchByName(
-      String name, int size, ApiInstanceEnv apiInstanceEnv) {
+  public List<Map<String, Object>> searchByNumberOrName(
+      String term, int size, ApiInstanceEnv apiInstanceEnv) {
+
+    String needle = term.toUpperCase(Locale.ROOT);
+
+    return get(apiInstanceEnv, uriBuilder -> uriBuilder
+        .path("/api/clients/findByClientNumberOrName/{term}")
+        .queryParam("page", FamConstants.DEFAULT_FC_API_SEARCH_PAGE)
+        .queryParam("size", size)
+        .build(needle));
+  }
+
+  /**
+   * Look up an organisation by its acronym.
+   *
+   * <p>Its own call because no substring endpoint covers the acronym, and an
+   * organisation people know by acronym is not findable by name - BCTS is not a
+   * substring of "BC TIMBER SALES". The match is {@code CLIENT_ACRONYM = :acronym},
+   * exact, so this only ever answers a fully-typed acronym.
+   */
+  public List<Map<String, Object>> searchByAcronym(
+      String acronym, int size, ApiInstanceEnv apiInstanceEnv) {
+
+    return get(apiInstanceEnv, uriBuilder -> uriBuilder
+        .path("/api/clients/search/by")
+        .queryParam("page", FamConstants.DEFAULT_FC_API_SEARCH_PAGE)
+        .queryParam("size", size)
+        .queryParam("acronym", acronym.toUpperCase(Locale.ROOT))
+        .build());
+  }
+
+  /**
+   * A GET returning a bare JSON array, with this API's error conventions applied.
+   *
+   * <p>404 and 400 mean "nothing matched" here rather than "failed" - the picker
+   * searches by a free-text field that may be neither a name nor a number, and
+   * the API answers a term it cannot parse with a status rather than an empty
+   * list.
+   */
+  private List<Map<String, Object>> get(
+      ApiInstanceEnv apiInstanceEnv,
+      java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI> uri) {
+
+    RestClient client = clientFor(apiInstanceEnv);
 
     try {
-      return doSearch(List.of(), name, size, apiInstanceEnv);
+      ResponseEntity<byte[]> response = client.get().uri(uri).retrieve().toEntity(byte[].class);
+
+      HttpStatus status = HttpStatus.valueOf(response.getStatusCode().value());
+      if (status.isError()) {
+        if (status == HttpStatus.NOT_FOUND || status == HttpStatus.BAD_REQUEST) {
+          log.debug("Forest Client API returned {} for lookup; treating as no match",
+              status.value());
+          return List.of();
+        }
+        throw errorTranslator.httpError(
+            UPSTREAM, response.getStatusCode(), response.getBody(), status.getReasonPhrase());
+      }
+
+      return parseBody(response.getBody());
     } catch (ResourceAccessException e) {
-      log.error("Forest Client API name search failed", e);
+      log.error("Forest Client API lookup failed", e);
       throw errorTranslator.connectivityFailure(UPSTREAM, e);
     }
   }

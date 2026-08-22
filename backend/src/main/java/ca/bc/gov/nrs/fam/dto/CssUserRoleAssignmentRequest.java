@@ -2,6 +2,7 @@ package ca.bc.gov.nrs.fam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -42,14 +43,18 @@ public record CssUserRoleAssignmentRequest(
     @Email(message = "target_user_email must be a valid email address")
     String targetUserEmail,
 
-    /** Required when {@code scopeValues} is non-empty; ignored otherwise. */
-    String scopeType,
-
-    /** District codes or forest client numbers. Empty means an unscoped grant. */
-    List<String> scopeValues) {
+    /**
+     * One entry per scope dimension the role requires. Empty means an unscoped
+     * grant.
+     *
+     * <p>A role scoped by district <em>and</em> forest client carries both, and
+     * the grant covers every district/client pair - being a submitter for DCC
+     * and for client 00001012 is not the same as being one for either.
+     */
+    @Valid List<CssScopeSelection> scopes) {
 
   /** Never null, so callers can iterate without a guard. */
-  public List<String> scopeValues() {
-    return scopeValues == null ? List.of() : scopeValues;
+  public List<CssScopeSelection> scopes() {
+    return scopes == null ? List.of() : scopes;
   }
 }

@@ -27,6 +27,7 @@ model/css-role-create-request.ts
 model/css-role-delete-result-dto.ts
 model/css-role-member-count-dto.ts
 model/css-role-option-dto.ts
+model/css-scope-selection.ts
 model/css-user-role-assignment-request.ts
 model/css-user-role-assignment-result.ts
 model/css-user-role-revoke-request.ts
@@ -45,6 +46,7 @@ model/privilege-details-permission-type.ts
 model/privilege-details-role-dto.ts
 model/privilege-details-scope-dto.ts
 model/privilege-details-scope-type.ts
+model/scope-dto.ts
 model/self-application-role-dto.ts
 model/self-dto.ts
 model/self-permission-dto.ts

@@ -1,6 +1,7 @@
 package ca.bc.gov.nrs.fam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 
 /**
  * One application role the signed-in user holds.
@@ -35,8 +36,15 @@ public record SelfApplicationRoleDto(
     /** The long description from the FAM:DESC sidecar. Null when it has none. */
     String roleDescription,
 
-    /** DISTRICT or FOREST_CLIENT, or null when the role is not scoped. */
-    String scopeType,
+    /**
+     * Every scope this role is held under; empty when it is not scoped.
+     *
+     * <p>A role scoped by district and forest client carries both, and the
+     * screen shows a chip for each.
+     */
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<ScopeDto> scopes) {
 
-    /** The district or forest client the role applies to. Null when unscoped. */
-    String scopeValue) {}
+  public List<ScopeDto> scopes() {
+    return scopes == null ? List.of() : scopes;
+  }
+}

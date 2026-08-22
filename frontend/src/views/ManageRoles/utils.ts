@@ -70,10 +70,14 @@ export const validateManageRolesForm = () =>
 /**
  * The two scope checkboxes are mutually exclusive.
  *
- * A grant carries a single scope type and the picker offers one kind of scope,
- * so a role marked both would silently behave as district scoped and its forest
- * client side would be unreachable. Ticking one clears the other rather than
- * letting the pair be submitted and refused.
+ * Both may be ticked. A role scoped by a district AND a forest client is granted
+ * against the pair - the grant screen asks for both, and the generated role name
+ * carries both suffixes.
+ *
+ * The two used to be mutually exclusive because a grant could only carry one
+ * scope type, so a role marked both would silently behave as district scoped.
+ * That is no longer true, so the exclusion is gone and this simply records the
+ * box that was ticked.
  */
 export const applyScopeChoice = (
     form: ManageRolesFormType,
@@ -81,14 +85,7 @@ export const applyScopeChoice = (
     checked: boolean
 ): ManageRolesFormType => ({
     ...form,
-    requiresDistrict:
-        field === "requiresDistrict" ? checked : checked ? false : form.requiresDistrict,
-    requiresForestClient:
-        field === "requiresForestClient"
-            ? checked
-            : checked
-              ? false
-              : form.requiresForestClient,
+    [field]: checked,
 });
 
 /** The create request, normalised the same way the backend will normalise it. */
@@ -111,6 +108,14 @@ export const toCreateRequest = (
  * empty rather than rendering a blank line.
  */
 export const describeScope = (form: ManageRolesFormType): string => {
+    if (form.requiresDistrict && form.requiresForestClient) {
+        // Says "each pair" because that is what is granted: three districts and
+        // two clients is six permissions, not five.
+        return (
+            "Districts and forest clients must both be chosen when this role " +
+            "is granted, and it is granted for each pair"
+        );
+    }
     if (form.requiresDistrict) {
         return "Districts must be chosen when this role is granted";
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BoolCheckbox from "@/components/UI/BoolCheckbox.vue";
 import Button from "@/components/UI/Button.vue";
+import Chip from "@/components/UI/Chip.vue";
 import Dropdown from "@/components/UI/Dropdown.vue";
 import ErrorText from "@/components/UI/ErrorText.vue";
 import HelperText from "@/components/UI/HelperText.vue";
@@ -67,8 +68,22 @@ const applicationsQuery = useQuery({
     refetchOnMount: true,
 });
 
-const applicationOptions = computed<CssApplicationOptionDto[]>(
-    () => applicationsQuery.data.value ?? []
+/**
+ * Every application whose roles can be managed here - which is every one but
+ * FAM.
+ *
+ * FAM's own integration holds `FAM_ADMIN` plus the `APP_ADMIN_<id>_<ENV>` and
+ * `DELEGATED_ADMIN_...` roles FAM generates as administrators are appointed.
+ * None of them is an application role: deleting `APP_ADMIN_22264_PROD` from
+ * this screen would strip every administrator of that application at once, and
+ * nothing here would say so. They are created and removed by appointing and
+ * removing administrators instead.
+ *
+ * All three environments go, because they are all the same integration. The
+ * backend refuses the operation as well - this only stops it being offered.
+ */
+const applicationOptions = computed<CssApplicationOptionDto[]>(() =>
+    (applicationsQuery.data.value ?? []).filter((app) => !app.fam_application)
 );
 
 /**
@@ -555,11 +570,28 @@ const onSubmitAllEnvironments = async () => {
 
                     <Column header="Scope">
                         <template #body="{ data }">
-                            <span v-if="data.role_type_district">District</span>
-                            <span v-else-if="data.role_type_client">
-                                Forest client
+                            <!--
+                                Both, when the role requires both: v-else-if
+                                would hide the forest client half of a compound
+                                role and misdescribe what a grant will ask for.
+                            -->
+                            <span
+                                v-if="
+                                    !data.role_type_district &&
+                                    !data.role_type_client
+                                "
+                                >None</span
+                            >
+                            <span v-else class="scope-chips">
+                                <Chip
+                                    v-if="data.role_type_district"
+                                    label="District"
+                                />
+                                <Chip
+                                    v-if="data.role_type_client"
+                                    label="Forest client"
+                                />
                             </span>
-                            <span v-else>None</span>
                         </template>
                     </Column>
 
@@ -603,6 +635,13 @@ const onSubmitAllEnvironments = async () => {
 
 <style lang="scss">
 .manage-roles-container {
+    /* Chips sit in a row and wrap; a compound scope is two of them. */
+    .scope-chips {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
     /*
         Whitespace under the Existing roles table, which is the last thing on the
         page - it otherwise ended flush against the container, measured at 0.
@@ -654,17 +693,18 @@ const onSubmitAllEnvironments = async () => {
     }
 
     /*
-        Tightens the gap between the Create role button and the rule below it,
-        from 2.5rem to 1.5rem. Only the top margin: the bottom one still spaces
-        the rule from the Existing roles heading.
+        This screen keeps its own spacing rather than StepContainer's 1.25rem:
+        1.5rem above the rule, and the original 2.5rem below it, which is what
+        separates the rule from the "Existing roles" heading and its table. The
+        heading needs more air than a form field does.
 
-        `hr.solid` is needed, not just `hr`. StepContainer styles the rule from a
-        scoped block - `hr.solid[data-v-...]` - which has the same specificity as
-        `.manage-roles-container .step-container > hr` and wins on order, so the
-        simpler selector is silently ignored.
+        Both margins are stated because the default now sets both. Matching
+        StepContainer's `hr.solid.step-divider` weight is deliberate - a lighter
+        selector would lose to it rather than override it.
     */
-    .step-container > hr.solid {
+    .step-container > hr.solid.step-divider {
         margin-top: 1.5rem;
+        margin-bottom: 2.5rem;
     }
 
     .created-message {

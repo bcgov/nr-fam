@@ -21,7 +21,7 @@ const getMemberCounts = vi.fn();
 vi.mock("@/services/ApiServiceFactory", () => ({
     AdminMgmtApiService: {
         cssIntegrationsApi: {
-            getCssApplications: () => Promise.resolve({ data: [APP] }),
+            getCssApplications: () => Promise.resolve({ data: applications() }),
             getCssApplicationRoles: (...args: unknown[]) => getRoles(...args),
             getCssApplicationRoleMemberCounts: (...args: unknown[]) =>
                 getMemberCounts(...args),
@@ -39,7 +39,19 @@ const APP = {
     integration_id: 6538,
     environment: "dev",
     description: "FREP",
+    fam_application: false,
 };
+
+/** FAM administering itself, which this screen must never offer. */
+const FAM_APP = {
+    integration_id: 12345,
+    environment: "dev",
+    description: "Forests Access Management (DEV)",
+    fam_application: true,
+};
+
+/** What getCssApplications answers, so a test can vary it. */
+let applications = () => [APP] as any[];
 
 const SCOPED_ROLE = {
     name: "CHR_FREP_EDITOR",
@@ -72,6 +84,9 @@ const mountView = async () => {
                 StepContainer: { template: "<div><slot /></div>" },
                 // Reports a chosen application the way the real dropdown does.
                 Dropdown: {
+                    // Named so a test can find it and read the options it was
+                    // handed - a closed dropdown draws none of them.
+                    name: "Dropdown",
                     props: ["options"],
                     template:
                         "<button class='pick-app' @click=\"$emit('change', { value: options[0] })\" />",
@@ -89,6 +104,7 @@ const mountView = async () => {
 
 describe("ManageRoles", () => {
     beforeEach(() => {
+        applications = () => [APP];
         deleteRole.mockReset();
         createAll.mockReset().mockResolvedValue({
             data: {
@@ -259,5 +275,39 @@ describe("ManageRoles", () => {
         await clickButton(wrapper, "Create in all environments");
 
         expect(wrapper.text()).toContain("already exists in prod");
+    });
+
+    it("does not offer FAM's own application", async () => {
+        // FAM's integration holds FAM_ADMIN plus the APP_ADMIN_<id>_<ENV> and
+        // DELEGATED_ADMIN_... roles it generates as administrators are
+        // appointed. Deleting APP_ADMIN_22264_PROD from this screen would strip
+        // every administrator of that application at once, and nothing here
+        // would say so.
+        applications = () => [APP, FAM_APP];
+
+        const wrapper = await mountView();
+
+        // The options the picker was handed, not what it has drawn: a closed
+        // dropdown renders none of them, so reading the page text would pass
+        // whether the filter ran or not.
+        const offered = wrapper
+            .findComponent({ name: "Dropdown" })
+            .props("options") as any[];
+
+        expect(offered.map((app) => app.description)).toEqual(["FREP"]);
+    });
+
+    it("still offers ordinary applications alongside it", async () => {
+        // The filter is on the flag, not on the list being short - FAM first
+        // here, so dropping only the head would fail.
+        applications = () => [FAM_APP, APP, { ...APP, description: "SILVA" }];
+
+        const wrapper = await mountView();
+
+        const offered = wrapper
+            .findComponent({ name: "Dropdown" })
+            .props("options") as any[];
+
+        expect(offered.map((app) => app.description)).toEqual(["FREP", "SILVA"]);
     });
 });

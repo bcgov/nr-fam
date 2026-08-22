@@ -122,8 +122,7 @@ describe("MyPermissions", () => {
                 role_name: "FREP_ADMINISTRATOR",
                 base_role_name: "FREP_ADMINISTRATOR",
                 role_description: "FREP Administrator",
-                scope_type: null,
-                scope_value: null,
+                scopes: [],
             },
         ]);
 
@@ -141,8 +140,7 @@ describe("MyPermissions", () => {
                 role_name: `CHR_FREP_EDITOR_DISTRICT-${district}`,
                 base_role_name: "CHR_FREP_EDITOR",
                 role_description: "Submitter (CHR)",
-                scope_type: "DISTRICT",
-                scope_value: district,
+                scopes: [{ type: "DISTRICT", value: district, label: undefined }],
             }))
         );
 
@@ -161,8 +159,7 @@ describe("MyPermissions", () => {
                 role_name: "FOM_SUBMITTER",
                 base_role_name: "FOM_SUBMITTER",
                 role_description: null,
-                scope_type: null,
-                scope_value: null,
+                scopes: [],
             },
         ]);
 

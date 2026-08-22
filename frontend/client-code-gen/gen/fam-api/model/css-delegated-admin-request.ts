@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import { CssScopeSelection } from './css-scope-selection';
+// May contain unused imports in some cases
+// @ts-ignore
 import { UserType } from './user-type';
 
 /**
@@ -43,16 +46,10 @@ export interface CssDelegatedAdminRequest {
     'role_name': string;
     /**
      * 
-     * @type {string}
+     * @type {Array<CssScopeSelection>}
      * @memberof CssDelegatedAdminRequest
      */
-    'scope_type'?: string;
-    /**
-     * 
-     * @type {Array<string>}
-     * @memberof CssDelegatedAdminRequest
-     */
-    'scope_values'?: Array<string>;
+    'scopes'?: Array<CssScopeSelection>;
 }
 
 

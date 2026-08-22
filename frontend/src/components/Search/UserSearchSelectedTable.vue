@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { SelectedUser } from "@/types/SelectUserType";
 import { formatUserNameAndId } from "@/utils/UserUtils";
-import CheckmarkOutline from "@carbon/icons-vue/es/checkmark--outline/16";
 import TrashIcon from "@carbon/icons-vue/es/trash-can/16";
 import Column from "primevue/column";
 import DataTable from "primevue/datatable";
@@ -35,11 +34,12 @@ const userCount = computed(() => props.users.length);
 <template>
   <div>
     <div v-if="users.length > 0" class="user-id-card-table">
-      <div class="verified-message-bar">
-        <CheckmarkOutline class="verified-icon" />
-        <span class="verified-message-text">Verified user information</span>
-      </div>
-      <DataTable :value="tableUsers" stripedRows class="user-table">
+      <!--
+        `fam-table` is where the border, radius and surface come from - the same
+        class the role and scope tables carry. Without it this table sat on the
+        page with no edge at all while every table below it had one.
+      -->
+      <DataTable :value="tableUsers" stripedRows class="fam-table user-table">
         <Column field="userId" header="Username" />
         <Column header="Full Name">
           <template #body="{ data }">
@@ -85,31 +85,6 @@ const userCount = computed(() => props.users.length);
 
 .user-id-card-table {
     margin-top: 2rem;
-    .verified-message-bar {
-        height: 38px;
-        background: #F0FDF4;
-        border: 1px solid colors.$green-10;
-        display: flex;
-        align-items: center;
-        padding: 0 1rem;
-        border-radius: 4px;
-        margin-bottom: 0.7rem;
-        font-weight: 400;
-        font-style: normal;
-        font-size: 14px;
-        color: colors.$green-80;
-        .verified-icon {
-            margin-right: 0.75rem;
-            width: 20px;
-            height: 20px;
-            stroke: colors.$green-80;
-        }
-        .verified-message-text {
-            display: inline-block;
-            vertical-align: middle;
-            color: colors.$green-80;
-        }
-    }
     .user-table {
         width: 100%;
         .action-col {
