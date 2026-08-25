@@ -56,6 +56,10 @@ jobs:
   tests:
     name: Tests
     needs: [deploy-test]
+    # The E2E job checks the repository out. A called workflow cannot hold more
+    # than its caller grants, and this file sets `permissions: {}`.
+    permissions:
+      contents: read
     uses: ./.github/workflows/reusable-tests.yml
     with:
       target: test
