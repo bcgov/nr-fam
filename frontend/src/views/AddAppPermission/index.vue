@@ -7,6 +7,7 @@ import Button from "@/components/UI/Button.vue";
 import PageTitle from "@/components/UI/PageTitle.vue";
 import StepContainer from "@/components/UI/StepContainer.vue";
 import { usePermissionToast } from "@/composables/usePermissionToast";
+import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { ManagePermissionsRoute } from "@/router/routes";
 import { toGrantToast } from "@/views/ManagePermissionsView/utils";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
@@ -118,14 +119,9 @@ const grantMutation = useMutation({
         // redirect is still to come. Invalidating alone only marks it stale, and
         // whether a stale query refetches on mount depends on options set three
         // files away; asking for the refetch outright does not.
-        queryClient.invalidateQueries({
-            queryKey: [
-                "css-user-role-assignments",
-                props.integrationId,
-                props.environment,
-            ],
-            refetchType: "all",
-        });
+        invalidateAfterAccessChange(
+            queryClient, props.integrationId, props.environment
+        );
 
         // Raised before the redirect and survives it: the Toast lives in App.vue,
         // above the router view.

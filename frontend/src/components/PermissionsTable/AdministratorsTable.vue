@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { usePermissionToast } from "@/composables/usePermissionToast";
+import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import Chip from "@/components/UI/Chip.vue";
 import ErrorText from "@/components/UI/ErrorText.vue";
 import { PLACE_HOLDER } from "@/constants/constants";
@@ -173,9 +174,9 @@ const removeMutation = useMutation({
                       + `${props.appName}.`
         );
 
-        queryClient.invalidateQueries({
-            queryKey: administratorsQueryKey.value,
-        });
+        invalidateAfterAccessChange(
+            queryClient, props.integrationId, props.environment
+        );
     },
     onError: (error: any) => {
         // The backend names the reason - removing yourself, or another

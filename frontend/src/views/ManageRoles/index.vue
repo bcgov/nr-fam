@@ -22,6 +22,8 @@ import ConfirmDialog from "primevue/confirmdialog";
 import DataTable from "primevue/datatable";
 import InputText from "primevue/inputtext";
 import { useConfirm } from "primevue/useconfirm";
+import { usePermissionToast } from "@/composables/usePermissionToast";
+import { invalidateAfterRoleChange } from "@/utils/QueryInvalidation";
 import { computed, ref } from "vue";
 import DeleteRoleDialogText from "./DeleteRoleDialogText.vue";
 import {
@@ -50,6 +52,18 @@ import {
 const queryClient = useQueryClient();
 
 const selectedApp = ref<CssApplicationOptionDto | null>(null);
+
+const permissionToast = usePermissionToast();
+
+/**
+ * The application as the picker labels it, for wording that names it.
+ *
+ * Falls back to the raw name: an option with no description would otherwise
+ * leave a sentence reading "deleted from undefined".
+ */
+const applicationName = computed(
+    () => selectedApp.value?.description ?? selectedApp.value?.name ?? "this application"
+);
 const form = ref<ManageRolesFormType>(getDefaultFormData());
 const errors = ref<Record<string, string>>({});
 const submitError = ref<string | null>(null);
@@ -57,7 +71,20 @@ const created = ref<CssRoleOptionDto | null>(null);
 /** Set after a successful all-environments creation. */
 const createdEverywhere = ref<CssRoleBulkCreateResultDto | null>(null);
 /** Set after a successful deletion; describes what actually went. */
-const deleted = ref<string | null>(null);
+
+/**
+ * How much of the description budget is used.
+ *
+ * 180 is not a product decision - the text is stored inside a Keycloak role
+ * name, which is capped at 255 - so somebody writing a long sentence has no way
+ * to guess where it stops. See MAX_DESCRIPTION_LENGTH.
+ */
+const descriptionLength = computed(() => form.value.description?.length ?? 0);
+
+/** Flagged at the limit, where the field silently stops accepting input. */
+const descriptionAtLimit = computed(
+    () => descriptionLength.value >= MAX_DESCRIPTION_LENGTH
+);
 
 const applicationsQuery = useQuery({
     queryKey: ["css-applications"],
@@ -161,7 +188,6 @@ const handleApplicationChange = (event: { value: CssApplicationOptionDto }) => {
     selectedApp.value = event.value;
     created.value = null;
     createdEverywhere.value = null;
-    deleted.value = null;
     submitError.value = null;
 };
 
@@ -186,13 +212,11 @@ const createMutation = useMutation({
         created.value = role;
         form.value = getDefaultFormData();
         // So the role shows up here and on the grant screen without a reload.
-        queryClient.invalidateQueries({
-            queryKey: [
-                "css-roles",
-                selectedApp.value?.integration_id,
-                selectedApp.value?.environment,
-            ],
-        });
+        invalidateAfterRoleChange(
+            queryClient,
+            selectedApp.value?.integration_id,
+            selectedApp.value?.environment
+        );
     },
     onError: (error: any) => {
         // The backend's message names the actual problem - a taken code, a
@@ -225,15 +249,11 @@ const createAllMutation = useMutation({
         form.value = getDefaultFormData();
         // Only the selected environment's listings are on screen, but the role
         // now exists in the others too.
-        for (const key of ["css-roles", "css-role-member-counts"]) {
-            queryClient.invalidateQueries({
-                queryKey: [
-                    key,
-                    selectedApp.value?.integration_id,
-                    selectedApp.value?.environment,
-                ],
-            });
-        }
+        invalidateAfterRoleChange(
+            queryClient,
+            selectedApp.value?.integration_id,
+            selectedApp.value?.environment
+        );
     },
     onError: (error: any) => {
         // Names the environments that already have the code, which is the whole
@@ -267,36 +287,31 @@ const deleteMutation = useMutation({
     onSuccess: (result) => {
         submitError.value = null;
         created.value = null;
-        // Says what actually went: one role on screen can be several in CSS.
-        const extra = result.removed_roles.length - 1;
-        const delegations = result.removed_delegations.length;
-        deleted.value =
-            `Deleted ${result.role_name}` +
-            (extra > 0 ? ` and ${extra} role(s) derived from it` : "") +
-            (result.members_affected > 0
-                ? `. ${result.members_affected} user(s) lost that access`
-                : "") +
-            // Withdrawn with the role: a delegation naming a role that no longer
-            // exists would still let its holder recreate it by granting it.
-            (delegations > 0
-                ? `. ${delegations} delegated admin privilege(s) withdrawn`
-                : "") +
-            ".";
 
-        // Both listings are now stale, and so is the grant screen's picker.
-        for (const key of ["css-roles", "css-role-member-counts"]) {
-            queryClient.invalidateQueries({
-                queryKey: [
-                    key,
-                    selectedApp.value?.integration_id,
-                    selectedApp.value?.environment,
-                ],
-            });
-        }
+        // A toast, not a line on the page. The deletion is done and the row has
+        // gone from the table below; a message that sits there until something
+        // else replaces it outlives the thing it describes.
+        //
+        // It names the role and the application and stops. The derived roles,
+        // the members who lost access and the delegations withdrawn are all
+        // consequences of deleting the role, not separate outcomes - counting
+        // them made a routine deletion read like an incident report.
+        permissionToast.succeeded(
+            "Role deleted",
+            `Role ${result.role_name} was deleted from ${applicationName.value}.`
+        );
+
+        // Both listings are now stale, and so is the grant screen's picker -
+        // and so is everybody's access, because deleting a role takes the
+        // derived roles, their members and any delegation naming it with it.
+        invalidateAfterRoleChange(
+            queryClient,
+            selectedApp.value?.integration_id,
+            selectedApp.value?.environment
+        );
     },
     onError: (error: any) => {
-        deleted.value = null;
-        // The backend names what it managed to remove before failing, which
+            // The backend names what it managed to remove before failing, which
         // matters here: a deletion cannot be rolled back.
         submitError.value =
             error?.response?.data?.description ??
@@ -336,7 +351,6 @@ const validateForm = async (): Promise<boolean> => {
     submitError.value = null;
     created.value = null;
     createdEverywhere.value = null;
-    deleted.value = null;
     errors.value = {};
 
     try {
@@ -444,13 +458,26 @@ const onSubmitAllEnvironments = async () => {
                             :maxlength="MAX_DESCRIPTION_LENGTH"
                             :invalid="!!errors.description"
                         />
-                        <HelperText
-                            :text="
-                                errors.description ||
-                                'Optional. A sentence explaining what the role allows.'
-                            "
-                            :is-error="!!errors.description"
-                        />
+                        <div class="helper-with-count">
+                            <HelperText
+                                :text="
+                                    errors.description ||
+                                    'Optional. A sentence explaining what the role allows.'
+                                "
+                                :is-error="!!errors.description"
+                            />
+                            <!--
+                                The field is `maxlength`-capped, so typing simply
+                                stops at the limit with no explanation. The count
+                                is what turns that into something a person can
+                                see coming.
+                            -->
+                            <HelperText
+                                class="char-count"
+                                :text="`${descriptionLength} / ${MAX_DESCRIPTION_LENGTH}`"
+                                :is-error="descriptionAtLimit"
+                            />
+                        </div>
                     </div>
 
                     <div class="field">
@@ -524,7 +551,6 @@ const onSubmitAllEnvironments = async () => {
                     . Only {{ selectedApp?.environment }} is listed below.
                 </p>
 
-                <p v-if="deleted" class="created-message">{{ deleted }}</p>
             </StepContainer>
 
             <StepContainer title="Existing roles" class="existing-roles">
@@ -705,6 +731,22 @@ const onSubmitAllEnvironments = async () => {
     .step-container > hr.solid.step-divider {
         margin-top: 1.5rem;
         margin-bottom: 2.5rem;
+    }
+
+    /*
+        Helper text and the count share a line, so the count does not push the
+        next field down and is read as belonging to this one.
+    */
+    .helper-with-count {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .char-count {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
     }
 
     .created-message {

@@ -9,6 +9,7 @@ import {
 import { computed } from "vue";
 import DistrictSelectTable from "./DistrictSelectTable.vue";
 import ForestClientAddTable from "./ForestClientAddTable.vue";
+import ForestClientSelectTable from "./ForestClientSelectTable.vue";
 
 /**
  * One chosen role, and what it is scoped to.
@@ -50,6 +51,18 @@ const props = withDefaults(
         clientSubtitle: "Add one or more organizations for this role",
         countNoun: "permission",
     }
+);
+
+/**
+ * The organisations this caller is confined to, or null when they are not.
+ *
+ * Undefined and null both mean unrestricted; an empty array does not, and is
+ * why this is not a truthiness check. A delegated administrator whose
+ * delegation names no organisation gets the list, empty, saying so - rather
+ * than a search box offering every organisation in the province.
+ */
+const restrictedClients = computed(() =>
+    props.selection.role.grantable_forest_clients ?? null
 );
 
 const count = computed(() => scopeCombinationCount(props.selection));
@@ -101,6 +114,7 @@ const countLabel = computed(() =>
             :field-id="`${fieldPath}.districts`"
             :selected="selection.districts"
             :set-field-value="setFieldValue"
+            :allowed="selection.role.grantable_districts ?? null"
             :title="districtTitle"
             :subtitle="districtSubtitle"
         />
@@ -110,18 +124,33 @@ const countLabel = computed(() =>
             client, and it applies to each pair. Chained, the second picker
             would never render while validation still demanded a value for it - a
             form that cannot be submitted and does not say why.
+
+            Two shapes, chosen by whether the caller is restricted. A delegation
+            names a handful of organisations, so those are listed; anyone who may
+            grant any of them searches instead.
         -->
-        <ForestClientAddTable
-            v-if="selection.role.role_type_client"
-            :environment="environment"
-            :field-id="`${fieldPath}.forestClients`"
-            :selected="selection.forestClients"
-            :input-field-id="`${fieldPath}.forestClientInput`"
-            :input="selection.forestClientInput"
-            :set-field-value="setFieldValue"
-            :title="clientTitle"
-            :subtitle="clientSubtitle"
-        />
+        <template v-if="selection.role.role_type_client">
+            <ForestClientSelectTable
+                v-if="restrictedClients"
+                :field-id="`${fieldPath}.forestClients`"
+                :selected="selection.forestClients"
+                :options="restrictedClients"
+                :set-field-value="setFieldValue"
+                :title="clientTitle"
+                :subtitle="clientSubtitle"
+            />
+            <ForestClientAddTable
+                v-else
+                :environment="environment"
+                :field-id="`${fieldPath}.forestClients`"
+                :selected="selection.forestClients"
+                :input-field-id="`${fieldPath}.forestClientInput`"
+                :input="selection.forestClientInput"
+                :set-field-value="setFieldValue"
+                :title="clientTitle"
+                :subtitle="clientSubtitle"
+            />
+        </template>
     </div>
 </template>
 

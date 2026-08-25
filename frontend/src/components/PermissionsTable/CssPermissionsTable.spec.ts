@@ -54,6 +54,27 @@ vi.mock("vue-router", () => ({
     useRouter: () => ({ push }),
 }));
 
+/*
+    Spied, not replaced. The real helper still runs - the reload test below
+    depends on it actually invalidating - and this only records that the revoke
+    path called it, and with which application.
+*/
+const invalidateAfterAccessChange = vi.fn();
+vi.mock("@/utils/QueryInvalidation", async (importOriginal) => {
+    const actual = await importOriginal<
+        typeof import("@/utils/QueryInvalidation")
+    >();
+    return {
+        ...actual,
+        invalidateAfterAccessChange: (
+            ...args: Parameters<typeof actual.invalidateAfterAccessChange>
+        ) => {
+            invalidateAfterAccessChange(...args);
+            return actual.invalidateAfterAccessChange(...args);
+        },
+    };
+});
+
 const ROW = {
     username: "JSMITH",
     user_guid: "AABB1122",
@@ -136,6 +157,7 @@ describe("CssPermissionsTable", () => {
     beforeEach(() => {
         getAssignments.mockReset().mockResolvedValue({ data: [ROW] });
         deleteAssignment.mockReset().mockResolvedValue({ data: undefined });
+        invalidateAfterAccessChange.mockReset();
     });
 
     // A toast outlives the screen that raised it by design, so without this a
@@ -203,5 +225,34 @@ describe("CssPermissionsTable", () => {
 
         // Otherwise the row stays on screen and the table disagrees with CSS.
         expect(getAssignments.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it("stales everything the revocation touched, not just this table", async () => {
+        // The reported bug: the audit history for that same person had already
+        // been opened, so it sat in the cache showing the grant as current.
+        // Nothing invalidated it, and with staleTime at three hours it stayed
+        // that way until the tab was reloaded.
+        //
+        // The helper decides what goes; this asserts the revoke path routes
+        // through it at all, naming the application it changed.
+        const wrapper = await mountTable();
+        await revokeFirstRow(wrapper);
+
+        expect(invalidateAfterAccessChange).toHaveBeenCalledWith(
+            expect.anything(),
+            22264,
+            "dev"
+        );
+    });
+
+    it("stales nothing when the revocation was refused", async () => {
+        deleteAssignment.mockRejectedValue(new Error("boom"));
+
+        const wrapper = await mountTable();
+        await revokeFirstRow(wrapper);
+
+        // Nothing changed, so nothing is out of date. Refetching would send the
+        // screen back to the server to be told what it already shows.
+        expect(invalidateAfterAccessChange).not.toHaveBeenCalled();
     });
 });

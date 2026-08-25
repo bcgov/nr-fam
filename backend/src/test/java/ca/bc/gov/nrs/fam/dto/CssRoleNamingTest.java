@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import ca.bc.gov.nrs.fam.constants.UserType;
@@ -307,5 +308,61 @@ class CssRoleNamingTest {
   @DisplayName("has no marker for an unscoped or unknown scope type")
   void noMarkerForUnknownScope(String scopeType) {
     assertThat(CssRoleNaming.markerFor(scopeType)).isEmpty();
+  }
+
+  /**
+   * The sidecar names have to fit inside a Keycloak role name.
+   *
+   * <p>Both fields are bounded independently, so nothing else notices when the
+   * pieces stop adding up. They did not: a 200 character description on a role
+   * code longer than 45 characters composed a name of up to 269 characters,
+   * which Keycloak refused as an opaque upstream error naming neither field -
+   * and only after the role itself had been created.
+   */
+  @Nested
+  @DisplayName("sidecar length budget")
+  class SidecarBudget {
+
+    /** Keycloak's own ceiling on a role name. */
+    private static final int KEYCLOAK_MAX_ROLE_NAME = 255;
+
+    /** The longest code ROLE_CODE_PATTERN admits: one letter plus 58 more. */
+    private static final String LONGEST_CODE = "A".repeat(59);
+
+    private static String longest(int limit) {
+      return "x".repeat(limit);
+    }
+
+    @Test
+    @DisplayName("the longest description on the longest code still fits")
+    void descriptionFits() {
+      String name = CssRoleNaming.buildDescriptionRoleName(
+          LONGEST_CODE, longest(180));
+
+      assertThat(name.length())
+          .as("FAM:DESC sidecar overflows a Keycloak role name")
+          .isLessThanOrEqualTo(KEYCLOAK_MAX_ROLE_NAME);
+    }
+
+    @Test
+    @DisplayName("the longest display name on the longest code still fits")
+    void labelFits() {
+      String name = CssRoleNaming.buildLabelRoleName(LONGEST_CODE, longest(150));
+
+      assertThat(name.length())
+          .as("FAM:LABEL sidecar overflows a Keycloak role name")
+          .isLessThanOrEqualTo(KEYCLOAK_MAX_ROLE_NAME);
+    }
+
+    @Test
+    @DisplayName("the longest code the pattern admits is the one budgeted for")
+    void longestCodeIsTheOneBudgetedFor() {
+      // The budget above is only right while this is the longest code that can
+      // reach it. Lengthening the pattern silently invalidates both sums.
+      assertThat(CssRoleNaming.isValidRoleCode(LONGEST_CODE)).isTrue();
+      assertThat(CssRoleNaming.isValidRoleCode(LONGEST_CODE + "A"))
+          .as("a longer code is accepted than the sidecar budget allows for")
+          .isFalse();
+    }
   }
 }

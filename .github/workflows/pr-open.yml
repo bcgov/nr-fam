@@ -58,6 +58,16 @@ jobs:
      if: needs.deploys.outputs.triggered == 'true'
      needs: [deploys]
      uses: ./.github/workflows/reusable-tests.yml
+     with:
+       # On by default for PRs: the suite writes only to the CSS sandbox, and a
+       # permission screen that broke is exactly what a PR should catch. Set the
+       # RUN_E2E repository variable to "false" to fall back to the smoke test
+       # alone - during an SSO outage, say, where every run would fail on login.
+       run_e2e: ${{ vars.RUN_E2E != 'false' }}
+     secrets:
+       e2e_idir_user: ${{ secrets.E2E_IDIR_USER }}
+       e2e_idir_password: ${{ secrets.E2E_IDIR_PASSWORD }}
+       e2e_target_idir: ${{ secrets.E2E_TARGET_IDIR }}
 
   # ==========================================================================
   # WARNING: This job acts as the required merge gate for this workflow.

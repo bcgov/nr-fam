@@ -16,7 +16,16 @@
     "test:unit": "vitest run",
     "test-watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "test-coverage": "vitest run --coverage"
+    "test-coverage": "vitest run --coverage",
+    "pree2e:login": "playwright install chromium && rm -f e2e/.auth/user.json",
+    "e2e:login": "playwright test --project=setup --headed",
+    "pree2e": "playwright install chromium",
+    "e2e": "playwright test --project=chromium",
+    "pree2e:all-browsers": "playwright install",
+    "e2e:all-browsers": "playwright test",
+    "pree2e:ui": "playwright install chromium",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@bcgov-nr/nr-theme": "~1.8.9",
@@ -42,6 +51,7 @@
     "form-data": "4.0.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@tanstack/vue-query-devtools": "^5.56.2",
     "@tsconfig/node24": "^24.0.0",
     "@types/bootstrap": "^5.2.5",
@@ -53,6 +63,7 @@
     "@vue/tsconfig": "^0.7.0",
     "jsdom": "^29.1.1",
     "npm-run-all2": "^9.0.2",
+    "playwright": "^1.56.0",
     "sass": "^1.77.1",
     "style-dictionary": "^5.4.4",
     "typescript": "^5.6.2",

@@ -5,7 +5,25 @@ describe("bulk grant template", () => {
     it("is the header the uploader expects", () => {
         // The backend recognises this as a header and skips it; a mismatch here
         // would turn the first line into a data row that always errors.
-        expect(TEMPLATE_CSV.trim()).toBe("user_guid,role");
+        expect(TEMPLATE_CSV.trim()).toBe(
+            "user_guid,user_type,role,district,organization"
+        );
+    });
+
+    it("offers a column for each scope a role can require", () => {
+        // A role scoped by district and by organisation is granted per pair, so
+        // both columns exist and a row may carry both. Without them the file
+        // could only express unscoped roles, which is what it used to do.
+        const header = TEMPLATE_CSV.trim().split(",");
+
+        expect(header).toContain("district");
+        expect(header).toContain("organization");
+    });
+
+    it("offers a column for the directory a GUID belongs to", () => {
+        // Optional, but stating it halves the directory lookups and stops a
+        // GUID resolving to whichever directory answers first.
+        expect(TEMPLATE_CSV.trim().split(",")).toContain("user_type");
     });
 
     it("carries no example row", () => {

@@ -8,6 +8,7 @@ import StepContainer from "@/components/UI/StepContainer.vue";
 import { usePermissionToast } from "@/composables/usePermissionToast";
 import { ManagePermissionsRoute } from "@/router/routes";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
+import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { selectedApp } from "@/store/ApplicationState";
 import type { SelectedUser } from "@/types/SelectUserType";
 import type { RoleOption } from "@/views/AddAppPermission/utils";
@@ -188,14 +189,9 @@ const appointMutation = useMutation({
     onSuccess: ({ appointed, failures, userName }) => {
         // The Delegated admins tab is now stale. `refetchType: "all"` because
         // the tab is not mounted yet - the redirect is still to come.
-        queryClient.invalidateQueries({
-            queryKey: [
-                "css-administrators",
-                props.integrationId,
-                props.environment,
-            ],
-            refetchType: "all",
-        });
+        invalidateAfterAccessChange(
+            queryClient, props.integrationId, props.environment
+        );
 
         if (appointed === 0) {
             // Nothing landed, so there is nothing to confirm and nowhere better

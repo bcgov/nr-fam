@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { usePermissionToast } from "@/composables/usePermissionToast";
+import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import TableSkeleton from "@/components/Skeletons/TableSkeleton.vue";
 import { TABLE_DATATABLE_PT } from "@/passthrough/datatable/datatablePassThrough";
 import TableHeaderTitle from "@/components/Table/TableHeaderTitle.vue";
@@ -221,13 +222,9 @@ const revokeMutation = useMutation({
                 + `${row.username} in ${props.appName}.`
         );
 
-        queryClient.invalidateQueries({
-            queryKey: [
-                "css-user-role-assignments",
-                props.integrationId,
-                props.environment,
-            ],
-        });
+        invalidateAfterAccessChange(
+            queryClient, props.integrationId, props.environment
+        );
     },
     onError: (error: any) => {
         // The backend names the reason - a self-revoke, another organisation -

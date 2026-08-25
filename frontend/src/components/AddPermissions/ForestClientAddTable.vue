@@ -39,6 +39,16 @@ const props = withDefaults(
         inputFieldId: string;
         input: ForestClientInput;
         setFieldValue: (field: string, value: any) => void;
+        /**
+         * The only client numbers this caller may grant for, or null when they
+         * are not restricted.
+         *
+         * The search still runs against the whole Forest Client API - it is how
+         * a number becomes a name - but anything outside the delegation is
+         * dropped from the suggestions. Offering it would be offering a grant
+         * the backend refuses.
+         */
+        allowed?: string[] | null;
         title?: string;
         subtitle?: string;
     }>(),
@@ -112,8 +122,16 @@ const onSearch = async (event: { query: string }) => {
                 (client) => client.forest_client_number
             )
         );
+        // And anything outside the delegation, for the same reason: the grant
+        // path compares the scoped role name, so a client the delegation does
+        // not name is refused however it was chosen.
+        const permitted = props.allowed == null ? null : new Set(props.allowed);
+
         suggestions.value = data.filter(
-            (client) => !chosen.has(client.forest_client_number)
+            (client) =>
+                !chosen.has(client.forest_client_number) &&
+                (permitted === null ||
+                    permitted.has(client.forest_client_number))
         );
         isForestClientServiceDown.value = false;
     } catch (error) {
@@ -230,7 +248,9 @@ const removeForestClientFromList = (clientNumber: string) => {
                 :text="
                     errorMessage ||
                     props.input.errorMsg ||
-                    'Type an organization name or client number, then choose from the list'
+                    (props.allowed != null
+                        ? `You may grant this role for ${props.allowed.length} organization(s). Search to find them.`
+                        : 'Type an organization name or client number, then choose from the list')
                 "
                 :is-error="
                     !!(

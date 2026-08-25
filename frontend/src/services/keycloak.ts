@@ -23,14 +23,19 @@ import { requireEnvData } from "@/utils/EnvUtils";
  * `kc_idp_hint` so the user is sent straight to the right provider instead of
  * Keycloak's provider-selection screen.
  *
- * <b>These are sign-in hints, not the values that come back.</b> The standard
- * realm issues `azureidir` in the `identity_provider` claim for an IDIR sign-in,
- * so anything reading that claim has to accept `azureidir` as well as `idir` -
- * see the backend's `IdentityProvider` allowlist. Assuming the two sets were the
- * same is what made the profile pane show no directory for IDIR users.
+ * <b>IDIR is `azureidir`, not `idir`.</b> The standard realm federates IDIR to
+ * Azure AD under that alias, and it is what comes back in the
+ * `identity_provider` claim - the same value `CSS_IDP_ALIAS_IDIR` defaults to
+ * and the backend's `IdentityProvider` reads.
+ *
+ * A hint the realm does not recognise is not an error: Keycloak ignores it and
+ * falls through to whichever provider the client has. On an integration with one
+ * provider that means every button reaches the same place, so `idir` here sent
+ * Business BCeID users to the Microsoft sign-in page and looked, from the IDIR
+ * button, as though nothing were wrong.
  */
 export const KC_IDP_HINT = {
-    IDIR: "idir",
+    IDIR: "azureidir",
     BCEIDBUSINESS: "bceidbusiness",
 } as const;
 

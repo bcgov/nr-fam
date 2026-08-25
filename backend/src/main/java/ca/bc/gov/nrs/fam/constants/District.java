@@ -52,4 +52,25 @@ public enum District {
     this.orgUnitName = orgUnitName;
     this.expired = expired;
   }
+
+  /**
+   * Look up by org unit code, case-insensitively.
+   *
+   * <p>Empty rather than throwing for an unknown code: it is reached from a
+   * bulk upload, where an unrecognised district is one bad row rather than a
+   * bad file. The caller turns it into a message naming the code.
+   *
+   * <p>Matches on the code the enum carries rather than on {@link #name()} - they
+   * happen to be identical today, and a district renamed in code should not
+   * silently stop resolving the value stored in existing role names.
+   */
+  public static java.util.Optional<District> fromOrgUnitCode(String orgUnitCode) {
+    if (orgUnitCode == null || orgUnitCode.isBlank()) {
+      return java.util.Optional.empty();
+    }
+    String wanted = orgUnitCode.trim();
+    return java.util.Arrays.stream(values())
+        .filter(district -> district.orgUnitCode.equalsIgnoreCase(wanted))
+        .findFirst();
+  }
 }

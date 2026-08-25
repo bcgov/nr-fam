@@ -52,4 +52,39 @@ public record CssRoleOptionDto(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean roleTypeDistrict,
 
     /** Requires one or more forest clients before it can be granted. */
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean roleTypeClient) {}
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean roleTypeClient,
+
+    /**
+     * The districts this caller may grant the role for, or null when they are
+     * not restricted to any.
+     *
+     * <p><b>Null and empty mean different things, and the difference is the
+     * point.</b> Null is "no restriction" - a FAM or application administrator,
+     * who may grant every district. Empty is "restricted to nothing", which is
+     * what a delegated administrator holds when their delegation names no
+     * district for a role that requires one: they see the role and can choose
+     * nothing, which is the truth.
+     *
+     * <p>A delegation is a concrete role name with the scope in it -
+     * {@code FREP_EDITOR_DISTRICT-DCC} - so this is those values, gathered
+     * across every delegation the caller holds for this role.
+     *
+     * <p>Presentation only. {@code requireGrantableRoles} refuses a grant
+     * outside the delegation whatever the picker offered; this is what stops the
+     * screen offering it in the first place.
+     */
+    List<String> grantableDistricts,
+
+    /**
+     * The organisations this caller may grant for. Null when unrestricted.
+     *
+     * <p>Resolved rather than left as numbers, because the picker for a
+     * restricted caller is a list rather than a search box - a delegation names
+     * a handful of organisations, and there is nothing to search for. A number
+     * with no name beside it is not something anybody can pick from.
+     *
+     * <p>Only the active ones. An inactive organisation is refused on selection
+     * anyway, so offering it would be offering a dead end - the same rule the
+     * search applies, and the same one that hides an expired district.
+     */
+    List<FamForestClientDto> grantableForestClients) {}

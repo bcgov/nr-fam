@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
@@ -38,6 +41,7 @@ import ca.bc.gov.nrs.fam.integration.CssApiService;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +66,9 @@ class CssIntegrationServiceTest {
   @Mock private AccessGrantedEmailService accessGrantedEmailService;
   @Mock private AssignmentVisibilityService assignmentVisibilityService;
   @Mock private ca.bc.gov.nrs.fam.security.TargetOrganizationGuard targetOrganizationGuard;
+  @Mock private ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService
+      forestClientIntegrationService;
+  @Mock private ApiInstanceEnvResolver apiInstanceEnvResolver;
 
   /**
    * Real config rather than a mock: the IDIR alias is the thing most likely to
@@ -2199,5 +2206,228 @@ class CssIntegrationServiceTest {
     assertThat(service.getRoles(INTEGRATION, ENV))
         .extracting(CssRoleOptionDto::name)
         .contains("APP_ADMIN_" + INTEGRATION + "_DEV");
+  }
+
+  @Test
+  @DisplayName("leaves out the per-scope roles a grant generated")
+  void hidesGeneratedScopeRoles() {
+    // Exactly what Manage roles was showing: the roles somebody defined, mixed
+    // in with the ones granting them created. They accumulate one per scope
+    // value ever granted and are never removed, so in a used application they
+    // bury the handful that were actually authored.
+    givenRoles(
+        role("REPT_ADMIN", false),
+        role("REPT_VIEWERS", true),
+        role(CssRoleNaming.MARKER_DISTRICT, false),
+        role(CssRoleNaming.MARKER_FOREST_CLIENT, false),
+        role("REPT_VIEWERS_DISTRICT-DFN_FOREST_CLIENT-00002046", false),
+        role("REPT_VIEWERS_DISTRICT-DKA_FOREST_CLIENT-00002046", false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "REPT_VIEWERS"))
+        .thenReturn(List.of(
+            CssRoleNaming.MARKER_DISTRICT, CssRoleNaming.MARKER_FOREST_CLIENT));
+
+    assertThat(service.getRoles(INTEGRATION, ENV))
+        .extracting(CssRoleOptionDto::name)
+        .containsExactlyInAnyOrder("REPT_ADMIN", "REPT_VIEWERS");
+  }
+
+  @Test
+  @DisplayName("keeps a defined role whose code merely looks long")
+  void keepsAuthoredRolesThatLookScoped() {
+    // The rule is "the name parses to a scope", and it is safe only because a
+    // role code cannot contain a hyphen. An authored code with the same words
+    // in it has none, so it parses to nothing and stays.
+    givenRoles(role("REPT_VIEWERS_DISTRICT_SUMMARY", false));
+
+    assertThat(service.getRoles(INTEGRATION, ENV))
+        .extracting(CssRoleOptionDto::name)
+        .containsExactly("REPT_VIEWERS_DISTRICT_SUMMARY");
+  }
+
+  // ------------------------------------- what a delegated admin may grant
+
+  /**
+   * The role picker, seen by a delegated administrator.
+   *
+   * <p>Their delegation is a concrete role name with the scope in it. The picker
+   * offered every role the application defines and every district and client,
+   * all of which {@code requireGrantableRoles} then refused - so the form
+   * promised grants that could not happen, and said nothing about why.
+   */
+  @Test
+  @DisplayName("offers a delegated admin only the roles they were delegated")
+  void delegatedAdminSeesOnlyTheirRoles() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", false),
+        role("CHR_FREP_VIEWER", false),
+        role("CHR_FREP_ADMINISTRATOR", false));
+
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_EDITOR")))
+        .extracting(CssRoleOptionDto::name)
+        .containsExactly("CHR_FREP_EDITOR");
+  }
+
+  @Test
+  @DisplayName("offers only the districts the delegation names")
+  void delegatedAdminSeesOnlyTheirDistricts() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role(CssRoleNaming.MARKER_DISTRICT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_EDITOR"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_DISTRICT));
+
+    // Two delegations of the same role, one district each: the picker should
+    // offer both and nothing else.
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_EDITOR_DISTRICT-DCC", "CHR_FREP_EDITOR_DISTRICT-DKA")))
+        .singleElement()
+        .satisfies(option -> {
+          assertThat(option.name()).isEqualTo("CHR_FREP_EDITOR");
+          assertThat(option.grantableDistricts()).containsExactlyInAnyOrder("DCC", "DKA");
+        });
+  }
+
+  @Test
+  @DisplayName("offers only the organizations the delegation names")
+  void delegatedAdminSeesOnlyTheirClients() {
+    givenRoles(
+        role("CHR_FREP_VIEWER", true),
+        role(CssRoleNaming.MARKER_FOREST_CLIENT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_VIEWER"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_FOREST_CLIENT));
+
+    // Resolved to a name, because the picker for a restricted caller is a list
+    // rather than a search box - a number alone is not something to pick from.
+    when(forestClientIntegrationService.search(anyList(), anyInt(), any(), anyBoolean()))
+        .thenReturn(List.of(Map.of(
+            "clientNumber", "00001012",
+            "clientName", "ACME LTD.",
+            "clientStatusCode", "ACT")));
+
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_VIEWER_FOREST_CLIENT-00001012")))
+        .singleElement()
+        .satisfies(option -> assertThat(option.grantableForestClients())
+            .singleElement()
+            .satisfies(client -> {
+              assertThat(client.forestClientNumber()).isEqualTo("00001012");
+              assertThat(client.clientName()).isEqualTo("ACME LTD.");
+            }));
+  }
+
+  @Test
+  @DisplayName("leaves out an organization that has gone inactive")
+  void inactiveDelegatedClientIsNotOffered() {
+    givenRoles(
+        role("CHR_FREP_VIEWER", true),
+        role(CssRoleNaming.MARKER_FOREST_CLIENT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_VIEWER"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_FOREST_CLIENT));
+    when(forestClientIntegrationService.search(anyList(), anyInt(), any(), anyBoolean()))
+        .thenReturn(List.of(Map.of(
+            "clientNumber", "00001012",
+            "clientName", "ACME LTD.",
+            "clientStatusCode", "DAC")));
+
+    // Refused on selection anyway, so offering it would be a dead end - the
+    // same rule that hides an expired district.
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_VIEWER_FOREST_CLIENT-00001012")))
+        .singleElement()
+        .satisfies(option -> assertThat(option.grantableForestClients()).isEmpty());
+  }
+
+  @Test
+  @DisplayName("resolves every delegated organization in one upstream call")
+  void resolvesDelegatedClientsInOneCall() {
+    givenRoles(
+        role("CHR_FREP_VIEWER", true),
+        role(CssRoleNaming.MARKER_FOREST_CLIENT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_VIEWER"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_FOREST_CLIENT));
+
+    service.getGrantableRoles(INTEGRATION, ENV, delegatedFor(
+        "CHR_FREP_VIEWER_FOREST_CLIENT-00001012",
+        "CHR_FREP_VIEWER_FOREST_CLIENT-00001013",
+        "CHR_FREP_VIEWER_FOREST_CLIENT-00001014"));
+
+    verify(forestClientIntegrationService, times(1))
+        .search(anyList(), anyInt(), any(), anyBoolean());
+  }
+
+  @Test
+  @DisplayName("a Forest Client outage empties the picker rather than the screen")
+  void clientOutageDoesNotBreakTheRoleList() {
+    givenRoles(
+        role("CHR_FREP_VIEWER", true),
+        role(CssRoleNaming.MARKER_FOREST_CLIENT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_VIEWER"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_FOREST_CLIENT));
+    when(forestClientIntegrationService.search(anyList(), anyInt(), any(), anyBoolean()))
+        .thenThrow(new RuntimeException("Forest Client API is down"));
+
+    // They could not have granted one while it was down in any case; the roles
+    // still list, and the picker says there is nothing to choose.
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_VIEWER_FOREST_CLIENT-00001012")))
+        .singleElement()
+        .satisfies(option -> assertThat(option.grantableForestClients()).isEmpty());
+  }
+
+  @Test
+  @DisplayName("narrows only the dimension the role actually uses")
+  void narrowsOnlyTheDimensionInUse() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role(CssRoleNaming.MARKER_DISTRICT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_EDITOR"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_DISTRICT));
+
+    // A client list on a role granted per district would narrow a picker that
+    // is never shown, and read as a restriction that does not exist.
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_EDITOR_DISTRICT-DCC")))
+        .singleElement()
+        .satisfies(option -> {
+          assertThat(option.grantableDistricts()).containsExactly("DCC");
+          assertThat(option.grantableForestClients()).isNull();
+        });
+  }
+
+  @Test
+  @DisplayName("an application administrator is narrowed by nothing")
+  void applicationAdminIsUnrestricted() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role(CssRoleNaming.MARKER_DISTRICT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_EDITOR"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_DISTRICT));
+
+    // Null, not empty. Empty would read as "restricted to nothing" and empty
+    // the picker for somebody who may grant every district.
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV, DEFINER))
+        .allSatisfy(option -> {
+          assertThat(option.grantableDistricts()).isNull();
+          assertThat(option.grantableForestClients()).isNull();
+        });
+  }
+
+  @Test
+  @DisplayName("a delegation naming no district leaves nothing to choose")
+  void unscopedDelegationOfAScopedRoleOffersNothing() {
+    givenRoles(
+        role("CHR_FREP_EDITOR", true),
+        role(CssRoleNaming.MARKER_DISTRICT, false));
+    when(cssApiService.getRoleComposites(INTEGRATION, ENV, "CHR_FREP_EDITOR"))
+        .thenReturn(List.of(CssRoleNaming.MARKER_DISTRICT));
+
+    // Such a delegation authorises no grant at all - the grant path compares
+    // scoped names and this one matches none. Empty rather than null, so the
+    // picker shows that honestly instead of offering every district.
+    assertThat(service.getGrantableRoles(INTEGRATION, ENV,
+        delegatedFor("CHR_FREP_EDITOR")))
+        .singleElement()
+        .satisfies(option -> assertThat(option.grantableDistricts()).isEmpty());
   }
 }

@@ -55,7 +55,13 @@ public final class CssRoleNaming {
    * <p>Longest first, so a future scope type that suffixes another still matches
    * the more specific one.
    */
-  private static final List<String> SCOPE_TYPES = List.of("FOREST_CLIENT", "DISTRICT");
+  /** The two scope types, as they appear inside a role name. */
+  public static final String SCOPE_DISTRICT = "DISTRICT";
+
+  public static final String SCOPE_FOREST_CLIENT = "FOREST_CLIENT";
+
+  private static final List<String> SCOPE_TYPES =
+      List.of(SCOPE_FOREST_CLIENT, SCOPE_DISTRICT);
 
   /**
    * The order scope suffixes are written in, which is not the parsing order.

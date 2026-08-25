@@ -1138,7 +1138,7 @@
           "description" : {
             "type" : "string",
             "example" : "Allows users to view all the FSPs but not edit",
-            "maxLength" : 200,
+            "maxLength" : 180,
             "minLength" : 0
           },
           "requires_district" : {
@@ -1178,9 +1178,49 @@
           },
           "role_type_client" : {
             "type" : "boolean"
+          },
+          "grantable_districts" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "grantable_forest_clients" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamForestClientDto"
+            }
           }
         },
         "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district" ]
+      },
+      "FamForestClientDto" : {
+        "properties" : {
+          "client_name" : {
+            "type" : "string"
+          },
+          "forest_client_number" : {
+            "type" : "string"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusDto"
+          }
+        },
+        "required" : [ "forest_client_number" ]
+      },
+      "FamForestClientStatusDto" : {
+        "properties" : {
+          "status_code" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusType"
+          },
+          "description" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FamForestClientStatusType" : {
+        "type" : "string",
+        "enum" : [ "A", "I" ]
       },
       "CssDelegatedAdminRequest" : {
         "properties" : {
@@ -1237,65 +1277,16 @@
           "role_display_name" : {
             "type" : "string"
           },
-          "valid" : {
-            "type" : "boolean"
-          },
-          "error" : {
-            "type" : "string"
-          }
-        },
-        "required" : [ "line_number", "role_code", "user_guid", "valid" ]
-      },
-      "CssBulkGrantPreviewDto" : {
-        "properties" : {
-          "rows" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/components/schemas/CssBulkGrantRowDto"
-            }
-          },
-          "valid_count" : {
-            "type" : "integer",
-            "format" : "int32"
-          },
-          "error_count" : {
-            "type" : "integer",
-            "format" : "int32"
-          }
-        },
-        "required" : [ "error_count", "rows", "valid_count" ]
-      },
-      "CssBulkGrantRowDto" : {
-        "properties" : {
-          "line_number" : {
-            "type" : "integer",
-            "format" : "int32"
-          },
-          "user_guid" : {
+          "district" : {
             "type" : "string"
           },
-          "role_code" : {
+          "district_name" : {
             "type" : "string"
           },
-          "user_type" : {
-            "$ref" : "#/components/schemas/UserType"
-          },
-          "user_name" : {
+          "forest_client_number" : {
             "type" : "string"
           },
-          "first_name" : {
-            "type" : "string"
-          },
-          "last_name" : {
-            "type" : "string"
-          },
-          "email" : {
-            "type" : "string"
-          },
-          "organization" : {
-            "type" : "string"
-          },
-          "role_display_name" : {
+          "forest_client_name" : {
             "type" : "string"
           },
           "valid" : {
@@ -1575,34 +1566,6 @@
           }
         },
         "required" : [ "found" ]
-      },
-      "FamForestClientDto" : {
-        "properties" : {
-          "client_name" : {
-            "type" : "string"
-          },
-          "forest_client_number" : {
-            "type" : "string"
-          },
-          "status" : {
-            "$ref" : "#/components/schemas/FamForestClientStatusDto"
-          }
-        },
-        "required" : [ "forest_client_number" ]
-      },
-      "FamForestClientStatusDto" : {
-        "properties" : {
-          "status_code" : {
-            "$ref" : "#/components/schemas/FamForestClientStatusType"
-          },
-          "description" : {
-            "type" : "string"
-          }
-        }
-      },
-      "FamForestClientStatusType" : {
-        "type" : "string",
-        "enum" : [ "A", "I" ]
       },
       "FamDistrictDto" : {
         "properties" : {

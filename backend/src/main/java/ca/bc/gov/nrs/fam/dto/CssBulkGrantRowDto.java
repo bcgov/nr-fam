@@ -42,17 +42,51 @@ public record CssBulkGrantRowDto(
     /** The role's short name, e.g. "View All". Null for a role with no sidecar. */
     String roleDisplayName,
 
+    /**
+     * The district this row grants for, upper case - e.g. {@code DCC}.
+     *
+     * <p>Blank unless the role is district scoped. A row may carry a district
+     * <em>and</em> a forest client: a role scoped both ways is granted per pair,
+     * and the file expresses that as one row per pair.
+     */
+    String district,
+
+    /** The district's name, resolved so the confirmation reads as a place. */
+    String districtName,
+
+    /** Zero-padded to eight digits, whatever the file wrote. */
+    String forestClientNumber,
+
+    /** The organisation's name, resolved so the confirmation is checkable. */
+    String forestClientName,
+
     /** True when this row would be granted as it stands. */
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean valid,
 
     /** Why the row cannot be granted. Null when {@link #valid}. */
     String error) {
 
-  /** A row that failed before anything could be resolved. */
+  /**
+   * A row that failed before anything could be resolved.
+   *
+   * <p>The scope values are carried through even on a rejection, because half of
+   * what can go wrong is <em>about</em> them - a district on a role that takes
+   * none, a client number that does not exist - and an error naming a value the
+   * row no longer displays is not something anybody can act on.
+   */
   public static CssBulkGrantRowDto invalid(
-      int lineNumber, String userGuid, String roleCode, String error) {
+      int lineNumber, String userGuid, String roleCode,
+      String district, String forestClientNumber, String error) {
 
     return new CssBulkGrantRowDto(lineNumber, userGuid, roleCode,
-        null, null, null, null, null, null, null, false, error);
+        // userType, userName, firstName, lastName, email, organization,
+        // roleDisplayName - none of which could be resolved.
+        null, null, null, null, null, null, null,
+        blankToNull(district), null, blankToNull(forestClientNumber), null,
+        false, error);
+  }
+
+  private static String blankToNull(String value) {
+    return value == null || value.isBlank() ? null : value;
   }
 }

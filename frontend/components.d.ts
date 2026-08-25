@@ -21,6 +21,7 @@ declare module 'vue' {
     Dropdown: typeof import('./src/components/UI/Dropdown.vue')['default']
     ErrorText: typeof import('./src/components/UI/ErrorText.vue')['default']
     ForestClientAddTable: typeof import('./src/components/AddPermissions/ForestClientAddTable.vue')['default']
+    ForestClientSelectTable: typeof import('./src/components/AddPermissions/ForestClientSelectTable.vue')['default']
     GrantFailureNtfnTemplate: typeof import('./src/components/NotificationContent/GrantFailureNtfnTemplate.vue')['default']
     HelperText: typeof import('./src/components/UI/HelperText.vue')['default']
     InputSkeleton: typeof import('./src/components/Skeletons/InputSkeleton.vue')['default']

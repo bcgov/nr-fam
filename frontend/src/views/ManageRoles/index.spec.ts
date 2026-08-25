@@ -2,7 +2,11 @@ import { VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount } from "@vue/test-utils";
 import PrimeVue from "primevue/config";
 import ConfirmationService from "primevue/confirmationservice";
+import Toast from "primevue/toast";
+import ToastService from "primevue/toastservice";
+import { MAX_DESCRIPTION_LENGTH } from "./utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h } from "vue";
 
 /**
  * The Manage roles table, driven through the DOM rather than through internals.
@@ -75,9 +79,15 @@ const settle = async () => {
 const mountView = async () => {
     const ManageRoles = (await import("./index.vue")).default;
 
-    const wrapper = mount(ManageRoles, {
+    // A real Toast beside the view, the way App.vue mounts one above the router
+    // view. Without it the toast is handed to a service that is not there.
+    const Harness = defineComponent({
+        setup: () => () => h("div", [h(Toast), h(ManageRoles)]),
+    });
+
+    const wrapper = mount(Harness, {
         global: {
-            plugins: [VueQueryPlugin, PrimeVue, ConfirmationService],
+            plugins: [VueQueryPlugin, PrimeVue, ConfirmationService, ToastService],
             stubs: {
                 PageTitle: true,
                 SubsectionTitle: true,
@@ -185,7 +195,18 @@ describe("ManageRoles", () => {
         expect(deleteRole).toHaveBeenCalledWith(6538, "dev", "CHR_FREP_EDITOR");
     });
 
-    it("reports the roles that went with it", async () => {
+    const deleteFirstRole = async (
+        wrapper: Awaited<ReturnType<typeof mountView>>
+    ) => {
+        await wrapper.find("button[title='Delete role']").trigger("click");
+        await settle();
+        Array.from(document.body.querySelectorAll("button"))
+            .find((button) => button.textContent?.trim() === "Delete")!
+            .click();
+        await settle();
+    };
+
+    it("confirms the deletion with a toast naming the role and application", async () => {
         deleteRole.mockResolvedValue({
             data: {
                 role_name: "CHR_FREP_EDITOR",
@@ -196,18 +217,65 @@ describe("ManageRoles", () => {
         });
 
         const wrapper = await mountView();
-        await wrapper.find("button[title='Delete role']").trigger("click");
-        await settle();
-        Array.from(document.body.querySelectorAll("button"))
-            .find((button) => button.textContent?.trim() === "Delete")!
-            .click();
-        await settle();
+        await deleteFirstRole(wrapper);
 
-        // One role on screen was two in CSS; saying "deleted" would understate it.
-        expect(wrapper.text()).toContain("1 role(s) derived from it");
-        expect(wrapper.text()).toContain("3 user(s) lost that access");
-        // Silence here would hide that somebody's authority was withdrawn.
-        expect(wrapper.text()).toContain("1 delegated admin privilege(s) withdrawn");
+        // Read from the toast itself, not the page. The role code and the
+        // application name are both in the table behind it, so asserting on the
+        // whole document passes whatever the toast says.
+        // The toast teleports to the body, so it is read from the document -
+        // and read on its own, because the role code and the application name
+        // are both in the table behind it. Asserting on the whole page would
+        // pass whatever the toast said.
+        const toast = document.body.querySelector(".p-toast-message");
+        expect(toast, "no toast was raised").toBeTruthy();
+        expect(toast!.textContent).toContain("Role deleted");
+        expect(toast!.textContent).toContain("CHR_FREP_EDITOR");
+        expect(toast!.textContent).toContain("FREP");
+    });
+
+    it("does not recite what went with the role", async () => {
+        // The derived roles, the members who lost access and the delegations
+        // withdrawn are consequences of deleting the role, not separate
+        // outcomes. Counting them made a routine deletion read like an
+        // incident report.
+        deleteRole.mockResolvedValue({
+            data: {
+                role_name: "CHR_FREP_EDITOR",
+                removed_roles: ["CHR_FREP_EDITOR", "CHR_FREP_EDITOR_DISTRICT-DCC"],
+                removed_delegations: ["DELEGATED_ADMIN_6538_DEV__CHR_FREP_EDITOR"],
+                members_affected: 3,
+            },
+        });
+
+        const wrapper = await mountView();
+        await deleteFirstRole(wrapper);
+
+        const shown = wrapper.text() + (document.body.textContent ?? "");
+        expect(shown).not.toContain("derived from it");
+        expect(shown).not.toContain("lost that access");
+        expect(shown).not.toContain("withdrawn");
+        // And the toast itself is the one line, not a recital: no counts in it.
+        const toast = document.body.querySelector(".p-toast-message");
+        expect(toast, "no toast was raised").toBeTruthy();
+        expect(toast!.textContent).not.toMatch(/\d/);
+    });
+
+    it("leaves no message sitting on the page", async () => {
+        // The row has gone from the table below; a line that stays until
+        // something else replaces it outlives the thing it describes.
+        deleteRole.mockResolvedValue({
+            data: {
+                role_name: "CHR_FREP_EDITOR",
+                removed_roles: ["CHR_FREP_EDITOR"],
+                removed_delegations: [],
+                members_affected: 0,
+            },
+        });
+
+        const wrapper = await mountView();
+        await deleteFirstRole(wrapper);
+
+        expect(wrapper.find(".created-message").exists()).toBe(false);
     });
 
     /**
@@ -309,5 +377,55 @@ describe("ManageRoles", () => {
             .props("options") as any[];
 
         expect(offered.map((app) => app.description)).toEqual(["FREP", "SILVA"]);
+    });
+
+    it("counts the description against its limit as it is typed", async () => {
+        const wrapper = await mountView();
+
+        // Starts at zero rather than blank: a counter that only appears once
+        // you are near the limit tells you nothing while you still have room to
+        // plan.
+        expect(wrapper.find(".char-count").text()).toBe(
+            `0 / ${MAX_DESCRIPTION_LENGTH}`
+        );
+
+        await wrapper.find("#description").setValue("Allows viewing");
+        expect(wrapper.find(".char-count").text()).toBe(
+            `14 / ${MAX_DESCRIPTION_LENGTH}`
+        );
+    });
+
+    it("flags the description when it reaches the limit", async () => {
+        const wrapper = await mountView();
+
+        await wrapper.find("#description").setValue("x".repeat(MAX_DESCRIPTION_LENGTH));
+
+        // The field is maxlength-capped, so typing stops with no explanation.
+        // The count turning red is the only signal that it did.
+        expect(wrapper.find(".char-count").classes()).toContain(
+            "fam-error-helper-text"
+        );
+    });
+
+    it("does not flag it below the limit", async () => {
+        const wrapper = await mountView();
+
+        await wrapper
+            .find("#description")
+            .setValue("x".repeat(MAX_DESCRIPTION_LENGTH - 1));
+
+        expect(wrapper.find(".char-count").classes()).toContain(
+            "fam-helper-text"
+        );
+    });
+
+    it("caps the field at the limit the backend enforces", async () => {
+        const wrapper = await mountView();
+
+        // Without this the form would accept what the API rejects, and the
+        // count would keep rising past a limit nothing stops.
+        expect(wrapper.find("#description").attributes("maxlength")).toBe(
+            String(MAX_DESCRIPTION_LENGTH)
+        );
     });
 });

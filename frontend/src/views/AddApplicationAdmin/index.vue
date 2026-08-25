@@ -5,6 +5,7 @@ import PageTitle from "@/components/UI/PageTitle.vue";
 import StepContainer from "@/components/UI/StepContainer.vue";
 import { ManagePermissionsRoute } from "@/router/routes";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
+import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { selectedApp } from "@/store/ApplicationState";
 import type { SelectedUser } from "@/types/SelectUserType";
 import { useMutation, useQueryClient } from "@tanstack/vue-query";
@@ -51,13 +52,9 @@ const appointMutation = useMutation({
             }
         ),
     onSuccess: () => {
-        queryClient.invalidateQueries({
-            queryKey: [
-                "css-administrators",
-                props.integrationId,
-                props.environment,
-            ],
-        });
+        invalidateAfterAccessChange(
+            queryClient, props.integrationId, props.environment
+        );
         router.push({ name: ManagePermissionsRoute.name });
     },
     onError: (error: any) => {
