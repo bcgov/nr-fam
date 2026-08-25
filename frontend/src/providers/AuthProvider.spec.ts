@@ -1,7 +1,10 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { watch } from "vue";
+import { defineComponent, h, inject, watch } from "vue";
 import { authState } from "@/providers/authState";
+import { AUTH_KEY } from "@/constants/InjectionKeys";
+import { IdpProvider } from "@/enum/IdpEnum";
+import type { AuthContext } from "@/types/AuthTypes";
 
 /**
  * Session restoration on a page reload.
@@ -17,15 +20,22 @@ import { authState } from "@/providers/authState";
  */
 const loadStoredUser = vi.fn();
 const fetchSelf = vi.fn();
+const signinRedirect = vi.fn();
+const signoutRedirect = vi.fn();
+const removeUser = vi.fn();
 
 vi.mock("@/services/keycloak", () => ({
     getUserManager: () => ({
-        signinRedirect: vi.fn(),
-        signoutRedirect: vi.fn(),
+        signinRedirect: (...args: unknown[]) => signinRedirect(...args),
+        signoutRedirect: (...args: unknown[]) => signoutRedirect(...args),
+        removeUser: (...args: unknown[]) => removeUser(...args),
         signinRedirectCallback: vi.fn(),
     }),
     loadStoredUser: (...args: unknown[]) => loadStoredUser(...args),
-    KC_IDP_HINT: "kc_idp_hint",
+    // The real aliases, not a placeholder. Stubbed as a bare string, both
+    // `.IDIR` and `.BCEIDBUSINESS` read as undefined, and the suite stayed green
+    // while the IDIR hint named a provider the realm does not have.
+    KC_IDP_HINT: { IDIR: "azureidir", BCEIDBUSINESS: "bceidbusiness" },
     AUTH_CALLBACK_PATH: "/authCallback",
 }));
 
@@ -62,6 +72,7 @@ describe("AuthProvider session restoration", () => {
             isAuthRestored: false,
             accessRoles: [],
         };
+        signinRedirect.mockReset();
         loadStoredUser.mockReset().mockResolvedValue(USER);
         fetchSelf.mockReset().mockResolvedValue({ access_roles: ["FAM_ADMIN"] });
     });
@@ -108,5 +119,131 @@ describe("AuthProvider session restoration", () => {
 
         expect(authState.value.isAuthRestored).toBe(true);
         expect(authState.value.isAuthenticated).toBe(false);
+    });
+});
+
+/**
+ * Which provider each button sends the browser to.
+ *
+ * Worth asserting because getting it wrong is silent: Keycloak ignores a
+ * `kc_idp_hint` naming a provider the client does not have, and falls through to
+ * whichever one it does. On a single-provider integration that means both
+ * buttons reach the same sign-in page and only the wrong one looks broken.
+ */
+describe("AuthProvider sign-in", () => {
+    beforeEach(() => {
+        signinRedirect.mockReset();
+        loadStoredUser.mockReset().mockResolvedValue(null);
+        fetchSelf.mockReset().mockResolvedValue({ access_roles: [] });
+    });
+
+    /**
+     * Drives login the way the landing page does - through the injected
+     * context, from a child inside the provider's slot.
+     */
+    const hintFor = async (idp: IdpProvider) => {
+        let auth: AuthContext | undefined;
+        const Consumer = defineComponent({
+            setup: () => {
+                auth = inject<AuthContext>(AUTH_KEY);
+                return () => h("div");
+            },
+        });
+
+        const AuthProvider = (await import("./AuthProvider.vue")).default;
+        mount(AuthProvider, {
+            global: { stubs: { Spinner: true } },
+            slots: { default: () => h(Consumer) },
+        });
+        await flushPromises();
+
+        expect(auth, "AuthProvider did not provide an auth context").toBeTruthy();
+        await auth!.login(idp as never);
+
+        // The most recent call, not the first: a test that signs in twice would
+        // otherwise read the same hint back both times and compare a value with
+        // itself.
+        return signinRedirect.mock.calls.at(-1)?.[0]?.extraQueryParams
+            ?.kc_idp_hint;
+    };
+
+    it("sends IDIR to azureidir", async () => {
+        // The realm federates IDIR to Azure AD under this alias. `idir` is not
+        // one it has.
+        expect(await hintFor(IdpProvider.IDIR)).toBe("azureidir");
+    });
+
+    it("sends Business BCeID to bceidbusiness", async () => {
+        expect(await hintFor(IdpProvider.BCEIDBUSINESS)).toBe("bceidbusiness");
+    });
+
+    it("routes the two buttons to different providers", async () => {
+        // This module is mocked here, so these assert the *routing* - that the
+        // IDIR button reaches the IDIR constant rather than the other one. That
+        // the constants hold the right aliases is keycloak.spec's job, against
+        // the real module.
+        expect(await hintFor(IdpProvider.IDIR)).not.toBe(
+            await hintFor(IdpProvider.BCEIDBUSINESS)
+        );
+    });
+});
+
+/**
+ * Signing out.
+ *
+ * The end-session request has to carry `id_token_hint`, or Keycloak does not
+ * know which session to end - it answers with a confirmation page, or refuses,
+ * and the realm session survives. oidc-client-ts reads that hint off the stored
+ * user and removes the user itself, so anything here that clears storage first
+ * breaks the logout while still looking like it worked: local state is gone, the
+ * app returns to the landing page, and the next sign-in walks straight back in.
+ */
+describe("AuthProvider sign-out", () => {
+    beforeEach(() => {
+        signoutRedirect.mockReset();
+        removeUser.mockReset();
+        loadStoredUser.mockReset().mockResolvedValue(USER);
+        fetchSelf.mockReset().mockResolvedValue({ access_roles: ["FAM_ADMIN"] });
+    });
+
+    const signOut = async () => {
+        let auth: AuthContext | undefined;
+        const Consumer = defineComponent({
+            setup: () => {
+                auth = inject<AuthContext>(AUTH_KEY);
+                return () => h("div");
+            },
+        });
+
+        const AuthProvider = (await import("./AuthProvider.vue")).default;
+        mount(AuthProvider, {
+            global: { stubs: { Spinner: true } },
+            slots: { default: () => h(Consumer) },
+        });
+        await flushPromises();
+
+        await auth!.logout();
+    };
+
+    it("redirects through the end-session endpoint", async () => {
+        // Clearing local state alone would leave the realm session alive.
+        await signOut();
+
+        expect(signoutRedirect).toHaveBeenCalled();
+    });
+
+    it("leaves the stored user for the library to remove", async () => {
+        // The hint comes off that user. Removing it here first would send a
+        // logout Keycloak cannot attribute to a session.
+        await signOut();
+
+        expect(removeUser).not.toHaveBeenCalled();
+    });
+
+    it("clears the session it was holding", async () => {
+        await signOut();
+
+        expect(authState.value.isAuthenticated).toBe(false);
+        expect(authState.value.accessRoles).toEqual([]);
     });
 });

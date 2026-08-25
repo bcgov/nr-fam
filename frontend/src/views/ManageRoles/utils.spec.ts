@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ROLE_NAME_LENGTH,
     applyScopeChoice,
     describeScope,
     getDefaultFormData,
@@ -113,5 +115,34 @@ describe("scope selection", () => {
         expect(
             toCreateRequest(form({ requiresDistrict: true })).requires_district
         ).toBe(true);
+    });
+});
+
+describe("role field limits", () => {
+    it("keeps the description inside a Keycloak role name", () => {
+        // The description is stored as `FAM:DESC:<code>:<description>`, and
+        // Keycloak allows 255 characters. Bounding the two fields independently
+        // is what let this drift: at 200, a code longer than 45 characters
+        // composed a name Keycloak refused - as an upstream error naming
+        // neither field, after the role itself had been created.
+        const PREFIX = "FAM:DESC:".length;
+        const SEPARATOR = 1;
+        const LONGEST_CODE = 59;
+
+        expect(
+            PREFIX + LONGEST_CODE + SEPARATOR + MAX_DESCRIPTION_LENGTH
+        ).toBeLessThanOrEqual(255);
+    });
+
+    it("keeps the role name inside one too", () => {
+        expect(
+            "FAM:LABEL:".length + 59 + 1 + MAX_ROLE_NAME_LENGTH
+        ).toBeLessThanOrEqual(255);
+    });
+
+    it("matches the limit the backend enforces", () => {
+        // Larger here and the form accepts what the API rejects; smaller and it
+        // refuses what the API would take.
+        expect(MAX_DESCRIPTION_LENGTH).toBe(180);
     });
 });

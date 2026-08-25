@@ -56,9 +56,18 @@ jobs:
   tests:
     name: Tests
     needs: [deploy-test]
+    # The E2E job checks the repository out. A called workflow cannot hold more
+    # than its caller grants, and this file sets `permissions: {}`.
+    permissions:
+      contents: read
     uses: ./.github/workflows/reusable-tests.yml
     with:
       target: test
+      run_e2e: ${{ vars.RUN_E2E != 'false' }}
+    secrets:
+      e2e_idir_user: ${{ secrets.E2E_IDIR_USER }}
+      e2e_idir_password: ${{ secrets.E2E_IDIR_PASSWORD }}
+      e2e_target_idir: ${{ secrets.E2E_TARGET_IDIR }}
 
   deploy-prod:
     name: PROD Deploys (${{ needs.init.outputs.pr }})

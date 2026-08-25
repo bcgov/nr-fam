@@ -43,9 +43,21 @@ public record CssRoleCreateRequest(
      * <p>Optional: a role whose name says enough needs no sentence. Stored on a
      * second sidecar - see {@link CssRoleNaming#DESCRIPTION_PREFIX} - because a
      * sentence and a name will not reliably fit in one role name together.
+     *
+     * <p><b>180, because the sidecar has to fit inside a Keycloak role name.</b>
+     * That name is {@code FAM:DESC:<code>:<description>} and Keycloak allows 255
+     * characters, so the budget is 255 - 9 for the prefix - 1 for the separator
+     * - up to 59 for the code, leaving 186. This was 200, which the two fields
+     * being bounded independently made look safe: a code longer than 45
+     * characters plus a long description composed a name Keycloak refused, as an
+     * opaque upstream error naming neither field, after the role itself had
+     * already been created.
+     *
+     * <p>180 rather than 186 so the arithmetic has somewhere to move. Anything
+     * that lengthens the prefix or the code has to be checked against this.
      */
     @Schema(example = "Allows users to view all the FSPs but not edit")
-    @Size(max = 200) String description,
+    @Size(max = 180) String description,
 
     /** Granting this role requires choosing one or more districts. */
     boolean requiresDistrict,

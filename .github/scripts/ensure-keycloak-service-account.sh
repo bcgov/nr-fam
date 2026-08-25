@@ -59,6 +59,121 @@ SCOPES=(
   "user-lookup:business-bceid:read"
 )
 
+# --- network diagnostics ----------------------------------------------------
+#
+# These calls fail intermittently in CI and the failures were indistinguishable
+# from a configuration fault: a dropped connection produced an empty body, which
+# read as "no access_token", which was reported as "check the client id/secret".
+# The retry is what stops a blip failing a deploy; the trace is what tells you
+# which of the two happened when it fails anyway.
+#
+# A trace is written for EVERY call and printed only for one that finally fails.
+# It is redacted first - see redact(). A raw trace of the token request contains
+# the admin client_secret in the POST body, and every later request carries the
+# admin bearer token in a header. Neither may reach a build log.
+MAX_ATTEMPTS="${KC_MAX_ATTEMPTS:-4}"
+CONNECT_TIMEOUT="${KC_CONNECT_TIMEOUT:-10}"
+MAX_TIME="${KC_MAX_TIME:-60}"
+
+trace_dir="$(mktemp -d)"
+trap 'rm -rf "${trace_dir}"' EXIT
+
+# Set by kc_curl for callers that check the status rather than the body.
+http_code=""
+
+# Masks anything that must not appear in a log, whatever curl put in the trace.
+#
+# Belt and braces with GitHub's own masking: it only masks values it was given
+# as secrets, and the admin token below is minted at runtime.
+redact() {
+  sed -E \
+    -e 's/(client_secret=)[^&[:space:]]*/\1***/g' \
+    -e 's/("value"[[:space:]]*:[[:space:]]*")[^"]*/\1***/g' \
+    -e 's/(Authorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]*/\1***/gI' \
+    -e 's/("access_token"[[:space:]]*:[[:space:]]*")[^"]*/\1***/g'
+}
+
+# Whether a response is worth trying again. 429 and 5xx are the shapes a shared
+# gateway produces under load; a 4xx is our request being wrong and will be
+# wrong next time too.
+retryable_status() {
+  case "$1" in
+    429|500|502|503|504) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# curl with retries, timeouts and a redacted trace on final failure.
+#
+#   kc_curl <label> <curl args...>
+#
+# Writes the response body to stdout and the status to $http_code. The label
+# names the trace file, so a failure says which call it was.
+kc_curl() {
+  local label="$1"; shift
+  local trace="${trace_dir}/${label}.trace"
+  local body="${trace_dir}/${label}.body"
+  local attempt=1 rc delay
+
+  while :; do
+    set +e
+    http_code="$(curl -sS \
+      --connect-timeout "${CONNECT_TIMEOUT}" --max-time "${MAX_TIME}" \
+      --trace-ascii "${trace}" --trace-time \
+      -o "${body}" -w '%{http_code}' "$@")"
+    rc=$?
+    set -e
+
+    if [ "${rc}" -eq 0 ] && ! retryable_status "${http_code}"; then
+      cat "${body}"
+      return 0
+    fi
+
+    if [ "${attempt}" -ge "${MAX_ATTEMPTS}" ]; then
+      # All of this goes to stderr. Only the response body belongs on stdout:
+      # callers either capture it with $( ) or discard it with >/dev/null, and
+      # diagnostics written there are swallowed by the second and parsed as
+      # JSON by the first.
+      {
+        if [ "${rc}" -ne 0 ]; then
+          # A curl exit code, not an HTTP status: the request never completed.
+          # Naming it separately is the point - this is the case that used to
+          # be reported as bad credentials.
+          echo "::error::${label}: the connection failed after ${attempt} attempt(s) (curl exit ${rc}). This is a network failure, not a credential problem."
+        else
+          echo "::error::${label}: HTTP ${http_code} after ${attempt} attempt(s)."
+        fi
+
+        echo "::group::curl trace for ${label} (redacted)"
+        if [ -s "${trace}" ]; then
+          redact < "${trace}"
+        else
+          echo "(curl wrote no trace - it failed before opening a connection)"
+        fi
+        echo "::endgroup::"
+
+        if [ -s "${body}" ]; then
+          echo "::group::response body for ${label} (redacted)"
+          redact < "${body}"
+          echo "::endgroup::"
+        fi
+      } >&2
+      return 1
+    fi
+
+    # Backs off rather than hammering: these failures cluster, and four
+    # immediate retries would land inside the same blip.
+    delay=$((attempt * attempt * 2))
+    if [ "${rc}" -ne 0 ]; then
+      echo "  ${label}: connection failed (curl exit ${rc}), retrying in ${delay}s (attempt ${attempt}/${MAX_ATTEMPTS})" >&2
+    else
+      echo "  ${label}: HTTP ${http_code}, retrying in ${delay}s (attempt ${attempt}/${MAX_ATTEMPTS})" >&2
+    fi
+    sleep "${delay}"
+    attempt=$((attempt + 1))
+  done
+}
+
 issuer="${USER_LOOKUP_ISSUER_URI%/}"
 realm="${issuer##*/realms/}"
 base="${issuer%/realms/*}"
@@ -70,22 +185,33 @@ echo "Keycloak realm: ${realm}"
 echo "Ensuring service-account client: ${FAM_CLIENT_ID}"
 
 # --- obtain an admin token via client_credentials ---------------------------
-token="$(curl -sS -X POST "${token_url}" \
+token="$(kc_curl admin-token -X POST "${token_url}" \
   -d grant_type=client_credentials \
   -d client_id="${KC_SA_CLIENT_ID}" \
   --data-urlencode "client_secret=${KC_SA_CLIENT_SECRET}" \
-  | jq -r '.access_token // empty')"
+  | jq -r '.access_token // empty')" || exit 1
 
 if [ -z "${token}" ]; then
-  echo "::error::Could not obtain a Keycloak admin token. Check the admin service-account client id/secret and that it holds the realm-management 'manage-clients' role."
+  # Reached only when the call itself succeeded, so this really is the
+  # credentials. A network failure has already reported itself as one, with a
+  # trace.
+  #
+  # No status quoted here on purpose: the call ran inside $( ), so kc_curl set
+  # $http_code in a subshell and it is empty by the time we read it. Printing
+  # "HTTP  with no access_token" would be worse than not printing one.
+  echo "::error::Keycloak returned no access_token. Check the admin service-account client id/secret and that it holds the realm-management 'manage-clients' role."
   exit 1
 fi
+
+# Minted at runtime, so GitHub does not know to mask it. Every trace below
+# carries it in a header, and redact() strips it - this is the second layer.
+echo "::add-mask::${token}"
 
 auth=(-H "Authorization: Bearer ${token}")
 
 # --- ensure the client exists ----------------------------------------------
-uuid="$(curl -sS "${auth[@]}" "${clients_url}?clientId=${FAM_CLIENT_ID}" \
-  | jq -r '.[0].id // empty')"
+uuid="$(kc_curl find-client "${auth[@]}" "${clients_url}?clientId=${FAM_CLIENT_ID}" \
+  | jq -r '.[0].id // empty')" || exit 1
 
 if [ -n "${uuid}" ]; then
   echo "✓ client exists: ${FAM_CLIENT_ID} (${uuid})"
@@ -105,15 +231,16 @@ else
     frontchannelLogout: false
   }')"
 
-  code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${clients_url}" \
-    "${auth[@]}" -H 'Content-Type: application/json' -d "${body}")"
-  if [ "${code}" != "201" ]; then
-    echo "::error::Failed to create client '${FAM_CLIENT_ID}' (HTTP ${code})."
+  kc_curl create-client -X POST "${clients_url}" \
+    "${auth[@]}" -H 'Content-Type: application/json' -d "${body}" >/dev/null || exit 1
+  if [ "${http_code}" != "201" ]; then
+    echo "::error::Failed to create client '${FAM_CLIENT_ID}' (HTTP ${http_code})."
     exit 1
   fi
 
-  uuid="$(curl -sS "${auth[@]}" "${clients_url}?clientId=${FAM_CLIENT_ID}" \
-    | jq -r '.[0].id // empty')"
+  uuid="$(kc_curl find-created-client "${auth[@]}" \
+    "${clients_url}?clientId=${FAM_CLIENT_ID}" \
+    | jq -r '.[0].id // empty')" || exit 1
   if [ -z "${uuid}" ]; then
     echo "::error::Created client '${FAM_CLIENT_ID}' but could not resolve its id."
     exit 1
@@ -124,7 +251,7 @@ fi
 # --- assign the required scopes as DEFAULT client scopes --------------------
 # Default rather than optional, so the client_credentials token always carries
 # them: the service account never sends an explicit `scope` request.
-all_scopes="$(curl -sS "${auth[@]}" "${scopes_url}")"
+all_scopes="$(kc_curl list-scopes "${auth[@]}" "${scopes_url}")" || exit 1
 
 for scope in "${SCOPES[@]}"; do
   scope_id="$(jq -r --arg n "${scope}" '.[] | select(.name == $n) | .id' <<< "${all_scopes}")"
@@ -133,18 +260,19 @@ for scope in "${SCOPES[@]}"; do
     exit 1
   fi
 
-  code="$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
-    "${clients_url}/${uuid}/default-client-scopes/${scope_id}" "${auth[@]}")"
-  if [ "${code}" != "204" ]; then
-    echo "::error::Failed to assign scope '${scope}' to '${FAM_CLIENT_ID}' (HTTP ${code})."
+  kc_curl "assign-scope-${scope//:/-}" -X PUT \
+    "${clients_url}/${uuid}/default-client-scopes/${scope_id}" "${auth[@]}" >/dev/null || exit 1
+  if [ "${http_code}" != "204" ]; then
+    echo "::error::Failed to assign scope '${scope}' to '${FAM_CLIENT_ID}' (HTTP ${http_code})."
     exit 1
   fi
   echo "✓ scope assigned: ${scope}"
 done
 
 # --- read the client secret and emit masked outputs ------------------------
-secret="$(curl -sS "${auth[@]}" "${clients_url}/${uuid}/client-secret" \
-  | jq -r '.value // empty')"
+secret="$(kc_curl read-client-secret "${auth[@]}" \
+  "${clients_url}/${uuid}/client-secret" \
+  | jq -r '.value // empty')" || exit 1
 if [ -z "${secret}" ]; then
   echo "::error::Could not read the client secret for '${FAM_CLIENT_ID}'."
   exit 1

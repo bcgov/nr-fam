@@ -417,3 +417,10 @@ specs
 # Prisma 7 generated client
 backend/generated/
 .copilot-memory
+
+# Playwright. The report and traces are per-run artefacts; CI uploads them
+# instead. e2e/.auth/ holds real session tokens and is ignored beside the suite.
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+frontend/playwright/.cache/

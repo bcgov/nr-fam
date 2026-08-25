@@ -85,6 +85,30 @@ export interface CssBulkGrantRowDto {
     'role_display_name'?: string;
     /**
      * 
+     * @type {string}
+     * @memberof CssBulkGrantRowDto
+     */
+    'district'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssBulkGrantRowDto
+     */
+    'district_name'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssBulkGrantRowDto
+     */
+    'forest_client_number'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssBulkGrantRowDto
+     */
+    'forest_client_name'?: string;
+    /**
+     * 
      * @type {boolean}
      * @memberof CssBulkGrantRowDto
      */

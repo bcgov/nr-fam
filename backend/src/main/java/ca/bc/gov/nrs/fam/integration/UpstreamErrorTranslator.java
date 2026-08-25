@@ -95,7 +95,18 @@ public class UpstreamErrorTranslator {
             ? HttpStatus.INTERNAL_SERVER_ERROR
             : HttpStatus.valueOf(upstreamStatus.value());
 
-    log.error("Upstream {} returned {} ({}); reporting {} to caller",
+    // DEBUG, not ERROR. This method builds an exception; it does not know
+    // whether anybody minds. Two callers treat an upstream 404 as an ordinary
+    // empty answer - SelfPermissionService asks every integration what a person
+    // holds and most of them 404, and holdersOf reads a role nobody has been
+    // appointed to yet - and logging those at ERROR reported a routine page load
+    // as a failure. Ten call sites catch and log their own message besides.
+    //
+    // Nothing is lost by going quiet here: an UpstreamException that actually
+    // escapes is logged at ERROR by GlobalExceptionHandler.handleUpstream, which
+    // names the request method and URI as well. That line says which call failed;
+    // this one never could.
+    log.debug("Upstream {} returned {} ({}); reporting {} to caller",
         upstream, upstreamStatus.value(), failureCode, responseStatus.value());
 
     return new UpstreamException(responseStatus, failureCode, message, upstream);

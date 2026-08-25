@@ -16,8 +16,15 @@ export const ROLE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,58}$/;
 /** Bounds the FAM:LABEL sidecar, which must fit inside one Keycloak role name. */
 export const MAX_ROLE_NAME_LENGTH = 150;
 
-/** Bounds the FAM:DESC sidecar. Its own role name, so it has its own budget. */
-export const MAX_DESCRIPTION_LENGTH = 200;
+/**
+ * Bounds the FAM:DESC sidecar. Its own role name, so it has its own budget.
+ *
+ * The sidecar is `FAM:DESC:<code>:<description>` and Keycloak allows 255
+ * characters, so the budget is 255 - 9 for the prefix - 1 for the separator -
+ * up to 59 for the code, leaving 186. Kept at 180 so the arithmetic has
+ * somewhere to move. Must match the backend's `@Size`.
+ */
+export const MAX_DESCRIPTION_LENGTH = 180;
 
 export type ManageRolesFormType = {
     /** FSPTS_VIEW_ALL - what reaches the token. */

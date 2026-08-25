@@ -2,13 +2,13 @@ name: Reusable Tests
 
 # Post-deployment checks against a running environment.
 #
-# The quickstart's integration, E2E and load jobs were removed rather than left
-# red: their suites targeted the demo application (common/tests/integration only
-# had nest/fastapi/fiber/quarkus suites hitting /api/users) and the frontend's
-# e2e/ directory went with the React demo. FAM has no browser tests yet.
+# Two jobs. The smoke test is unauthenticated curl against the endpoints FAM
+# provides for exactly that purpose, and it gates the second: an E2E failure
+# against an environment that never came up says nothing useful.
 #
-# What remains is a genuine smoke test, using the endpoint FAM already provides
-# for exactly this purpose.
+# The E2E job drives the real SPA against the real backend and a real CSS
+# sandbox integration, so it creates and deletes roles and grants for real.
+# Auth is programmatic, from the e2e_idir_user / e2e_idir_password secrets.
 
 on:
   workflow_call:
@@ -17,6 +17,27 @@ on:
         description: PR number, test or prod
         default: ${{ github.event.number }}
         type: string
+      run_e2e:
+        description: |
+          Run the Playwright suite. Off by default so a repository without the
+          IDIR secrets or a CSS sandbox still gets the smoke test rather than a
+          permanently red job.
+        default: false
+        type: boolean
+
+    secrets:
+      e2e_idir_user:
+        description: IDIR service account username for Playwright auth
+        required: false
+      e2e_idir_password:
+        description: IDIR service account password for Playwright auth
+        required: false
+      e2e_target_idir:
+        description: >-
+          IDIR user the write specs grant to. Deliberately not the account the
+          suite signs in as - FAM refuses to alter your own access, so a
+          self-grant would fail on that guard rather than exercising anything.
+        required: false
 
 env:
   DOMAIN: apps.gold.devops.gov.bc.ca
@@ -93,3 +114,69 @@ jobs:
             exit 1
           fi
           echo "OpenAPI document is served."
+
+  e2e-tests:
+    name: E2E (${{ matrix.project }})
+    # Only worth running against an environment that already answered. Without
+    # this, a deployment that never came up produces forty browser failures
+    # instead of one legible curl failure.
+    needs: [smoke-test]
+    if: ${{ inputs.run_e2e }}
+    defaults:
+      run:
+        working-directory: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Chromium only. The suite writes to a shared CSS sandbox, so running
+        # several browsers at once would have them create and delete each
+        # other's roles - the projects are for local cross-browser checking,
+        # not for CI breadth.
+        project: [chromium]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps ${{ matrix.project }}
+
+      - name: Run Playwright
+        env:
+          E2E_BASE_URL: https://${{ env.PREFIX }}.${{ env.DOMAIN }}
+          E2E_IDIR_USER: ${{ secrets.e2e_idir_user }}
+          E2E_IDIR_PASSWORD: ${{ secrets.e2e_idir_password }}
+          # The directory user the write specs grant to - deliberately not the
+          # account the suite signs in as, because FAM refuses to alter your own
+          # access.
+          #
+          # A secret, so it is masked in logs and in the uploaded Playwright
+          # report. That costs some diagnosability - a failure that would have
+          # read "no user JSMITH" now reads "no user ***" - so a run that cannot
+          # find the target is worth checking against the secret's value rather
+          # than the log alone.
+          E2E_TARGET_IDIR: ${{ secrets.e2e_target_idir }}
+          # The application is not configured. The suite discovers it from
+          # /api/css-applications, which already returns only what this account
+          # may administer. E2E_APP_NAME pins one if an environment ever holds
+          # something that is not a sandbox.
+          E2E_APP_NAME: ${{ vars.E2E_APP_NAME }}
+          CI: "true"
+        run: npx playwright test --project="${{ matrix.project }}" --reporter=html,list
+
+      - uses: actions/upload-artifact@v7
+        if: (! cancelled())
+        with:
+          name: playwright-report-${{ matrix.project }}-${{ inputs.target }}
+          path: frontend/playwright-report
+          retention-days: 7

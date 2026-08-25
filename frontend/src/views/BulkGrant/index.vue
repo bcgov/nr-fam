@@ -5,6 +5,7 @@ import PageTitle from "@/components/UI/PageTitle.vue";
 import StepContainer from "@/components/UI/StepContainer.vue";
 import { ManagePermissionsRoute } from "@/router/routes";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
+import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { selectedApp } from "@/store/ApplicationState";
 import { useMutation, useQueryClient } from "@tanstack/vue-query";
 import type { CssBulkGrantRowDto } from "fam-api";
@@ -129,13 +130,9 @@ const applyMutation = useMutation({
         rows.value = outcomes;
         applied.value = true;
         // The permissions table is now stale.
-        queryClient.invalidateQueries({
-            queryKey: [
-                "css-user-role-assignments",
-                props.integrationId,
-                props.environment,
-            ],
-        });
+        invalidateAfterAccessChange(
+            queryClient, props.integrationId, props.environment
+        );
     },
     onError: (error: unknown) => {
         uploadError.value = describeUploadError(error);
@@ -156,7 +153,7 @@ const applicationName = computed(
             :subtitle="`Grant roles to many users in ${applicationName}`"
         />
 
-        <StepContainer class="choose-file-step" title="Choose a file" divider>
+        <StepContainer class="template-step" title="Template" divider>
             <!--
                 A button, not an anchor: this builds a blob and hands it to the
                 browser, so there is no href to follow and nothing to open in a
@@ -189,6 +186,8 @@ const applicationName = computed(
                 @change="onFileChange"
             />
 
+        </StepContainer>
+        <StepContainer class="choose-file-step" title="Choose a file" divider>
             <div
                 class="dnd-zone"
                 :class="{ 'dnd-zone--drag': dragOver }"
@@ -278,6 +277,37 @@ const applicationName = computed(
                     </template>
                 </Column>
 
+                <!--
+                    The scope, resolved. A district code and a client number are
+                    not things anybody can check by eye, which is the whole
+                    reason this confirmation step exists - so the name is shown
+                    and the code kept beside it.
+                -->
+                <Column header="Scope">
+                    <template #body="{ data }">
+                        <span
+                            v-if="!data.district && !data.forest_client_number"
+                            class="no-scope"
+                            >Whole application</span
+                        >
+                        <span v-else class="scope-cell">
+                            <span v-if="data.district">
+                                {{ data.district_name ?? data.district }}
+                                <span class="scope-code">({{ data.district }})</span>
+                            </span>
+                            <span v-if="data.forest_client_number">
+                                {{
+                                    data.forest_client_name ??
+                                    data.forest_client_number
+                                }}
+                                <span class="scope-code"
+                                    >({{ data.forest_client_number }})</span
+                                >
+                            </span>
+                        </span>
+                    </template>
+                </Column>
+
                 <Column :header="applied ? 'Outcome' : 'Status'">
                     <template #body="{ data }">
                         <span v-if="data.valid" class="row-ok">
@@ -311,14 +341,31 @@ const applicationName = computed(
     padding-bottom: 2.5rem;
 
     /*
-        Breathing room between the page title and the first step.
+        Breathing room between the page title and the first step - and only that
+        step. This margin used to sit on a class both steps carried, so it was
+        also spacing "Choose a file" from the rule above it, where nothing was
+        wanted. One class, two jobs, pulling opposite ways.
 
         Carried on an explicit class rather than :first-of-type, which matches on
         element type: PageTitle renders a bare <div>, so the step container is
         never the first div and the rule silently did nothing.
     */
-    .choose-file-step {
+    .template-step {
         margin-top: 2.5rem;
+    }
+
+    /*
+        Tighter rules than StepContainer's own 1.25rem.
+
+        Margins do not collapse across these: `.step-container` sets
+        `container-type: inline-size`, and containment stops a rule's bottom
+        margin escaping its parent to meet the next step's top margin. Every
+        margin in this stack therefore adds, which is why the gap above "Choose
+        a file" reached 7rem from three rules that each looked modest.
+    */
+    .step-container > hr.solid.step-divider {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
     }
 
     /*
@@ -410,9 +457,25 @@ const applicationName = computed(
         color: var(--semantic-color-text-secondary);
     }
 
+    .scope-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+    }
+
+    .scope-code,
+    .no-scope {
+        color: var(--semantic-color-text-secondary);
+    }
+
     .example {
         display: inline-block;
-        margin-bottom: 1.5rem;
+        /*
+            Enough to lift the sample off the rule below it, no more. Its margin
+            adds to the rule's rather than collapsing with it - see the rule
+            above - so anything larger reads as a gap of its own.
+        */
+        margin-bottom: 0.5rem;
         padding: 0.75rem 1rem;
         background: var(--semantic-color-surface-layer-2);
         border: 0.0625rem solid var(--semantic-color-border-subtle);

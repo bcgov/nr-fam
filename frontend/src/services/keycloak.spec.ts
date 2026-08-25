@@ -62,9 +62,19 @@ describe("keycloak OIDC client", () => {
 
     it("exposes the BC Gov SSO provider aliases used for kc_idp_hint", () => {
         // These must match the values the backend reads back out of the
-        // identity_provider claim.
-        expect(KC_IDP_HINT.IDIR).toBe("idir");
+        // identity_provider claim. IDIR federates to Azure AD under
+        // `azureidir`; `idir` is not an alias this realm has, and Keycloak
+        // silently ignores a hint it does not recognise.
+        expect(KC_IDP_HINT.IDIR).toBe("azureidir");
         expect(KC_IDP_HINT.BCEIDBUSINESS).toBe("bceidbusiness");
+    });
+
+    it("gives the two providers different aliases", () => {
+        // The failure that started this: both buttons landing on the Microsoft
+        // sign-in page. Keycloak ignores a hint naming a provider the client
+        // does not have and falls through to the one it does, so two aliases
+        // that collide - or one that is wrong - look identical from the outside.
+        expect(KC_IDP_HINT.IDIR).not.toBe(KC_IDP_HINT.BCEIDBUSINESS);
     });
 
     it("is created lazily, since env.json is fetched after module evaluation", () => {

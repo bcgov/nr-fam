@@ -21,6 +21,13 @@ export default defineConfig(({ mode }) => {
         test: {
             globals: true,
             environment: "jsdom",
+            /*
+                The Playwright suite also uses `.spec.ts`, and vitest would
+                otherwise collect e2e/ and report every file as "0 test" -
+                green, but only because it found nothing to run. Playwright
+                owns that directory; vitest owns src/.
+            */
+            exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
             coverage: {
                 reporter: ["text", "lcov"],
             },

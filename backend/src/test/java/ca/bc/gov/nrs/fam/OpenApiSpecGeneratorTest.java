@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +39,7 @@ import org.springframework.test.context.ActiveProfiles;
 class OpenApiSpecGeneratorTest {
 
   private static final Path SPEC_PATH =
-      Path.of("..", "frontend", "client-code-gen", "fam-openapi.json");
+    Path.of("..", "frontend", "client-code-gen", "fam-openapi.json");
 
   @Autowired
   private TestRestTemplate restTemplate;
@@ -71,7 +73,7 @@ class OpenApiSpecGeneratorTest {
     assertThat(paths.has("/css-applications")).isTrue();
     assertThat(paths.has("/css-applications/{integrationId}/{environment}/roles")).isTrue();
     assertThat(paths.has(
-        "/css-applications/{integrationId}/{environment}/user-role-assignments")).isTrue();
+      "/css-applications/{integrationId}/{environment}/user-role-assignments")).isTrue();
 
     // Retired with the tables behind them.
     assertThat(paths.has("/user-role-assignment")).isFalse();
@@ -85,7 +87,69 @@ class OpenApiSpecGeneratorTest {
     // Pretty-printed so the committed spec diffs readably.
     Files.createDirectories(SPEC_PATH.getParent());
     Files.writeString(SPEC_PATH,
-        objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(document) + "\n");
+      objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(document) + "\n");
+  }
+
+  @Test
+  @DisplayName("the committed spec is whole - no duplicated or dangling schemas")
+  void committedSpecIsIntact() throws Exception {
+    // Guards against a merge rather than against springdoc.
+    //
+    // This file is written whole by a generator, so git's line merge is wrong
+    // for it: two branches that each add an endpoint produce a file holding
+    // both sides' blocks with no conflict markers, because the added lines do
+    // not overlap. It has happened twice. Every JSON parser silently keeps the
+    // last of a duplicated key, so the file reads fine and the only symptom is
+    // an unexplained diff from the CI job that regenerates it.
+    //
+    // .gitattributes now marks it `-merge` so git stops instead. This is the
+    // backstop, and it names the problem where the diff could not.
+    if (!Files.exists(SPEC_PATH)) {
+      return;
+    }
+
+    ObjectMapper strict = new ObjectMapper()
+      .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+    String text = Files.readString(SPEC_PATH);
+
+    JsonNode committed;
+    try {
+      committed = strict.readTree(text);
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new AssertionError(
+        "The committed spec has a duplicated key, so it was merged rather than "
+          + "regenerated. Take either side and run OpenApiSpecGeneratorTest. "
+          + e.getOriginalMessage(), e);
+    }
+
+    JsonNode schemas = committed.get("components").get("schemas");
+
+    // Every $ref must name a schema that exists. A merge that dropped a block
+    // rather than duplicating one leaves the references behind.
+    List<String> dangling = new ArrayList<>();
+    collectRefs(committed, dangling);
+    for (String ref : dangling) {
+      assertThat(schemas.has(ref))
+        .as("spec references a schema it does not define: %s", ref)
+        .isTrue();
+    }
+  }
+
+  /** Every {@code #/components/schemas/X} referenced anywhere in the document. */
+  private static void collectRefs(JsonNode node, List<String> into) {
+    if (node.isObject()) {
+      JsonNode ref = node.get("$ref");
+      if (ref != null && ref.isTextual()) {
+        String value = ref.asText();
+        int slash = value.lastIndexOf('/');
+        if (value.startsWith("#/components/schemas/") && slash >= 0) {
+          into.add(value.substring(slash + 1));
+        }
+      }
+      node.fields().forEachRemaining(entry -> collectRefs(entry.getValue(), into));
+    } else if (node.isArray()) {
+      node.forEach(child -> collectRefs(child, into));
+    }
   }
 
   @Test
@@ -100,8 +164,8 @@ class OpenApiSpecGeneratorTest {
 
     assertThat(servers).hasSize(1);
     assertThat(servers.get(0).get("url").asText())
-        .isEqualTo("/")
-        .doesNotContain("localhost");
+      .isEqualTo("/")
+      .doesNotContain("localhost");
   }
 
   @Test
@@ -115,12 +179,12 @@ class OpenApiSpecGeneratorTest {
 
     // camelCase here would mean the whole generated client mismatches the API.
     assertThat(row.get("properties").fieldNames()).toIterable()
-        .contains("first_name", "last_name", "role_name", "scopes");
+      .contains("first_name", "last_name", "role_name", "scopes");
 
     // The nested scope shape has to be snake_case too - it is what the chips read.
     JsonNode scope = schemas.get("ScopeDto");
     assertThat(scope).as("ScopeDto missing from spec").isNotNull();
     assertThat(scope.get("properties").fieldNames()).toIterable()
-        .contains("type", "value", "label");
+      .contains("type", "value", "label");
   }
 }

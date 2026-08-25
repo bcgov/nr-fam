@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import { FamForestClientDto } from './fam-forest-client-dto';
 
 /**
  * 
@@ -68,5 +71,17 @@ export interface CssRoleOptionDto {
      * @memberof CssRoleOptionDto
      */
     'role_type_client': boolean;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof CssRoleOptionDto
+     */
+    'grantable_districts'?: Array<string>;
+    /**
+     * 
+     * @type {Array<FamForestClientDto>}
+     * @memberof CssRoleOptionDto
+     */
+    'grantable_forest_clients'?: Array<FamForestClientDto>;
 }
 

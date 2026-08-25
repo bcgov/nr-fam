@@ -1,9 +1,11 @@
 import type { CssBulkGrantRowDto } from "fam-api";
 
 /** Shown on the screen so the expected shape needs no separate documentation. */
-export const EXAMPLE_CSV = `user_guid,role
-AABBCCDDEEFF00112233445566778899,FSPTS_VIEW_ALL
-BBBBCCCCDDDDEEEEFFFF000011112222,FSPTS_VIEW_ALL`;
+export const EXAMPLE_CSV = `user_guid,user_type,role,district,organization
+AABBCCDDEEFF00112233445566778899,IDIR,FSPTS_VIEW_ALL,,
+BBBBCCCCDDDDEEEEFFFF000011112222,IDIR,CHR_FREP_EDITOR,DCC,
+BBBBCCCCDDDDEEEEFFFF000011112222,IDIR,CHR_FREP_EDITOR,DKA,
+CCCCDDDDEEEEFFFF00001111222233,BCEID,FOM_SUBMITTER,,00001012`;
 
 /**
  * The downloadable template: the header row and nothing else.
@@ -12,8 +14,18 @@ BBBBCCCCDDDDEEEEFFFF000011112222,FSPTS_VIEW_ALL`;
  * enough to matter, and it can only ever come back as "no user has this GUID" -
  * an error the person did not cause and cannot act on. The shape is on screen
  * beside the download for anyone who wants to see a filled-in row.
+ *
+ * `user_type` is IDIR or BCEID. It may be left empty, in which case both
+ * directories are searched - but stating it halves the lookups and stops a GUID
+ * resolving to whichever directory happens to answer first.
+ *
+ * The last two columns are left empty for a role that is not scoped that way,
+ * and filled for one that is. One row is one grant, so a person getting a role
+ * for three districts is three rows - which is what makes the file readable in
+ * a spreadsheet, where these are actually written.
  */
-export const TEMPLATE_CSV = "user_guid,role\n";
+export const TEMPLATE_CSV =
+    "user_guid,user_type,role,district,organization\n";
 
 /**
  * Hand the template to the browser as a download.

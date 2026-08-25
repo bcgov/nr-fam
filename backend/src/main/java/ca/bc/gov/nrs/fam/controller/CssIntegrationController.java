@@ -92,7 +92,10 @@ public class CssIntegrationController {
       Requester requester) {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
-    return cssIntegrationService.getRoles(integrationId, environment);
+    // Narrowed to what this caller may actually grant. A delegated
+    // administrator was being offered every role the application defines, and
+    // every district and client, all of which the grant path then refused.
+    return cssIntegrationService.getGrantableRoles(integrationId, environment, requester);
   }
 
   /**

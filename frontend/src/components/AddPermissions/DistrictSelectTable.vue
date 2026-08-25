@@ -27,6 +27,16 @@ const props = withDefaults(
         selected: FamDistrictDto[];
         setFieldValue: (field: string, value: any) => void;
         /**
+         * The only districts this caller may grant for, or null when they are
+         * not restricted.
+         *
+         * Null and empty differ. Null is a FAM or application administrator,
+         * who may grant every district. Empty is a delegated administrator
+         * whose delegation names none - they may grant nothing here, and an
+         * empty picker is the honest answer rather than the full list.
+         */
+        allowed?: string[] | null;
+        /**
          * Wording, because the same picker answers two different questions: what
          * a person is being given, or what they may hand out.
          */
@@ -65,9 +75,18 @@ watch(
  * Expired districts are kept out of the picker so they cannot be granted, while
  * remaining valid on permissions that already reference them.
  */
-const availableDistricts = computed<FamDistrictDto[]>(
-    () => districtsQuery.data.value?.filter((d) => !d.expired) ?? []
-);
+const availableDistricts = computed<FamDistrictDto[]>(() => {
+    const active = districtsQuery.data.value?.filter((d) => !d.expired) ?? [];
+
+    // Undefined and null both mean "not restricted". Offering the full list to
+    // a delegated administrator put every district in front of somebody whose
+    // grant would be refused for all but their own.
+    if (props.allowed == null) {
+        return active;
+    }
+    const permitted = new Set(props.allowed);
+    return active.filter((district) => permitted.has(district.org_unit_code));
+});
 
 const selectedDistricts = computed<FamDistrictDto[]>(
     () => props.selected ?? []
@@ -110,7 +129,13 @@ const toggleDistrict = (district: FamDistrictDto) => {
             <ErrorText v-if="errorMessage" show-icon :error-msg="errorMessage" />
 
             <DataTable class="fam-table" :value="availableDistricts">
-                <template #empty>No district available</template>
+                <template #empty>
+                    {{
+                        props.allowed != null
+                            ? "You have not been delegated any district for this role"
+                            : "No district available"
+                    }}
+                </template>
 
                 <Column header="">
                     <template #body="{ data }">
