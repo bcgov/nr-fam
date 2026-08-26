@@ -1,9 +1,9 @@
-import type { ForestClientInput } from "@/components/AddPermissions/ForestClientAddTable.vue";
 import type {
     CssScopeSelection,
     CssRoleOptionDto,
     FamDistrictDto,
     FamForestClientDto,
+    FamRegionDto,
 } from "fam-api";
 
 /**
@@ -19,9 +19,14 @@ import type {
  * stale selection into the request.
  */
 export const toScopeSelections = (
-    role: { role_type_district?: boolean; role_type_client?: boolean } | null,
+    role: {
+        role_type_district?: boolean;
+        role_type_region?: boolean;
+        role_type_client?: boolean;
+    } | null,
     districts: { org_unit_code: string }[],
-    forestClients: { forest_client_number: string }[]
+    forestClients: { forest_client_number: string }[],
+    regions: { region_code: string }[] = []
 ): CssScopeSelection[] => {
     if (!role) {
         return [];
@@ -31,6 +36,12 @@ export const toScopeSelections = (
         selections.push({
             type: "DISTRICT",
             values: districts.map((district) => district.org_unit_code),
+        });
+    }
+    if (role.role_type_region) {
+        selections.push({
+            type: "REGION",
+            values: regions.map((region) => region.region_code),
         });
     }
     if (role.role_type_client) {
@@ -58,19 +69,15 @@ export const toScopeSelections = (
 export type RoleScopeSelection = {
     role: CssRoleOptionDto;
     districts: FamDistrictDto[];
+    regions: FamRegionDto[];
     forestClients: FamForestClientDto[];
-    /**
-     * The organisation search box's own state, per role.
-     *
-     * Shared, two client-scoped roles on the same screen would echo each other's
-     * typing, and the `<label for>` would point at whichever rendered last.
-     */
-    forestClientInput: ForestClientInput;
 };
 
 /** Whether a role has to be narrowed before it means anything. */
 export const requiresScope = (role: CssRoleOptionDto): boolean =>
-    Boolean(role.role_type_district || role.role_type_client);
+    Boolean(
+        role.role_type_district || role.role_type_region || role.role_type_client
+    );
 
 /** What a role is called, falling back to its code. */
 export const roleLabel = (role: CssRoleOptionDto): string =>
@@ -79,22 +86,18 @@ export const roleLabel = (role: CssRoleOptionDto): string =>
 /**
  * A role freshly chosen, with nothing selected for it yet.
  *
- * The input id carries the role name so every search box on the screen has its
- * own; two elements sharing an id would break the label association for both.
+ * The Vue version also carried the organisation search box's own state here,
+ * because two client-scoped roles on one screen would otherwise have echoed each
+ * other's typing through a shared field. The React picker holds its own input,
+ * so there is nothing left to thread through the selection.
  */
 export const newRoleScopeSelection = (
     role: CssRoleOptionDto
 ): RoleScopeSelection => ({
     role,
     districts: [],
+    regions: [],
     forestClients: [],
-    forestClientInput: {
-        id: `forest-client-number-input-${role.name}`,
-        value: "",
-        isValid: true,
-        errorMsg: "",
-        isVerifying: false,
-    },
 });
 
 /**
@@ -117,6 +120,9 @@ export const scopeCombinationCount = (selection: RoleScopeSelection): number => 
     const dimensions: number[] = [];
     if (selection.role.role_type_district) {
         dimensions.push(selection.districts.length);
+    }
+    if (selection.role.role_type_region) {
+        dimensions.push(selection.regions.length);
     }
     if (selection.role.role_type_client) {
         dimensions.push(selection.forestClients.length);

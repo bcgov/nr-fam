@@ -114,6 +114,56 @@ class CssRoleNamingTest {
   }
 
   @Test
+  @DisplayName("round-trips a region scope, underscores in the code and all")
+  void roundTripsRegion() {
+    // Region codes carry underscores - KOOTENAY_BOUNDARY - while the parser
+    // splits the value off at the last hyphen. That is why the codes must not
+    // contain one, and why this is worth pinning.
+    String name = CssRoleNaming.buildScopedRoleName(
+        "FREP_EDITOR", "REGION", "KOOTENAY_BOUNDARY");
+
+    assertThat(name).isEqualTo("FREP_EDITOR_REGION-KOOTENAY_BOUNDARY");
+
+    CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(name);
+    assertThat(parsed.baseRoleName()).isEqualTo("FREP_EDITOR");
+    assertThat(parsed.scopes())
+        .containsExactly(new CssRoleNaming.Scope("REGION", "KOOTENAY_BOUNDARY"));
+  }
+
+  @Test
+  @DisplayName("reads a district, region and client name back in written order")
+  void parsesAllThreeScopes() {
+    CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(
+        "FOM_SUBMITTER_DISTRICT-DCC_REGION-CARIBOO_FOREST_CLIENT-00001012");
+
+    assertThat(parsed.baseRoleName()).isEqualTo("FOM_SUBMITTER");
+    assertThat(parsed.scopes()).containsExactly(
+        new CssRoleNaming.Scope("DISTRICT", "DCC"),
+        new CssRoleNaming.Scope("REGION", "CARIBOO"),
+        new CssRoleNaming.Scope("FOREST_CLIENT", "00001012"));
+  }
+
+  @Test
+  @DisplayName("writes the three scopes in one canonical order, whatever order they arrive in")
+  void ordersThreeScopes() {
+    String written = CssRoleNaming.buildScopedRoleName("FOM_SUBMITTER", List.of(
+        new CssRoleNaming.Scope("FOREST_CLIENT", "00001012"),
+        new CssRoleNaming.Scope("REGION", "CARIBOO"),
+        new CssRoleNaming.Scope("DISTRICT", "DCC")));
+
+    assertThat(written)
+        .isEqualTo("FOM_SUBMITTER_DISTRICT-DCC_REGION-CARIBOO_FOREST_CLIENT-00001012");
+  }
+
+  @Test
+  @DisplayName("maps the region scope type to its marker role")
+  void markerForRegion() {
+    assertThat(CssRoleNaming.markerFor("REGION")).contains(CssRoleNaming.MARKER_REGION);
+    assertThat(CssRoleNaming.markersFor(List.of("REGION", "DISTRICT")))
+        .containsExactly(CssRoleNaming.MARKER_DISTRICT, CssRoleNaming.MARKER_REGION);
+  }
+
+  @Test
   @DisplayName("reads both scopes back out of a compound name")
   void parsesCompoundName() {
     CssRoleNaming.ScopedRoleName parsed =

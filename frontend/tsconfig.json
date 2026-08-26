@@ -1,24 +1,24 @@
 {
-    "extends": "@vue/tsconfig/tsconfig.json",
     "include": [
         "env.d.ts",
         "src/**/*.ts",
-        "src/**/*",
-        "src/**/*.vue"
+        "src/**/*"
     ],
     "compilerOptions": {
+        // Previously inherited from @vue/tsconfig, which also set
+        // jsxImportSource to "vue" - the reason the React overrides below had to
+        // exist. Stated outright now that nothing extends it.
+        "target": "ES2022",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "useDefineForClassFields": true,
+        "noEmit": true,
+        "isolatedModules": true,
+        "verbatimModuleSyntax": true,
         "baseUrl": ".",
         "paths": {
             "@/*": [
                 "./src/*"
-            ],
-            "@/components/*": [
-                "./src/components/*/index.vue",
-                "./src/components/*"
-            ],
-            "@/views/*": [
-                "./src/views/*/index.vue",
-                "./src/views/*"
             ],
             "fam-app-acsctl-api/*": [
                 "../client-code-gen/gen/app-access-control-api/*"
@@ -34,7 +34,9 @@
             "vite/client"
         ],
         "esModuleInterop": true,
-        "strict": true
+        "strict": true,
+        "jsx": "react-jsx",
+        "jsxImportSource": "react"
     },
     "references": [
         {

@@ -1,0 +1,144 @@
+import type { CssRoleCreateRequest } from "fam-api/model";
+import { boolean, object, string } from "yup";
+
+/**
+ * A role code, mirroring `CssRoleNaming.isValidRoleCode` on the backend.
+ *
+ * Narrower than what CSS itself accepts. The code becomes the role name, which
+ * is what reaches the access token and what applications authorise on, and it is
+ * the left-hand side of both the scope suffix (`_DISTRICT-DCC`) and the sidecars
+ * that hold the name and description - so it must not contain either delimiter.
+ *
+ * Checked here only to say so before the round trip; the backend re-checks.
+ */
+export const ROLE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,58}$/;
+
+/** Bounds the FAM:LABEL sidecar, which must fit inside one Keycloak role name. */
+export const MAX_ROLE_NAME_LENGTH = 150;
+
+/**
+ * Bounds the FAM:DESC sidecar. Its own role name, so it has its own budget.
+ *
+ * The sidecar is `FAM:DESC:<code>:<description>` and Keycloak allows 255
+ * characters, so the budget is 255 - 9 for the prefix - 1 for the separator -
+ * up to 59 for the code, leaving 186. Kept at 180 so the arithmetic has
+ * somewhere to move. Must match the backend's `@Size`.
+ */
+export const MAX_DESCRIPTION_LENGTH = 180;
+
+export type ManageRolesFormType = {
+    /** FSPTS_VIEW_ALL - what reaches the token. */
+    roleCode: string;
+    /** View All - what pickers and pills show. */
+    roleName: string;
+    /** The sentence explaining the role. Optional. */
+    description: string;
+    requiresDistrict: boolean;
+    requiresRegion: boolean;
+    requiresForestClient: boolean;
+};
+
+export const getDefaultFormData = (): ManageRolesFormType => ({
+    roleCode: "",
+    roleName: "",
+    description: "",
+    requiresDistrict: false,
+    requiresRegion: false,
+    requiresForestClient: false,
+});
+
+export const validateManageRolesForm = () =>
+    object().shape({
+        roleCode: string()
+            .required("A role code is required")
+            // Upper cased on the way in, so a lower case entry is accepted
+            // rather than rejected on a technicality.
+            .transform((value) => (value ? value.trim().toUpperCase() : value))
+            .matches(
+                ROLE_CODE_PATTERN,
+                "Use letters, digits and underscores only, starting with a letter, e.g. FREP_ADMINISTRATOR"
+            ),
+        roleName: string()
+            .required("A role name is required")
+            .trim()
+            .max(
+                MAX_ROLE_NAME_LENGTH,
+                `Keep the name under ${MAX_ROLE_NAME_LENGTH} characters`
+            ),
+        // Optional: a role whose name says enough needs no sentence.
+        description: string()
+            .trim()
+            .max(
+                MAX_DESCRIPTION_LENGTH,
+                `Keep the description under ${MAX_DESCRIPTION_LENGTH} characters`
+            ),
+        requiresDistrict: boolean(),
+        requiresRegion: boolean(),
+        requiresForestClient: boolean(),
+    });
+
+/**
+ * The two scope checkboxes are mutually exclusive.
+ *
+ * Both may be ticked. A role scoped by a district AND a forest client is granted
+ * against the pair - the grant screen asks for both, and the generated role name
+ * carries both suffixes.
+ *
+ * The two used to be mutually exclusive because a grant could only carry one
+ * scope type, so a role marked both would silently behave as district scoped.
+ * That is no longer true, so the exclusion is gone and this simply records the
+ * box that was ticked.
+ */
+export const applyScopeChoice = (
+    form: ManageRolesFormType,
+    field: "requiresDistrict" | "requiresRegion" | "requiresForestClient",
+    checked: boolean
+): ManageRolesFormType => ({
+    ...form,
+    [field]: checked,
+});
+
+/** The create request, normalised the same way the backend will normalise it. */
+export const toCreateRequest = (
+    form: ManageRolesFormType
+): CssRoleCreateRequest => ({
+    role_code: form.roleCode.trim().toUpperCase(),
+    role_name: form.roleName.trim(),
+    description: form.description.trim(),
+    requires_district: form.requiresDistrict,
+    requires_region: form.requiresRegion,
+    requires_forest_client: form.requiresForestClient,
+});
+
+/**
+ * How a role's scope reads once created.
+ *
+ * Empty when neither box is ticked: the unscoped case is the default and the
+ * two checkboxes already say what they do, so a line explaining that nothing
+ * further is required only adds noise. The caller hides the text when it is
+ * empty rather than rendering a blank line.
+ */
+export const describeScope = (form: ManageRolesFormType): string => {
+    const dimensions = [
+        form.requiresDistrict ? "Districts" : null,
+        form.requiresRegion ? "regions" : null,
+        form.requiresForestClient ? "forest clients" : null,
+    ].filter(Boolean) as string[];
+
+    if (dimensions.length === 0) {
+        return "";
+    }
+    if (dimensions.length === 1) {
+        return `${dimensions[0]} must be chosen when this role is granted`;
+    }
+
+    // "each combination" because that is what is granted: three districts and
+    // two clients is six permissions, not five. Enumerating the combinations
+    // was tractable with two dimensions and is not with three.
+    const list =
+        dimensions.slice(0, -1).join(", ") + " and " + dimensions[dimensions.length - 1];
+    return (
+        `${list} must all be chosen when this role is granted, ` +
+        "and it is granted for each combination"
+    );
+};

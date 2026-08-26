@@ -100,6 +100,18 @@ export interface CssBulkGrantRowDto {
      * @type {string}
      * @memberof CssBulkGrantRowDto
      */
+    'region'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssBulkGrantRowDto
+     */
+    'region_name'?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssBulkGrantRowDto
+     */
     'forest_client_number'?: string;
     /**
      * 

@@ -1,0 +1,48 @@
+/*
+    The Vue version set `container-type: inline-size` here for child container
+    queries. That also stops margins collapsing, which is what made the rule
+    between steps cost 5rem of empty page - and 7rem above a button bar. Nothing
+    in the React tree uses a container query, so it is gone and the margins
+    behave normally again.
+*/
+
+.step-container__title {
+  /* Carbon heading-03. */
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.step-container__subtitle {
+  font-size: 0.875rem;
+  line-height: 1.42857;
+  color: var(--cds-text-secondary);
+  margin: 0.25rem 0 0;
+}
+
+.step-container .step-content {
+  margin-top: 1.5rem;
+}
+
+.step-container__divider {
+  border: 0;
+  border-top: 1px solid var(--cds-border-subtle-01);
+  margin: 1.25rem 0;
+}
+
+/*
+    Separates the first step from the page title above it.
+
+    One rule for every step-based form - the three grant screens each needed it
+    and each would otherwise carry its own copy, which is how Add permission
+    ended up with the gap and its two siblings without.
+
+    padding, not margin: the heading's own top margin sits inside the step
+    container with nothing between, so a margin here would collapse with it and
+    add almost nothing.
+*/
+form > .step-container:first-child {
+  padding-top: 2rem;
+}

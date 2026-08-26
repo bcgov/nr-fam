@@ -1,4 +1,21 @@
-import type { QueryClient } from "@tanstack/vue-query";
+/**
+ * Only what these functions use, rather than either library's QueryClient.
+ *
+ * During the migration both are installed, and they resolve to different copies
+ * of query-core - so a client from `@tanstack/vue-query` is not assignable to
+ * the type from `@tanstack/react-query` even though it is the same object at
+ * runtime. Typing the parameter by the one method called here lets the Vue
+ * screens and the React ones share this file, which is the point of it: the
+ * list of what goes stale is what drifts, and it should exist once.
+ *
+ * Drop this for the real QueryClient once the last Vue screen is gone.
+ */
+type InvalidatingClient = {
+    invalidateQueries: (filters: {
+        queryKey: unknown[];
+        refetchType?: "active" | "inactive" | "all" | "none";
+    }) => unknown;
+};
 
 /**
  * Everything that goes stale when somebody's access changes.
@@ -19,7 +36,7 @@ import type { QueryClient } from "@tanstack/vue-query";
  * looking at.
  */
 export const invalidateAfterAccessChange = (
-    queryClient: QueryClient,
+    queryClient: InvalidatingClient,
     integrationId?: number,
     environment?: string
 ): void => {
@@ -57,7 +74,7 @@ export const invalidateAfterAccessChange = (
  * naming it is withdrawn. So this is the access list plus the two role queries.
  */
 export const invalidateAfterRoleChange = (
-    queryClient: QueryClient,
+    queryClient: InvalidatingClient,
     integrationId?: number,
     environment?: string
 ): void => {

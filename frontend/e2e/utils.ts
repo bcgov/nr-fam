@@ -1,6 +1,8 @@
 import path from "node:path";
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+
+import { chooseFromComboBox } from "./carbon";
 
 /**
  * E2E_BASE_URL is set by `.github/workflows/reusable-tests.yml` at step level
@@ -71,7 +73,9 @@ export const gotoProtected = async (page: Page, to: string): Promise<void> => {
     try {
         await page.goto(to);
         await page.locator("#protected-layout-container").waitFor({ timeout: 60_000 });
-        await page.locator("#header").waitFor({ timeout: 30_000 });
+        await page
+            .getByTestId("bc-header__header")
+            .waitFor({ timeout: 30_000 });
     } catch (err) {
         const url = page.url();
         const title = await page.title().catch(() => "(unavailable)");
@@ -93,31 +97,26 @@ export const gotoProtected = async (page: Page, to: string): Promise<void> => {
     }
 };
 
+/** The application picker, which is the only combobox on either screen. */
+export const applicationPicker = (page: Page): Locator =>
+    page.getByRole("combobox", { name: /application/i });
+
 /**
  * Choose an application in the picker on Manage permissions or Manage roles.
  *
- * PrimeVue's Select renders its options into an overlay teleported to the body,
- * so the option cannot be found inside the dropdown's own markup.
+ * Found by role rather than by id: the two screens give their picker different
+ * ids, and the old helper only knew Manage permissions' - so every Manage roles
+ * spec was selecting nothing and then timing out on a table that never filled.
  */
 export const selectApplication = async (
     page: Page,
     nameContains: string
 ): Promise<void> => {
-    await page.locator("#application-selector-dropdown-id").click();
-
-    const option = page
-        .locator(".p-select-overlay .p-select-option")
-        .filter({ hasText: nameContains })
-        .first();
-
-    await expect(
-        option,
-        `no application matching "${nameContains}" in the picker, though ` +
-            `/api/css-applications offered it - the two disagree`
-    ).toBeVisible({ timeout: 30_000 });
-
-    await option.click();
-    await expect(page.locator(".p-select-overlay")).toBeHidden();
+    await chooseFromComboBox(
+        applicationPicker(page),
+        nameContains,
+        "application - though /api/css-applications offered it, so the two disagree"
+    );
 };
 
 /**
@@ -130,5 +129,5 @@ export const selectApplication = async (
  */
 export const hasAdminAccess = async (page: Page): Promise<boolean> => {
     await gotoProtected(page, "/manage-permissions");
-    return page.locator("#application-selector-dropdown-id").isVisible();
+    return applicationPicker(page).isVisible();
 };

@@ -1,9 +1,7 @@
 /// <reference types="vitest" />
 
 import { defineConfig, loadEnv } from "vite";
-import vue from "@vitejs/plugin-vue";
-import Components from "unplugin-vue-components/vite";
-import { BootstrapVueNextResolver } from "unplugin-vue-components/resolvers";
+import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "url";
 import path from "path";
 
@@ -12,15 +10,11 @@ export default defineConfig(({ mode }) => {
     const port = parseInt(env.VITE_PORT || "3000");
 
     return {
-        plugins: [
-            vue(),
-            Components({
-                resolvers: [BootstrapVueNextResolver()],
-            }),
-        ],
+        plugins: [react()],
         test: {
             globals: true,
             environment: "jsdom",
+            setupFiles: ["src/test/setup.ts"],
             /*
                 The Playwright suite also uses `.spec.ts`, and vitest would
                 otherwise collect e2e/ and report every file as "0 test" -
@@ -33,15 +27,29 @@ export default defineConfig(({ mode }) => {
             },
         },
         build: {
+            /*
+                esbuild, not Vite 8's default lightningcss.
+
+                Carbon's stylesheet contains two things lightningcss refuses:
+                `@position-try` from the *next* date picker, and a top-level
+                `> .cds--text-input` in the time picker. Both fail the whole
+                build with a message pointing into generated CSS that names
+                neither the rule nor the component, and stripping them one at a
+                time is an open-ended fight with a stricter parser.
+
+                nr-fsp-new never hit this - Vite 6 minified with esbuild, which
+                passes both through. Vite 8 no longer bundles esbuild, so it is
+                an explicit devDependency here.
+            */
+            cssMinify: "esbuild",
             chunkSizeWarningLimit: 1600,
         },
         resolve: {
             alias: {
                 "@": fileURLToPath(new URL("./src", import.meta.url)),
                 "~bootstrap": path.resolve(__dirname, "node_modules/bootstrap"),
-                vue: "vue/dist/vue.esm-bundler.js",
             },
-            extensions: [".js", ".ts", ".jsx", ".tsx", ".vue"],
+            extensions: [".js", ".ts", ".jsx", ".tsx"],
         },
         server: {
             port: port,
@@ -60,10 +68,14 @@ export default defineConfig(({ mode }) => {
         css: {
             preprocessorOptions: {
                 scss: {
-                    additionalData: `
-            @use '@bcgov-nr/nr-theme/design-tokens/colors.scss' as colors;
-            @use '@carbon/type' as type;
-          `,
+                    // Carbon's Sass imports its own packages by bare specifier.
+                    loadPaths: [path.resolve(__dirname, "node_modules")],
+                    api: "modern-compiler",
+                    silenceDeprecations: [
+                        "mixed-decls",
+                        "global-builtin",
+                        "import",
+                    ],
                 },
             },
         },

@@ -110,9 +110,9 @@ jobs:
       - name: Install
         run: npm run install-frontend
 
-      # No lint step: upstream FAM shipped no eslint config, and the quickstart's
-      # was React-specific. vue-tsc below is the real static check, and it is the
-      # guard on the generated client matching the app.
+      # No lint step: upstream FAM shipped no eslint config. `tsc` below is the
+      # real static check, and it is the guard on the generated client matching
+      # the app.
       - name: Type check
         run: npm run type-check
 

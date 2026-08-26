@@ -1,0 +1,89 @@
+.manage-roles-container {
+  /*
+      Whitespace under the Existing roles table, which is the last thing on the
+      page - it otherwise ended flush against the container, measured at 0.
+  */
+  padding-bottom: 2.5rem;
+}
+
+.manage-roles-container .application-select-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.manage-roles-container .application-dropdown {
+  flex: 1;
+  max-width: 32rem;
+}
+
+/*
+    Separates the "Create a role" heading from the first field. StepContainer
+    only adds this gap when the step carries a subtitle, and this one does not.
+*/
+.manage-roles-container .step-container__title {
+  margin-bottom: 1.5rem;
+}
+
+.manage-roles-container .role-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 32rem;
+}
+
+.manage-roles-container .scope-note,
+.manage-roles-container .description-at-limit {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  margin: 0.5rem 0 0;
+}
+
+.manage-roles-container .description-at-limit {
+  color: var(--cds-text-error);
+}
+
+.manage-roles-container .form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.manage-roles-container .created-message {
+  margin-top: 1rem;
+  color: var(--cds-text-secondary);
+}
+
+/* Chips sit in a row and wrap; a compound scope is two of them. */
+.manage-roles-container .scope-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.manage-roles-container .count-unknown {
+  color: var(--cds-text-secondary);
+}
+
+.manage-roles-container .btn.btn-icon {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.manage-roles-container .btn.btn-icon svg {
+  fill: var(--cds-link-primary);
+}
+
+.manage-roles-container .btn.btn-icon:disabled {
+  cursor: not-allowed;
+}
+
+.manage-roles-container .btn.btn-icon:disabled svg {
+  fill: var(--cds-text-disabled);
+}
+

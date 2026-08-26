@@ -51,6 +51,9 @@ public record CssRoleOptionDto(
     /** Requires one or more districts before it can be granted. */
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean roleTypeDistrict,
 
+    /** Requires one or more regions before it can be granted. */
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean roleTypeRegion,
+
     /** Requires one or more forest clients before it can be granted. */
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean roleTypeClient,
 
@@ -74,6 +77,15 @@ public record CssRoleOptionDto(
      * screen offering it in the first place.
      */
     List<String> grantableDistricts,
+
+    /**
+     * The regions this caller may grant the role for, or null when unrestricted.
+     *
+     * <p>Same null/empty distinction as {@link #grantableDistricts}: null is a
+     * FAM or application administrator who may grant every region, empty is a
+     * delegated administrator whose delegation names none.
+     */
+    List<String> grantableRegions,
 
     /**
      * The organisations this caller may grant for. Null when unrestricted.

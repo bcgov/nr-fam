@@ -36,10 +36,14 @@ public final class CssRoleNaming {
   /** A role composed of this is scoped by natural resource district. */
   public static final String MARKER_DISTRICT = "HAS_DISTRICT_ROLE";
 
+  /** A role composed of this is scoped by natural resource region. */
+  public static final String MARKER_REGION = "HAS_REGION_ROLE";
+
   /** A role composed of this is scoped by forest client. */
   public static final String MARKER_FOREST_CLIENT = "HAS_FOREST_CLIENT";
 
-  public static final List<String> MARKERS = List.of(MARKER_DISTRICT, MARKER_FOREST_CLIENT);
+  public static final List<String> MARKERS =
+      List.of(MARKER_DISTRICT, MARKER_REGION, MARKER_FOREST_CLIENT);
 
   /**
    * Scope types that may appear in a generated role name.
@@ -55,13 +59,15 @@ public final class CssRoleNaming {
    * <p>Longest first, so a future scope type that suffixes another still matches
    * the more specific one.
    */
-  /** The two scope types, as they appear inside a role name. */
+  /** The scope types, as they appear inside a role name. */
   public static final String SCOPE_DISTRICT = "DISTRICT";
+
+  public static final String SCOPE_REGION = "REGION";
 
   public static final String SCOPE_FOREST_CLIENT = "FOREST_CLIENT";
 
   private static final List<String> SCOPE_TYPES =
-      List.of(SCOPE_FOREST_CLIENT, SCOPE_DISTRICT);
+      List.of(SCOPE_FOREST_CLIENT, SCOPE_DISTRICT, SCOPE_REGION);
 
   /**
    * The order scope suffixes are written in, which is not the parsing order.
@@ -70,7 +76,8 @@ public final class CssRoleNaming {
    * {@code CLIENT}; writing works in this fixed order so a district-and-client
    * role always produces one name rather than two spellings of the same thing.
    */
-  private static final List<String> SCOPE_TYPE_ORDER = List.of("DISTRICT", "FOREST_CLIENT");
+  private static final List<String> SCOPE_TYPE_ORDER =
+      List.of(SCOPE_DISTRICT, SCOPE_REGION, SCOPE_FOREST_CLIENT);
 
   /**
    * Marks a role as a description carrier rather than something grantable.
@@ -210,8 +217,9 @@ public final class CssRoleNaming {
       return Optional.empty();
     }
     return Optional.ofNullable(switch (scopeType.toUpperCase(Locale.ROOT)) {
-      case "DISTRICT" -> MARKER_DISTRICT;
-      case "FOREST_CLIENT" -> MARKER_FOREST_CLIENT;
+      case SCOPE_DISTRICT -> MARKER_DISTRICT;
+      case SCOPE_REGION -> MARKER_REGION;
+      case SCOPE_FOREST_CLIENT -> MARKER_FOREST_CLIENT;
       default -> null;
     });
   }

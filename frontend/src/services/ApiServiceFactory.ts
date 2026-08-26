@@ -4,6 +4,7 @@ import {
     CSSIntegrationsApi,
     Configuration,
     FAMDistrictsApi,
+    FAMRegionsApi,
     FAMForestClientsApi,
     IDIRBCeIDProxyApi,
     PermissionAuditApi,
@@ -21,6 +22,7 @@ import { TEN_SECONDS } from "@/constants/TimeUnits";
 type AppAccessControlApiType = {
     forestClientsApi: FAMForestClientsApi;
     districtsApi: FAMDistrictsApi;
+    regionsApi: FAMRegionsApi;
     idirBceidProxyApi: IDIRBCeIDProxyApi;
     permissionAuditApi: PermissionAuditApi;
 };
@@ -52,6 +54,7 @@ export default class ApiServiceFactory {
                 baseURL
             ),
             districtsApi: this.createApiInstance(FAMDistrictsApi, baseURL),
+            regionsApi: this.createApiInstance(FAMRegionsApi, baseURL),
             idirBceidProxyApi: this.createApiInstance(
                 IDIRBCeIDProxyApi,
                 baseURL

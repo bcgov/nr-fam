@@ -1,0 +1,139 @@
+/*
+    Shared by the tables in this folder - the users table and the two
+    administrator tables.
+
+    Plain CSS with Carbon tokens, replacing the Sass that referenced the Vue
+    app's `--semantic-color-*` variables. Those were defined in a stylesheet the
+    React entry does not load, so every one of them resolved to nothing: the
+    icon buttons rendered with no fill at all, which reads as a missing icon
+    rather than an unstyled one.
+*/
+
+/* Chips sit in a row and wrap; a compound scope is two of them. */
+.fam-table .scope-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.fam-table .action-button-group {
+  gap: 0.25rem;
+}
+
+.fam-table .action-button-group .btn-icon {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.fam-table .action-button-group .btn-icon svg {
+  fill: var(--cds-link-primary);
+}
+
+.fam-table .action-button-group .btn-icon:disabled {
+  cursor: not-allowed;
+}
+
+.fam-table .action-button-group .btn-icon:disabled svg {
+  fill: var(--cds-text-disabled);
+}
+
+.fam-table .nowrap-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+/*
+    A row a grant just created.
+
+    Carbon's zebra striping sets a background on every other row, and it is more
+    specific than a class on the row itself - hence the !important, without
+    which every second new row was highlighted and the others were not.
+*/
+.fam-table .fam-table__row--new,
+.fam-table .fam-table__row--new td {
+  background-color: #c2e0ff !important;
+  box-shadow: inset 0 0 0 0.063rem #85c2ff;
+}
+
+/*
+    The search-and-download strip, styled like nr-fsp-new's stocking standards
+    table: white across its whole width, the search filling the row, and a thin
+    divider separating it from the download link.
+
+    White, not grey. FAM greyed the strip for a while, which set it apart from
+    the table rather than joining it to it - FSP keeps the toolbar and the table
+    on one surface, and the wrapper's border is what holds them together.
+
+    Carbon paints the toolbar, its content row, the persistent-search container
+    and the input itself from layer/field tokens, all of which resolve to grey
+    in this context - so each has to be named. The two --cds-field overrides keep
+    the search white on hover and focus, which it otherwise loses.
+*/
+.permissions-table .cds--table-toolbar,
+.permissions-table .cds--toolbar-content,
+.permissions-table__toolbar .cds--toolbar-search-container-persistent,
+.permissions-table__toolbar .cds--search,
+.permissions-table__toolbar .cds--search-input {
+  background-color: #ffffff;
+}
+
+.permissions-table__toolbar {
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  --cds-field: #ffffff;
+  --cds-field-hover: #ffffff;
+}
+
+/* Full-length search, with the divider reading as a separator before the link. */
+.permissions-table__toolbar .cds--toolbar-search-container-persistent {
+  flex: 1 1 auto;
+  border-inline-end: 1px solid var(--cds-border-subtle-01, #e0e0e0);
+}
+
+/* A ghost button that reads as a link: blue label, blue icon. */
+.link-icon-btn.cds--btn--ghost:not([disabled]) svg {
+  fill: var(--cds-link-primary, #0f62fe);
+}
+
+/*
+    No side borders: the table runs to the edges of the tile that holds it, so a
+    vertical rule a few pixels inside the tile's own padding read as a stray
+    line rather than as the table's edge. Square corners follow - a radius with
+    no side border to turn into looks like a rendering fault.
+*/
+.permissions-table.bordered-table {
+  border-inline: 0;
+  border-radius: 0;
+}
+
+/*
+    Side edges for the search strip and the pagination footer.
+
+    The table itself carries a border on all four sides - the app-wide rule in
+    styles/_tables.scss puts it on `.cds--data-table-content`. The toolbar and
+    the pagination are siblings of that element rather than children, so zeroing
+    the wrapper's side borders left those two rows open at both ends while the
+    table between them stayed closed. Giving them the same edge makes one
+    continuous line down the whole component.
+*/
+.permissions-table .cds--table-toolbar,
+.permissions-table .cds--pagination {
+  border-inline: 1px solid var(--cds-border-subtle-01);
+}
+
+/*
+    Carbon sizes the pagination `calc(100% - 1px)`, which left its right border a
+    pixel inside the toolbar's and the table's - a visible notch in what should
+    be one straight edge.
+*/
+.permissions-table .cds--pagination {
+  inline-size: 100%;
+}

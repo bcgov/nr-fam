@@ -1,0 +1,43 @@
+.user-id-card-table {
+  margin-top: 2rem;
+}
+
+.user-id-card-table .action-col {
+  width: 3rem;
+  text-align: center;
+}
+
+.user-id-card-table .btn.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.user-id-card-table .btn.btn-icon svg {
+  fill: var(--cds-link-primary);
+}
+
+/*
+    How many people the rest of the form applies to. Deliberately loud: in
+    multi-user mode every role chosen below is granted to all of them, and that
+    is easy to lose track of after scrolling past the table.
+*/
+.user-bulk-message-bar {
+  margin-top: 0.7rem;
+  border: 1px solid var(--cds-border-subtle-01);
+  background: #eff6ff;
+  color: #001d6c;
+  border-radius: 4px;
+  padding: 0.7rem 1rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  min-height: 2.375rem;
+}
+
+.user-bulk-message-bar b {
+  font-weight: 700;
+}

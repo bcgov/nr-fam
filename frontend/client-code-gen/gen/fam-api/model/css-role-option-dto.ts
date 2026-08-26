@@ -70,6 +70,12 @@ export interface CssRoleOptionDto {
      * @type {boolean}
      * @memberof CssRoleOptionDto
      */
+    'role_type_region': boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CssRoleOptionDto
+     */
     'role_type_client': boolean;
     /**
      * 
@@ -77,6 +83,12 @@ export interface CssRoleOptionDto {
      * @memberof CssRoleOptionDto
      */
     'grantable_districts'?: Array<string>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof CssRoleOptionDto
+     */
+    'grantable_regions'?: Array<string>;
     /**
      * 
      * @type {Array<FamForestClientDto>}

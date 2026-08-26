@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
+import { dangerButton, openDialog } from "../carbon";
 import { selectApplication } from "../utils";
 
 /**
@@ -17,6 +18,8 @@ export type NewRole = {
     description?: string;
     /** Adds the district scope marker, so grants of it must name a district. */
     district?: boolean;
+    /** Adds the region scope marker, so grants of it must name a region. */
+    region?: boolean;
     /** Adds the forest client scope marker. */
     forestClient?: boolean;
 };
@@ -38,12 +41,17 @@ export const createRole = async (
     }
     if (role.district) {
         await page
-            .getByRole("checkbox", { name: /requires a district selection/i })
+            .getByRole("checkbox", { name: "Requires a district selection" })
+            .check();
+    }
+    if (role.region) {
+        await page
+            .getByRole("checkbox", { name: "Requires a region selection" })
             .check();
     }
     if (role.forestClient) {
         await page
-            .getByRole("checkbox", { name: /requires a forest client selection/i })
+            .getByRole("checkbox", { name: "Requires a forest client selection" })
             .check();
     }
 
@@ -80,10 +88,13 @@ export const deleteRole = async (
         return;
     }
 
-    await row.getByRole("button", { name: "Delete role" }).click();
+    // Named per role, so the button is unambiguous even when two codes share a
+    // prefix.
+    await row.getByRole("button", { name: `Delete ${code}` }).click();
 
-    // The confirmation teleports out of the table to the body.
-    const confirm = page.getByRole("button", { name: "Delete", exact: true });
+    await openDialog(page);
+    // "danger Delete", not "Delete" - see carbon.ts.
+    const confirm = dangerButton(page, "Delete");
     await expect(confirm).toBeVisible();
     await confirm.click();
 

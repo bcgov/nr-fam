@@ -1,0 +1,17 @@
+.add-application-admin-container {
+  padding-bottom: 2.5rem;
+}
+
+.add-application-admin-container .step-note {
+  margin-bottom: 1.5rem;
+  max-width: 46rem;
+  color: var(--cds-text-secondary);
+}
+
+.add-application-admin-container .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  /* The step's own rule already separates these from the form above. */
+  margin-top: 0.5rem;
+}

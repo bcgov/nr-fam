@@ -62,6 +62,9 @@ public record CssRoleCreateRequest(
     /** Granting this role requires choosing one or more districts. */
     boolean requiresDistrict,
 
+    /** Granting this role requires choosing one or more regions. */
+    boolean requiresRegion,
+
     /** Granting this role requires choosing one or more forest clients. */
     boolean requiresForestClient) {
 
@@ -85,10 +88,13 @@ public record CssRoleCreateRequest(
   public List<String> scopeTypes() {
     List<String> types = new ArrayList<>();
     if (requiresDistrict) {
-      types.add("DISTRICT");
+      types.add(CssRoleNaming.SCOPE_DISTRICT);
+    }
+    if (requiresRegion) {
+      types.add(CssRoleNaming.SCOPE_REGION);
     }
     if (requiresForestClient) {
-      types.add("FOREST_CLIENT");
+      types.add(CssRoleNaming.SCOPE_FOREST_CLIENT);
     }
     return List.copyOf(types);
   }

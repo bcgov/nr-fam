@@ -20,6 +20,7 @@ export * from './fam-district-dto';
 export * from './fam-forest-client-dto';
 export * from './fam-forest-client-status-dto';
 export * from './fam-forest-client-status-type';
+export * from './fam-region-dto';
 export * from './permission-audit-history-dto';
 export * from './privilege-change-performer-dto';
 export * from './privilege-change-type';

@@ -1,0 +1,425 @@
+import { Search as SearchIcon } from "@carbon/icons-react";
+import { Button, Select, SelectItem, TextInput } from "@carbon/react";
+import { UserType } from "fam-api/model";
+import {
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type FC,
+    type ReactNode,
+} from "react";
+import { InlineSpinner } from "@/components/InlineSpinner";
+import { PERMISSION_REQUIRED_FOR_OPERATION } from "@/constants/ApiErrorCodes";
+import { useAuth } from "@/context/auth/useAuth";
+import { useUserSearch } from "@/hooks/useUserSearch";
+import type { SelectedUser } from "@/types/SelectUserType";
+import type { UserSearchType } from "@/types/UserSearchTypes";
+import { UserSearchResultsModal } from "./UserSearchResultsModal";
+import { UserSearchSelectedTable } from "./UserSearchSelectedTable";
+import "./UserSearch.css";
+
+/**
+ * Find people in IDIR or BCeID and choose them for whatever the form does next.
+ *
+ * Owns the search fields, the results modal and the running selection; the form
+ * around it is told the selection through `onSelectionChange` and never reaches
+ * into it.
+ */
+
+const MAX_SEARCH_TEXT_LENGTH = 35; // The API allows 50; this is deliberately less.
+
+const SELF_SELECTION_ERROR = "You cannot grant permissions to yourself.";
+
+type DomainChangeRequest = {
+    currentDomain: UserType;
+    nextDomain: UserType;
+    /** Already chosen, and about to be discarded if the change goes ahead. */
+    selectedUsersCount: number;
+    approveChange: () => void;
+    cancelChange: () => void;
+};
+
+type Props = {
+    environment: string;
+    /** Several people at once, or exactly one. */
+    multiUserMode: boolean;
+    availableDomains?: UserType[];
+    disabled?: boolean;
+    searchButtonLabel?: string;
+    helperText?: string;
+    /**
+     * Lets the signed-in user choose themselves.
+     *
+     * Off by default: granting yourself access is the thing an administrator
+     * must not quietly do. On for the cases the backend permits, such as an
+     * application admin self-granting on a dev or test application.
+     */
+    allowSelfSelection?: boolean;
+    onSelectionChange: (users: SelectedUser[]) => void;
+    onDomainChange?: (domain: UserType) => void;
+    /**
+     * A chance to stop a domain change before the selection is discarded.
+     *
+     * Without it the change is applied at once. With it, nothing happens until
+     * the form calls approveChange - which is how the grant screens get to ask
+     * "you have three people chosen, discard them?" first.
+     */
+    onBeforeDomainChange?: (request: DomainChangeRequest) => void;
+    /** Errors from the form itself, shown alongside the search's own. */
+    formError?: ReactNode;
+};
+
+const domainLabel = (domain: UserType) =>
+    domain === UserType.Idir ? "IDIR" : "BCeID";
+
+/** BCeID can only be looked up by exact username; IDIR admits a name search. */
+const searchTypesFor = (
+    domain: UserType
+): Array<{ label: string; value: UserSearchType }> =>
+    domain === UserType.BceidBus
+        ? [{ label: "Username", value: "username" }]
+        : [
+              { label: "Username", value: "username" },
+              { label: "First Name", value: "firstName" },
+              { label: "Last Name", value: "lastName" },
+          ];
+
+export const UserSearch: FC<Props> = ({
+    environment,
+    multiUserMode,
+    availableDomains = [UserType.Idir, UserType.BceidBus],
+    disabled = false,
+    searchButtonLabel = "Search",
+    helperText = "",
+    allowSelfSelection = false,
+    onSelectionChange,
+    onDomainChange,
+    onBeforeDomainChange,
+    formError,
+}) => {
+    const [domain, setDomain] = useState<UserType>(availableDomains[0]);
+    const [searchType, setSearchType] = useState<UserSearchType>("username");
+    const [searchText, setSearchText] = useState("");
+    const [searchTextError, setSearchTextError] = useState("");
+    const [resultMessage, setResultMessage] = useState("");
+    const [selected, setSelected] = useState<SelectedUser[]>([]);
+    const [isResultsOpen, setResultsOpen] = useState(false);
+
+    const { authState } = useAuth();
+    const { searchUsers, isPending, searchResults, isSuccess, searchError, reset } =
+        useUserSearch();
+
+    const currentUsername = (
+        authState.famLoginUser?.username ?? ""
+    ).toLowerCase();
+
+    const searchTypes = useMemo(() => searchTypesFor(domain), [domain]);
+    const isUsernameSearch = searchType === "username";
+
+    /**
+     * What is wrong with this text, or "" if nothing is.
+     *
+     * No spaces ever - no directory identifier contains one - and no digits on a
+     * name search, where they only ever come from somebody typing a username
+     * into the wrong field.
+     */
+    const invalidTextError = (value: string): string => {
+        if (/\s/.test(value)) {
+            return "Search text cannot contain spaces";
+        }
+        if (!isUsernameSearch && /\d/.test(value)) {
+            return "Search text cannot contain numbers";
+        }
+        return "";
+    };
+
+    const validate = (): boolean => {
+        const trimmed = searchText.trim();
+        if (!trimmed) {
+            setSearchTextError("Search text is required");
+            return false;
+        }
+        if (trimmed.length > MAX_SEARCH_TEXT_LENGTH) {
+            setSearchTextError(
+                `Search text must be ${MAX_SEARCH_TEXT_LENGTH} characters or less`
+            );
+            return false;
+        }
+        const invalid = invalidTextError(trimmed);
+        setSearchTextError(invalid);
+        return !invalid;
+    };
+
+    const applyDomainChange = (next: UserType) => {
+        setDomain(next);
+        setSearchType(searchTypesFor(next)[0].value);
+        setSearchText("");
+        setSearchTextError("");
+        setResultMessage("");
+        // The people already chosen came from the other directory, so they go.
+        setSelected([]);
+        onSelectionChange([]);
+        reset();
+        onDomainChange?.(next);
+    };
+
+    const handleDomainSelection = (next: UserType) => {
+        if (next === domain) {
+            return;
+        }
+        if (!onBeforeDomainChange) {
+            applyDomainChange(next);
+            return;
+        }
+        onBeforeDomainChange({
+            currentDomain: domain,
+            nextDomain: next,
+            selectedUsersCount: selected.length,
+            approveChange: () => applyDomainChange(next),
+            // Nothing to undo: the Select is driven by `domain`, which has not
+            // moved. The Vue version had to force a re-render here to drag
+            // PrimeVue's own internal value back.
+            cancelChange: () => {},
+        });
+    };
+
+    const handleTextChange = (value: string) => {
+        // Refuses the character rather than accepting it and complaining: the
+        // field cannot hold a space or (on a name search) a digit at all.
+        const sanitized = isUsernameSearch
+            ? value.replace(/\s/g, "")
+            : value.replace(/[\s\d]/g, "");
+
+        if (sanitized !== value) {
+            setSearchTextError(invalidTextError(value));
+        } else if (searchTextError) {
+            setSearchTextError(invalidTextError(sanitized));
+        }
+        setSearchText(sanitized);
+    };
+
+    const handleSearch = () => {
+        if (!validate()) {
+            return;
+        }
+        // Caught before the request rather than filtered out of the results: the
+        // person typed their own username, and telling them so is clearer than
+        // an empty result set.
+        if (
+            !allowSelfSelection &&
+            isUsernameSearch &&
+            searchText.trim().toLowerCase() === currentUsername
+        ) {
+            setSearchTextError(SELF_SELECTION_ERROR);
+            return;
+        }
+        setResultMessage("");
+        searchUsers({
+            domain,
+            searchType,
+            searchText: searchText.trim(),
+            environment,
+        });
+    };
+
+    /**
+     * Opens the results once per search.
+     *
+     * The ref is what makes it once: `isSuccess` stays true afterwards, so
+     * reacting to the flag alone reopened the modal on every later render -
+     * including the one caused by closing it.
+     */
+    const handledResults = useRef<SelectedUser[] | null>(null);
+    useEffect(() => {
+        if (!isSuccess || !searchResults || handledResults.current === searchResults) {
+            return;
+        }
+        handledResults.current = searchResults;
+        if (searchResults.length === 0) {
+            setResultMessage(
+                "No search result found. Check the spelling or try another search."
+            );
+            return;
+        }
+        setResultMessage("");
+        setResultsOpen(true);
+    }, [isSuccess, searchResults]);
+
+    useEffect(() => {
+        if (!searchError) {
+            return;
+        }
+        if (searchError.code === PERMISSION_REQUIRED_FOR_OPERATION) {
+            // Naming the organisation is the point: a BCeID administrator gets
+            // this when they reach outside their own, and the message is
+            // otherwise indistinguishable from a general refusal.
+            const orgName =
+                authState.famLoginUser?.organization ?? "Unknown organization";
+            setResultMessage(
+                `${searchError.description ?? searchError.message}. Org name: ${orgName}`
+            );
+            return;
+        }
+        setResultMessage(searchError.message);
+    }, [searchError, authState.famLoginUser?.organization]);
+
+    const confirmSelection = (chosen: SelectedUser[]) => {
+        setResultsOpen(false);
+        if (chosen.length === 0) {
+            return;
+        }
+
+        const admissible =
+            currentUsername && !allowSelfSelection
+                ? chosen.filter(
+                      (user) => user.userId.toLowerCase() !== currentUsername
+                  )
+                : chosen;
+
+        if (currentUsername && admissible.length !== chosen.length) {
+            setResultMessage(SELF_SELECTION_ERROR);
+        }
+
+        const next = multiUserMode
+            ? // Merged with what was already chosen, deduplicated on user and
+              // directory together - the same id can exist in both.
+              [...selected, ...admissible].filter(
+                  (user, index, all) =>
+                      index ===
+                      all.findIndex(
+                          (other) =>
+                              other.userId.toLowerCase() ===
+                                  user.userId.toLowerCase() &&
+                              other.sourceDomain === user.sourceDomain
+                      )
+              )
+            : admissible.slice(0, 1);
+
+        setSelected(next);
+        onSelectionChange(next);
+    };
+
+    const removeUser = (userId: string) => {
+        const next = selected.filter(
+            (user) => user.userId.toLowerCase() !== userId.toLowerCase()
+        );
+        setSelected(next);
+        onSelectionChange(next);
+    };
+
+    return (
+        <div className="user-search-container">
+            <div className="search-fields-row">
+                <Select
+                    id="user-domain"
+                    className="field-domain"
+                    labelText="User domain"
+                    value={domain}
+                    onChange={(event) =>
+                        handleDomainSelection(event.target.value as UserType)
+                    }
+                    disabled={disabled || availableDomains.length === 1 || isPending}
+                >
+                    {availableDomains.map((option) => (
+                        <SelectItem
+                            key={option}
+                            value={option}
+                            text={domainLabel(option)}
+                        />
+                    ))}
+                </Select>
+
+                <Select
+                    id="search-type"
+                    className="field-type"
+                    labelText="Type"
+                    value={searchType}
+                    onChange={(event) => {
+                        setSearchType(event.target.value as UserSearchType);
+                        // The text may be legal for one type and not the other,
+                        // so the complaint goes rather than being re-evaluated
+                        // against a rule the user has not typed under yet.
+                        setSearchTextError("");
+                        setResultMessage("");
+                    }}
+                    disabled={disabled || isPending}
+                >
+                    {searchTypes.map((option) => (
+                        <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            text={option.label}
+                        />
+                    ))}
+                </Select>
+
+                <div className="field-search-input">
+                    <TextInput
+                        id="user-search-input"
+                        labelText="Search text"
+                        hideLabel
+                        placeholder="Please input search text"
+                        maxLength={MAX_SEARCH_TEXT_LENGTH}
+                        value={searchText}
+                        onChange={(event) => handleTextChange(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleSearch();
+                            }
+                        }}
+                        invalid={Boolean(searchTextError)}
+                        invalidText={searchTextError}
+                        disabled={disabled || isPending}
+                    />
+                </div>
+
+                <div className="field-search-button">
+                    <Button
+                        kind="tertiary"
+                        // Carbon buttons default to `lg` (48px) while its inputs
+                        // default to `md` (40px), so an unsized button stands a
+                        // full 8px taller than the field beside it.
+                        size="md"
+                        name="searchUsers"
+                        aria-label="Search users"
+                        renderIcon={isPending ? InlineSpinner : SearchIcon}
+                        disabled={disabled || isPending}
+                        onClick={handleSearch}
+                    >
+                        {searchButtonLabel}
+                    </Button>
+                </div>
+            </div>
+
+            <div className="search-error-row">
+                {helperText ? (
+                    <p className="user-search__helper">{helperText}</p>
+                ) : null}
+                {resultMessage ? (
+                    <p className="user-search__error" role="alert">
+                        {resultMessage}
+                    </p>
+                ) : null}
+                {formError}
+            </div>
+
+            <UserSearchSelectedTable
+                users={selected}
+                multiUserMode={multiUserMode}
+                onDelete={removeUser}
+            />
+
+            <UserSearchResultsModal
+                open={isResultsOpen}
+                rows={searchResults ?? []}
+                multiUserMode={multiUserMode}
+                onConfirm={confirmSelection}
+                onCancel={() => setResultsOpen(false)}
+            />
+        </div>
+    );
+};
+
+export default UserSearch;

@@ -65,10 +65,15 @@ class BulkGrantServiceTest {
       .build();
 
   private static CssRoleOptionDto role(String name, boolean district, boolean client) {
+    return role(name, district, false, client);
+  }
+
+  private static CssRoleOptionDto role(
+      String name, boolean district, boolean region, boolean client) {
     // Null grantable lists: the bulk uploader is an application administrator,
     // narrowed by nothing.
     return new CssRoleOptionDto(name, "View All", "Long description", null,
-        false, List.of(), district, client, null, null);
+        false, List.of(), district, region, client, null, null, null);
   }
 
   @BeforeEach
@@ -289,6 +294,93 @@ class BulkGrantServiceTest {
           // The offending value is still shown, or the error names nothing.
           assertThat(row.district()).isEqualTo("DCC");
         });
+  }
+
+  @Test
+  @DisplayName("grants a region-scoped role from the sixth column")
+  void grantsARegionScopedRole() {
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("FREP_REGIONAL", false, true, false)));
+
+    // Region is column six, after organization - appended rather than slotted
+    // in beside district, because the parser is positional and a file written
+    // before regions existed must keep meaning what it did.
+    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL,,,CARIBOO"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.valid()).isTrue();
+          assertThat(row.region()).isEqualTo("CARIBOO");
+          assertThat(row.regionName()).isEqualTo("Cariboo");
+        });
+  }
+
+  @Test
+  @DisplayName("a file written before regions existed still means what it did")
+  void olderFilesAreUnchanged() {
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
+
+    // Five columns, no region. The organization column must still be read as
+    // one - appending the new column is what guarantees that.
+    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR,DCC,"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.valid()).isTrue();
+          assertThat(row.district()).isEqualTo("DCC");
+          assertThat(row.region()).isNull();
+        });
+  }
+
+  @Test
+  @DisplayName("refuses a region on a role that is not granted per region")
+  void refusesARegionOnAnUnscopedRole() {
+    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL,,,CARIBOO"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.valid()).isFalse();
+          assertThat(row.error()).contains("not granted per region");
+          assertThat(row.region()).isEqualTo("CARIBOO");
+        });
+  }
+
+  @Test
+  @DisplayName("refuses a region-scoped role with its region column left empty")
+  void refusesARegionScopedRoleWithNoRegion() {
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("FREP_REGIONAL", false, true, false)));
+
+    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.valid()).isFalse();
+          assertThat(row.error()).contains("granted per region");
+        });
+  }
+
+  @Test
+  @DisplayName("refuses a region code that is not one")
+  void refusesAnUnknownRegion() {
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("FREP_REGIONAL", false, true, false)));
+
+    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL,,,NOPE"))
+        .singleElement()
+        .satisfies(row -> assertThat(row.error()).contains("not a natural resource region"));
+  }
+
+  @Test
+  @DisplayName("tells two rows apart when only the region differs")
+  void regionDistinguishesRows() {
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("FREP_REGIONAL", false, true, false)));
+
+    // Same person, same role, two regions is two grants - not a duplicate. The
+    // duplicate key has to include the region or the second reads as a repeat
+    // and is silently dropped.
+    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL,,,CARIBOO\n"
+            + GUID + ",IDIR,FREP_REGIONAL,,,SKEENA"))
+        .hasSize(2)
+        .allSatisfy(row -> assertThat(row.valid()).isTrue());
   }
 
   @Test

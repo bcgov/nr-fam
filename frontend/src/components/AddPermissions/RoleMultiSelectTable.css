@@ -1,0 +1,101 @@
+/*
+    One background per role, panel included, and it does not move.
+
+    A role is one row when it is unscoped and two when its panel is open, and
+    those two are one thing: the row asks what the role applies to and the panel
+    answers. Carbon painted them separately - the panel came out white under a
+    grey row - and then repainted whichever the pointer was over, so the pair
+    only ever matched by accident.
+
+    Hover is frozen along with it. The panel is a form: the pointer sits in it
+    for as long as it takes to choose a district, and a region that lights up
+    under the cursor reads as something you are about to click. The checkbox and
+    the chevron keep their own hover states, which is where the row is actually
+    clickable.
+
+    The selectors are long on purpose. Carbon's own hover rules carry three
+    classes, so each of these needs to out-weigh them rather than rely on which
+    stylesheet the bundler happens to emit last.
+*/
+.role-multi-select-table table tbody tr.role-row > td,
+.role-multi-select-table table tbody tr.role-row:hover > td,
+.role-multi-select-table table tbody tr.role-row.cds--expandable-row--hover > td,
+.role-multi-select-table table tbody tr.cds--parent-row:hover + tr.role-row > td {
+  background-color: var(--fam-table-row);
+}
+
+.role-multi-select-table table tbody tr.role-row--shaded > td,
+.role-multi-select-table table tbody tr.role-row--shaded:hover > td,
+.role-multi-select-table
+  table
+  tbody
+  tr.role-row--shaded.cds--expandable-row--hover
+  > td,
+.role-multi-select-table
+  table
+  tbody
+  tr.cds--parent-row:hover
+  + tr.role-row--shaded
+  > td {
+  background-color: var(--fam-table-row-alt);
+}
+
+/*
+    No line between a row and its own panel.
+
+    Carbon draws one - a border plus a matching box-shadow - because it treats
+    the panel as the next row down. It is not: it is the rest of this one, and a
+    rule across the middle of a block that is otherwise a single colour reads as
+    a separator between two things. The line below the panel stays, because that
+    one really is where the role ends.
+
+    The rest of the app already drops row dividers and leans on the striping to
+    separate rows - see _tables.scss - so this is that rule reaching a place
+    Carbon's expandable styles had claimed for themselves.
+*/
+.role-multi-select-table table tbody tr.cds--parent-row.cds--expandable-row > td {
+  border-block-end: none;
+  box-shadow: none;
+}
+
+.role-multi-select-table .pick-col {
+  width: 3rem;
+}
+
+.role-multi-select-table .scope-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.role-multi-select-table .no-scope {
+  color: var(--cds-text-secondary);
+}
+
+/* Lines the plain rows up with the expandable ones, which have a chevron. */
+.role-multi-select-table .no-expand-col {
+  width: 2.5rem;
+}
+
+/*
+    Carbon already indents the expanded row's cell by 3.5rem to line up under the
+    chevron. The inner container adds nothing horizontal on top of that - it did,
+    and the two stacked to 6.5rem, pushing the pickers well clear of the row they
+    belong to.
+*/
+.role-multi-select-table .role-scope-row .cds--child-row-inner-container {
+  padding: 0 1rem 1rem 0;
+}
+
+/*
+    That 3.5rem indent is applied with a descendant selector -
+    `tr[data-child-row] td` - so it also lands on every cell of the tables nested
+    inside the expanded row, knocking their values 40px out of line with their
+    own headers. Put back to the ordinary cell padding.
+
+    Four classes against Carbon's three, so this wins on weight rather than on
+    which stylesheet the bundler happens to emit last.
+*/
+.role-multi-select-table tr[data-child-row] .role-scope-fields .fam-table td {
+  padding-inline-start: 1rem;
+}
