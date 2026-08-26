@@ -1,0 +1,40 @@
+.add-delegated-admin-container {
+  padding-bottom: 2.5rem;
+}
+
+.add-delegated-admin-container .step-note {
+  margin-bottom: 1.5rem;
+  max-width: 46rem;
+  color: var(--cds-text-secondary);
+}
+
+.add-delegated-admin-container .unscoped-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.add-delegated-admin-container .unscoped-label {
+  color: var(--cds-text-secondary);
+}
+
+.add-delegated-admin-container .delegation-total {
+  margin-top: 1.25rem;
+  color: var(--cds-text-secondary);
+}
+
+.add-delegated-admin-container .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.add-delegated-admin-container .field-error {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--cds-text-error);
+  font-size: 0.875rem;
+}

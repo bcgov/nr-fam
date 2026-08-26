@@ -1,0 +1,31 @@
+.grant-failure-list ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.grant-failure-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.42857;
+}
+
+.grant-failure-list__dot {
+  /* Nudged down onto the first line of text rather than its cap height. */
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+/* A link, not a button: it reveals text rather than doing anything. */
+.grant-failure-list__toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 0.25rem;
+  color: var(--cds-link-primary);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.875rem;
+}

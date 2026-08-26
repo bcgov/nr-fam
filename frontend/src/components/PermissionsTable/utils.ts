@@ -52,8 +52,8 @@ export const scopeText = (row: CssUserRoleRowDto): string =>
  */
 export const roleLabel = (row: CssUserRoleRowDto): string =>
     row.role_display_name || row.role_name;
-import type { AppPermissionGrantSummary } from "@/views/AddAppPermission/utils";
-import { wasGranted } from "@/views/ManagePermissionsView/utils";
+import type { AppPermissionGrantSummary } from "@/pages/AddAppPermission/grantUtils";
+import { wasGranted } from "@/pages/ManagePermissions/utils";
 
 /** The row shading legacy used to mark a just-added permission. */
 export const NEW_ACCESS_STYLE_IN_TABLE = {

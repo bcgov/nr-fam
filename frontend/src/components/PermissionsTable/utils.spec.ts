@@ -1,6 +1,6 @@
 import type { CssUserRoleRowDto } from "fam-api";
 import { describe, expect, it } from "vitest";
-import type { AppPermissionGrantSummary } from "@/views/AddAppPermission/utils";
+import type { AppPermissionGrantSummary } from "@/pages/AddAppPermission/grantUtils";
 import { UserType } from "fam-api";
 import {
     csvFileName,

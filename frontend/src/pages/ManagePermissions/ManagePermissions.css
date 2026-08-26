@@ -1,0 +1,87 @@
+/* Just the application picker now - the add button moved onto the Users tab. */
+.manage-permission-view .dropdown-and-button-container {
+  margin-top: 2.5rem;
+}
+
+.manage-permission-view .application-dropdown {
+  /* Takes the width, leaving the add button its natural size beside it. */
+  flex: 1 1 24rem;
+  max-width: 40rem;
+}
+
+/*
+    The raised panel the tabs sit in. The negative margin pulls it out to the
+    edges of the Carbon content area, which pads its children; without it the
+    panel floats inside a gutter instead of spanning the page.
+*/
+/*
+    Holds the tab strip and its panel, and paints nothing itself.
+
+    The grey belongs to the tab panel. Painting this wrapper as well put a band
+    of grey above the tab strip and behind it, so the tabs sat *in* the grey
+    rather than on the page above it - FSP's details page has the strip on white,
+    with the grey starting at the panel beneath.
+
+    No horizontal padding either, so the panel's grey runs to both edges of the
+    content area the way FSP's does; the strip takes its own inset below.
+*/
+.manage-permission-view .content-container {
+  display: flex;
+  flex-direction: column;
+  /*
+      -1.5rem, matching `.cds--content { padding: 0 1.5rem }` in
+      styles/_overrides.scss. It was -2rem, which overshot that padding by 8px a
+      side and pushed the container past the content edge - enough to give the
+      whole page a horizontal scrollbar.
+  */
+  margin: 2.5rem -1.5rem 0;
+  min-height: calc(100vh - 19rem);
+}
+
+/*
+    Lets the tab panel's grey reach the bottom of the page rather than stopping
+    under the last tile. The container already claims the height; these pass it
+    down to the panel, which is what actually paints.
+*/
+.manage-permission-view .tab-view-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.manage-permission-view .cds--tab-content {
+  flex: 1;
+}
+
+/* Insets the tab strip from the edge, matching FSP. */
+.manage-permission-view .cds--tabs {
+  padding-inline-start: 2rem;
+}
+
+/* The panel's own padding, which the container no longer supplies. */
+.manage-permission-view .cds--tab-content {
+  padding: 1.5rem 2rem 2rem;
+}
+
+/*
+    Forced colours - Windows High Contrast, macOS Increase contrast - throw away
+    background colour and the active underline, and repaint every border black.
+    The tabs then render as identical black boxes with nothing marking the
+    selected one.
+
+    The cue is a thick underline in the system Highlight colour, plus weight -
+    deliberately not a filled tab. Chrome paints a backplate behind text in this
+    mode to guarantee contrast, which sits on top of any background we set and
+    hides HighlightText labels entirely. Borders are not backplated, so an
+    underline survives where a fill does not.
+*/
+@media (forced-colors: active) {
+  .manage-permission-view .cds--tabs__nav-item {
+    border: 1px solid ButtonBorder;
+  }
+
+  .manage-permission-view .cds--tabs__nav-item[aria-selected='true'] {
+    border-bottom: 0.25rem solid Highlight;
+    font-weight: 700;
+  }
+}

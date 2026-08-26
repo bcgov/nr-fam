@@ -1,0 +1,160 @@
+/* Side-nav sizing. Expanded = a fixed 16rem panel (icons + labels);
+   collapsed = a 3rem (48px) icon-only rail. Fixed widths keep the matching
+   content margin (Layout.css) in lock-step with the nav. */
+:root {
+  --bc-sidenav-width: 16rem;
+  --bc-sidenav-rail: 3rem;
+}
+
+/* We drive the nav as an always-visible rail/panel, not a modal drawer.
+   Carbon still renders its dimming overlay (because isPersistent={false}),
+   and because `expanded` is hardcoded true the overlay is stuck "active" —
+   a full-viewport fixed element that contributes nothing here and produces
+   stray edges when the page is clicked. Suppress it entirely. */
+.cds--side-nav__overlay,
+.cds--side-nav__overlay-active {
+  display: none !important;
+}
+
+/* Pad each visible link/menu-item so the longest label has breathing room
+   on the right edge instead of butting against the drawer border. */
+.cds--side-nav__link,
+.cds--side-nav__submenu,
+.cds--side-nav__menu-item {
+  padding-inline-end: 1rem;
+}
+
+/* Nav icons render in the interactive blue (matches the design). Our custom
+   icons use fill="currentColor", so set the colour on the icon container
+   and the svg; sized to 20px like the mock-up. */
+.cds--side-nav__icon,
+.cds--side-nav__icon svg,
+.cds--side-nav__link-text svg {
+  color: var(--cds-link-primary);
+  fill: var(--cds-link-primary);
+}
+
+.cds--side-nav__icon svg {
+  inline-size: 20px;
+  block-size: 20px;
+}
+
+/* The drawer is always on-screen now; its width animates between the rail
+   and the full panel. overflow: visible lets the collapsed-state tooltips
+   escape the narrow rail. */
+.side-nav-drawer.cds--side-nav {
+  inline-size: var(--bc-sidenav-width);
+  min-inline-size: var(--bc-sidenav-width);
+  max-inline-size: var(--bc-sidenav-width);
+  transform: none;
+  transition:
+    inline-size 320ms cubic-bezier(0.4, 0.14, 0.3, 1),
+    min-inline-size 320ms cubic-bezier(0.4, 0.14, 0.3, 1),
+    max-inline-size 320ms cubic-bezier(0.4, 0.14, 0.3, 1);
+}
+
+/* Collapsed = icon-only rail (the --open class is absent). overflow: visible
+   only here so the hover tooltips can escape the 48px rail; the EXPANDED
+   nav keeps Carbon's overflow (the unconditional override was leaking the
+   nav internals as stray white lines). */
+.side-nav-drawer.cds--side-nav:not(.side-nav-drawer--open) {
+  inline-size: var(--bc-sidenav-rail);
+  min-inline-size: var(--bc-sidenav-rail);
+  max-inline-size: var(--bc-sidenav-rail);
+  overflow: visible;
+}
+
+/* In the rail, the link is the positioning anchor and centres its icon. */
+.side-nav-drawer:not(.side-nav-drawer--open) .cds--side-nav__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Carbon indents the link (padding-inline-start: 2rem) to make room for
+     the label; force it flush so the icon can centre in the 48px rail.
+     !important beats Carbon's more specific longhand padding rule. */
+  padding-inline: 0 !important;
+}
+
+/* Zero the icon→label gap (margin-inline-end: 1.5rem) so the lone icon
+   sits dead-centre. */
+.side-nav-drawer:not(.side-nav-drawer--open) .cds--side-nav__icon {
+  margin-inline: 0 !important;
+}
+
+/* Carbon clips the list (ul) and items (li), which would cut off the
+   tooltip that sticks out to the right of the 48px rail. Let them overflow
+   while collapsed (no vertical scroll needed for the short icon rail).
+   !important is required: Carbon's `.cds--side-nav:hover .cds--side-nav__items`
+   sets overflow-y: auto and ties this rule on specificity but wins on source
+   order — and it fires exactly on hover, the moment the tooltip appears.
+   overflow-y: auto also forces overflow-x to auto, clipping the tooltip. */
+.side-nav-drawer:not(.side-nav-drawer--open) .cds--side-nav__items,
+.side-nav-drawer:not(.side-nav-drawer--open) .cds--side-nav__item {
+  overflow: visible !important;
+}
+
+/* Tooltip = the link's own label, repurposed. Rather than rely on a
+   data-attribute reaching the DOM, we take the real .cds--side-nav__link-text
+   (always rendered by Carbon) out of flow and float it to the right of the
+   icon as a dark pill, hidden until the link is hovered. Guaranteed to have
+   text and to match the design. */
+.side-nav-drawer:not(.side-nav-drawer--open) .cds--side-nav__link-text {
+  position: absolute;
+  inset-inline-start: calc(100% + 8px);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #131315;
+  /* !important beats Carbon's `.cds--side-nav__link:hover .cds--side-nav__link-text`
+     colour (0,3,1), which on hover would paint the text the dark primary
+     colour — invisible against the dark pill. */
+  color: #fff !important;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  z-index: 9500;
+}
+
+.side-nav-drawer:not(.side-nav-drawer--open) .cds--side-nav__link:hover .cds--side-nav__link-text {
+  opacity: 1;
+}
+
+/* ── Support link, pinned to the bottom ────────────────────────────
+   Carbon nests <nav class="…__navigation"> → <ul class="…__items">. Making
+   both full-height flex columns lets the Support heading absorb the leftover
+   space via margin-block-start: auto, so it and the link after it sit against
+   the bottom edge no matter how many role-dependent entries render above. */
+.side-nav-drawer .cds--side-nav__navigation {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+}
+
+.side-nav-drawer .cds--side-nav__items {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+/* padding-inline-start matches Carbon's 2rem link indent so the heading
+   lines up with the labels above it rather than the icons. */
+.side-nav-support-heading {
+  margin-block-start: auto;
+  padding-block: 0 0.25rem;
+  padding-inline: 2rem 1rem;
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.34;
+}
+
+/* No room for a section label in the 48px rail — the link's hover tooltip
+   already names it. */
+.side-nav-drawer:not(.side-nav-drawer--open) .side-nav-support-heading {
+  display: none;
+}

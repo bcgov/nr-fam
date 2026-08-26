@@ -6,9 +6,11 @@ import ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService;
 import ca.bc.gov.nrs.fam.dto.CssScopeSelection;
 import ca.bc.gov.nrs.fam.constants.FamConstants;
 import ca.bc.gov.nrs.fam.constants.District;
+import ca.bc.gov.nrs.fam.constants.Region;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantPreviewDto;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantRowDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssRoleOptionDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
@@ -161,10 +163,14 @@ public class BulkGrantService {
   private static List<CssScopeSelection> scopesOf(CssBulkGrantRowDto row) {
     List<CssScopeSelection> scopes = new ArrayList<>();
     if (row.district() != null) {
-      scopes.add(new CssScopeSelection("DISTRICT", List.of(row.district())));
+      scopes.add(new CssScopeSelection(CssRoleNaming.SCOPE_DISTRICT, List.of(row.district())));
+    }
+    if (row.region() != null) {
+      scopes.add(new CssScopeSelection(CssRoleNaming.SCOPE_REGION, List.of(row.region())));
     }
     if (row.forestClientNumber() != null) {
-      scopes.add(new CssScopeSelection("FOREST_CLIENT", List.of(row.forestClientNumber())));
+      scopes.add(new CssScopeSelection(
+          CssRoleNaming.SCOPE_FOREST_CLIENT, List.of(row.forestClientNumber())));
     }
     return scopes;
   }
@@ -215,10 +221,11 @@ public class BulkGrantService {
       Set<String> seen, Requester requester) {
 
     String district = row.district().toUpperCase(Locale.ROOT);
+    String region = row.region().toUpperCase(Locale.ROOT);
     String clientNumber = padClientNumber(row.forestClient());
 
     if (row.userGuid().isEmpty() || row.roleCode().isEmpty()) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "Both a user GUID and a role are required.");
     }
 
@@ -227,8 +234,8 @@ public class BulkGrantService {
     // twice - that would grant once and report twice, reading as a silent
     // failure on the second.
     if (!seen.add(String.join("|", row.userGuid().toUpperCase(Locale.ROOT),
-        row.roleCode().toUpperCase(Locale.ROOT), district, clientNumber))) {
-      return invalid(row, district, clientNumber,
+        row.roleCode().toUpperCase(Locale.ROOT), district, region, clientNumber))) {
+      return invalid(row, district, region, clientNumber,
           "Duplicate of an earlier row in this file.");
     }
 
@@ -236,7 +243,7 @@ public class BulkGrantService {
     // the administrator screens, which apply the tier rules; letting a CSV do it
     // would route around them entirely.
     if (FamAdminRole.isAdminRole(row.roleCode())) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "%s is an administrative role. Appoint administrators from the "
               .formatted(row.roleCode())
               + "Delegated admins or Application admins tab, not by upload.");
@@ -244,7 +251,7 @@ public class BulkGrantService {
 
     CssRoleOptionDto role = roles.get(row.roleCode().toUpperCase(Locale.ROOT));
     if (role == null) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "No role named %s exists in this application.".formatted(row.roleCode()));
     }
 
@@ -255,24 +262,34 @@ public class BulkGrantService {
     // access than the file appears to ask for. It is refused rather than
     // dropped.
     if (!district.isEmpty() && !role.roleTypeDistrict()) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "%s is not granted per district, so the district column must be empty."
               .formatted(row.roleCode()));
     }
+    if (!region.isEmpty() && !role.roleTypeRegion()) {
+      return invalid(row, district, region, clientNumber,
+          "%s is not granted per region, so the region column must be empty."
+              .formatted(row.roleCode()));
+    }
     if (!clientNumber.isEmpty() && !role.roleTypeClient()) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "%s is not granted per organization, so the organization column must be empty."
               .formatted(row.roleCode()));
     }
     // The other direction: without the scope the grant would name a role no
     // application authorises on, so it is refused rather than granted unscoped.
     if (role.roleTypeDistrict() && district.isEmpty()) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "%s is granted per district. Put a district code in the third column."
               .formatted(row.roleCode()));
     }
+    if (role.roleTypeRegion() && region.isEmpty()) {
+      return invalid(row, district, region, clientNumber,
+          "%s is granted per region. Put a region code in the region column."
+              .formatted(row.roleCode()));
+    }
     if (role.roleTypeClient() && clientNumber.isEmpty()) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "%s is granted per organization. Put a client number in the fourth column."
               .formatted(row.roleCode()));
     }
@@ -281,30 +298,47 @@ public class BulkGrantService {
     if (!district.isEmpty()) {
       District known = District.fromOrgUnitCode(district).orElse(null);
       if (known == null) {
-        return invalid(row, district, clientNumber,
+        return invalid(row, district, region, clientNumber,
             "%s is not a natural resource district code.".formatted(district));
       }
       // Expired districts are kept out of the picker so none can be granted;
       // the file must not be a way around that.
       if (known.isExpired()) {
-        return invalid(row, district, clientNumber,
+        return invalid(row, district, region, clientNumber,
             "District %s (%s) has expired and cannot be granted."
                 .formatted(district, known.getOrgUnitName()));
       }
       districtName = known.getOrgUnitName();
     }
 
+    String regionName = null;
+    if (!region.isEmpty()) {
+      Region known = Region.fromRegionCode(region).orElse(null);
+      if (known == null) {
+        return invalid(row, district, region, clientNumber,
+            "%s is not a natural resource region code.".formatted(region));
+      }
+      // Expired regions are kept out of the picker so none can be granted; the
+      // file must not be a way around that.
+      if (known.isExpired()) {
+        return invalid(row, district, region, clientNumber,
+            "Region %s (%s) has expired and cannot be granted."
+                .formatted(region, known.getRegionName()));
+      }
+      regionName = known.getRegionName();
+    }
+
     String clientName = null;
     if (!clientNumber.isEmpty()) {
       ForestClient client = clients.get(clientNumber);
       if (client == null) {
-        return invalid(row, district, clientNumber,
+        return invalid(row, district, region, clientNumber,
             "No organization has client number %s.".formatted(clientNumber));
       }
       // Same rule the picker applies: an inactive organisation is findable but
       // refused on selection, so granting one by upload would be a dead end.
       if (!client.active()) {
-        return invalid(row, district, clientNumber,
+        return invalid(row, district, region, clientNumber,
             "Organization %s (%s) is not active and cannot be granted."
                 .formatted(clientNumber, client.name()));
       }
@@ -319,7 +353,7 @@ public class BulkGrantService {
     try {
       stated = parseUserType(row.userType());
     } catch (IllegalArgumentException e) {
-      return invalid(row, district, clientNumber,
+      return invalid(row, district, region, clientNumber,
           "%s is not a user type. Use IDIR or BCEID, or leave the column empty."
               .formatted(row.userType()));
     }
@@ -328,7 +362,7 @@ public class BulkGrantService {
     // person, and which of the two directories they are in.
     Resolved resolved = resolve(row.userGuid(), stated);
     if (resolved == null) {
-      return invalid(row, district, clientNumber, stated == null
+      return invalid(row, district, region, clientNumber, stated == null
           ? "No IDIR or Business BCeID user has this GUID."
           // Named rather than falling back to the other directory: the file said
           // which one, and quietly granting a different person who happens to
@@ -342,6 +376,7 @@ public class BulkGrantService {
         resolved.email(), resolved.organization(),
         role.displayName(),
         district.isEmpty() ? null : district, districtName,
+        region.isEmpty() ? null : region, regionName,
         clientNumber.isEmpty() ? null : clientNumber, clientName,
         true, null);
 
@@ -365,9 +400,9 @@ public class BulkGrantService {
   }
 
   private static CssBulkGrantRowDto invalid(
-      ParsedRow row, String district, String clientNumber, String error) {
+      ParsedRow row, String district, String region, String clientNumber, String error) {
     return CssBulkGrantRowDto.invalid(
-        row.lineNumber(), row.userGuid(), row.roleCode(), district, clientNumber, error);
+        row.lineNumber(), row.userGuid(), row.roleCode(), district, region, clientNumber, error);
   }
 
   /**
@@ -500,6 +535,7 @@ public class BulkGrantService {
         row.lineNumber(), row.userGuid(), row.roleCode(), row.userType(), row.userName(),
         row.firstName(), row.lastName(), row.email(), row.organization(),
         row.roleDisplayName(), row.district(), row.districtName(),
+        row.region(), row.regionName(),
         row.forestClientNumber(), row.forestClientName(), false, error);
   }
 
@@ -513,19 +549,23 @@ public class BulkGrantService {
 
   private record ParsedRow(
       int lineNumber, String userGuid, String userType, String roleCode,
-      String district, String forestClient) {}
+      String district, String forestClient, String region) {}
 
   /**
    * Splits the file into rows.
    *
-   * <p>Four columns: user GUID, role, district, forest client. The last two are
-   * blank for a role that is not scoped that way, and a role scoped both ways
-   * carries both - one row is one grant, so a person getting a role for three
-   * districts is three rows. That keeps the file readable in a spreadsheet,
-   * which is where these are actually written.
+   * <p>Six columns: user GUID, user type, role, district, organization, region.
+   * The scope columns are blank for a role that is not scoped that way, and a
+   * role scoped several ways carries each - one row is one grant, so a person
+   * getting a role for three districts is three rows. That keeps the file
+   * readable in a spreadsheet, which is where these are actually written.
    *
-   * <p>Trailing columns are optional, so a two-column file written before scopes
-   * were supported still uploads unchanged.
+   * <p><b>Region is last rather than beside district, which is where it belongs
+   * to read.</b> The parser is positional, so inserting a column would silently
+   * reinterpret every file written before it - organisation numbers would arrive
+   * as regions. Appending keeps every existing file valid, which is the same
+   * reason trailing columns are optional: a two-column file written before
+   * scopes were supported still uploads unchanged.
    */
   private static List<ParsedRow> parse(String csv) {
     if (csv == null || csv.isBlank()) {
@@ -548,7 +588,7 @@ public class BulkGrantService {
         continue;
       }
       rows.add(new ParsedRow(i + 1, first, field(fields, 1), field(fields, 2),
-          field(fields, 3), field(fields, 4)));
+          field(fields, 3), field(fields, 4), field(fields, 5)));
     }
     return rows;
   }

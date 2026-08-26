@@ -2,7 +2,8 @@ import { expect, test } from "./fixtures";
 
 import { chooseUser, openApplication } from "./helpers/permissions";
 import { createRole, deleteRole } from "./helpers/roles";
-import { TARGET_USER, uniqueSuffix } from "./utils";
+import { chips, dangerButton, openDialog, toast } from "./carbon";
+import { applicationPicker, TARGET_USER, uniqueSuffix } from "./utils";
 
 /**
  * Appointing and removing administrators, at both tiers.
@@ -36,7 +37,7 @@ test.describe("administrator lifecycle", () => {
         label: RegExp
     ) => {
         await openApplication(page, appName);
-        const tab = page.locator(".p-tab").filter({ hasText: label });
+        const tab = page.getByRole("tab").filter({ hasText: label });
         await expect(
             tab,
             `no "${label}" tab - the account may not administer this application`
@@ -60,9 +61,10 @@ test.describe("administrator lifecycle", () => {
         await expect(adminRow(page)).toBeVisible({ timeout: 60_000 });
 
         await adminRow(page).getByRole("button", { name: "Remove administrator" }).click();
-        await page.getByRole("button", { name: "Remove", exact: true }).click();
+        await openDialog(page);
+        await dangerButton(page, "Remove").click();
 
-        await expect(page.getByText("Application admin removed").first()).toBeVisible({
+        await expect(toast(page)).toContainText("Application admin removed", {
             timeout: 30_000,
         });
         await expect(adminRow(page)).toBeHidden({ timeout: 60_000 });
@@ -84,11 +86,10 @@ test.describe("administrator lifecycle", () => {
                 timeout: 30_000,
             });
 
-            const checkbox = page
-                .locator(".role-multi-select-table .p-checkbox input")
-                .and(page.locator(`[aria-label="${roleName}"]`));
-            await expect(checkbox).toBeAttached({ timeout: 30_000 });
-            await checkbox.dispatchEvent("change");
+            await page
+                .locator(".role-multi-select-table")
+                .getByLabel(roleName, { exact: true })
+                .check();
 
             await page.getByRole("button", { name: /add delegated admin/i }).click();
 
@@ -100,14 +101,15 @@ test.describe("administrator lifecycle", () => {
             // means that lookup did not happen.
             const row = adminRow(page, roleName);
             await expect(row).toBeVisible({ timeout: 60_000 });
-            await expect(row.locator(".p-chip")).not.toHaveCount(0);
+            await expect(chips(row)).not.toHaveCount(0);
 
             await row.getByRole("button", { name: "Remove administrator" }).click();
-            await page.getByRole("button", { name: "Remove", exact: true }).click();
+            await openDialog(page);
+            await dangerButton(page, "Remove").click();
 
-            await expect(
-                page.getByText("Delegated admin removed").first()
-            ).toBeVisible({ timeout: 30_000 });
+            await expect(toast(page)).toContainText("Delegated admin removed", {
+                timeout: 30_000,
+            });
         } finally {
             await deleteRole(page, sandboxApp!.description, code);
         }
@@ -119,10 +121,10 @@ test.describe("administrator lifecycle", () => {
         // own administrators, which none of them is.
         await page.goto("/manage-permissions");
         await page.locator("#protected-layout-container").waitFor();
-        await page.locator("#application-selector-dropdown-id").click();
+        await applicationPicker(page).click();
 
         const fam = page
-            .locator(".p-select-overlay .p-select-option")
+            .getByRole("option")
             .filter({ hasText: /forests access management/i })
             .first();
 
@@ -132,7 +134,7 @@ test.describe("administrator lifecycle", () => {
         }
         await fam.click();
 
-        await expect(page.locator(".p-tab")).toHaveCount(1);
-        await expect(page.locator(".p-tab").first()).toContainText(/users/i);
+        await expect(page.getByRole("tab")).toHaveCount(1);
+        await expect(page.getByRole("tab").first()).toContainText(/users/i);
     });
 });

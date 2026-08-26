@@ -42,7 +42,7 @@ test.describe("forest client autocomplete", () => {
         await page.getByRole("button", { name: /add permission/i }).click();
         await chooseUser(page, TARGET_USER);
         await tickRole(page, roleName);
-        await expect(page.locator(".role-scope-card")).toBeVisible({
+        await expect(page.locator(".role-scope-fields")).toBeVisible({
             timeout: 30_000,
         });
     });
@@ -52,11 +52,12 @@ test.describe("forest client autocomplete", () => {
     });
 
     const search = async (page: import("@playwright/test").Page, term: string) => {
-        const input = page.locator(".forest-client-autocomplete input");
+        const input = page.getByRole("combobox", { name: "Organization" });
         await input.fill("");
         await input.fill(term);
-        // The picker debounces, and the overlay is teleported to the body.
-        return page.locator(".p-autocomplete-overlay .p-autocomplete-option");
+        // The picker debounces before it asks, and Carbon renders the list
+        // inside the field rather than teleporting it to the body.
+        return page.getByRole("option");
     };
 
     test("finds organisations by name", async ({ sandboxApp, page }) => {
@@ -80,9 +81,8 @@ test.describe("forest client autocomplete", () => {
         const options = await search(page, "000");
         await expect(options.first()).toBeVisible({ timeout: 30_000 });
 
-        // A number alone is not something anybody recognises, and the styling
-        // that separates the two lives outside the component because the
-        // overlay is teleported.
+        // A number alone is not something anybody recognises, so the option
+        // carries both with the number styled apart from the name.
         await expect(options.first().locator(".option-number")).toBeVisible();
         await expect(options.first()).toContainText("-");
     });
@@ -94,7 +94,9 @@ test.describe("forest client autocomplete", () => {
 
         // It lands in the card's own table, which is what the grant reads.
         await expect(
-            page.locator(".role-scope-card .foresnt-client-add-table-container tbody tr").first()
+            page
+                .locator(".role-scope-fields .forest-client-add-table tbody tr")
+                .first()
         ).toBeVisible({ timeout: 30_000 });
     });
 

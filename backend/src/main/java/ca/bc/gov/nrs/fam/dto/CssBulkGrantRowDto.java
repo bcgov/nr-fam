@@ -54,6 +54,17 @@ public record CssBulkGrantRowDto(
     /** The district's name, resolved so the confirmation reads as a place. */
     String districtName,
 
+    /**
+     * The region this row grants for, upper case - e.g. {@code CARIBOO}.
+     *
+     * <p>Blank unless the role is region scoped, and independent of the district
+     * column: a role may be scoped by either, or by both at once.
+     */
+    String region,
+
+    /** The region's name, resolved so the confirmation reads as a place. */
+    String regionName,
+
     /** Zero-padded to eight digits, whatever the file wrote. */
     String forestClientNumber,
 
@@ -76,13 +87,14 @@ public record CssBulkGrantRowDto(
    */
   public static CssBulkGrantRowDto invalid(
       int lineNumber, String userGuid, String roleCode,
-      String district, String forestClientNumber, String error) {
+      String district, String region, String forestClientNumber, String error) {
 
     return new CssBulkGrantRowDto(lineNumber, userGuid, roleCode,
         // userType, userName, firstName, lastName, email, organization,
         // roleDisplayName - none of which could be resolved.
         null, null, null, null, null, null, null,
-        blankToNull(district), null, blankToNull(forestClientNumber), null,
+        blankToNull(district), null, blankToNull(region), null,
+        blankToNull(forestClientNumber), null,
         false, error);
   }
 

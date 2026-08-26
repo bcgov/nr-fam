@@ -1,0 +1,20 @@
+.user-detail-page-container .fam-page-title {
+  margin: 1rem 0 1.5rem;
+}
+
+/*
+    The raised panel, pulled out to the edges of the Carbon content area, which
+    pads its children - without this it floats inside a gutter.
+*/
+.user-detail-page-container .gray-container {
+  display: flex;
+  flex-direction: column;
+  margin: 2.5rem -2rem 0;
+  padding: 2rem;
+  background: var(--cds-layer-01);
+  min-height: calc(100vh - 19rem);
+}
+
+.user-detail-page-container .back-button-container {
+  margin-top: 2rem;
+}

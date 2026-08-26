@@ -7,6 +7,7 @@ api/authentication-api.ts
 api/cssintegrations-api.ts
 api/famdistricts-api.ts
 api/famforest-clients-api.ts
+api/famregions-api.ts
 api/idirbce-idproxy-api.ts
 api/permission-audit-api.ts
 api/smoke-test-api.ts
@@ -37,6 +38,7 @@ model/fam-district-dto.ts
 model/fam-forest-client-dto.ts
 model/fam-forest-client-status-dto.ts
 model/fam-forest-client-status-type.ts
+model/fam-region-dto.ts
 model/index.ts
 model/permission-audit-history-dto.ts
 model/privilege-change-performer-dto.ts

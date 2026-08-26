@@ -215,6 +215,158 @@ test.describe("bulk upload", () => {
         }
     });
 
+    test("resolves a region into a place name before granting", async ({
+        sandboxApp,
+        page,
+        request,
+    }) => {
+        const code = `E2E_BULKR_${uniqueSuffix()}`;
+
+        try {
+            await createRole(page, sandboxApp!.description, {
+                code,
+                name: "E2E bulk region role",
+                region: true,
+            });
+
+            const guid = await guidOf(request);
+            test.skip(!guid, "the directory returned no GUID");
+
+            await openBulkUpload(page, sandboxApp!.description);
+            // Six columns: the region is the last one, after organization.
+            await upload(page, `${guid},IDIR,${code},,,CARIBOO\n`);
+
+            // Same reason the district test exists: a code is not something
+            // anybody can check by eye, and the confirmation step is what turns
+            // it into a place.
+            await expect(page.getByText("Cariboo").first()).toBeVisible({
+                timeout: 60_000,
+            });
+        } finally {
+            await deleteRole(page, sandboxApp!.description, code);
+        }
+    });
+
+    test("keeps the region column clear of the organization column", async ({
+        sandboxApp,
+        page,
+        request,
+    }) => {
+        const code = `E2E_BULKC_${uniqueSuffix()}`;
+
+        try {
+            await createRole(page, sandboxApp!.description, {
+                code,
+                name: "E2E bulk district role",
+                district: true,
+            });
+
+            const guid = await guidOf(request);
+            test.skip(!guid, "the directory returned no GUID");
+
+            await openBulkUpload(page, sandboxApp!.description);
+            // Five columns, written before regions existed. The parser is
+            // positional, so this is the case that would break had the region
+            // column been slotted in beside district rather than appended -
+            // the empty organization column would have been read as a region.
+            await upload(page, `${guid},IDIR,${code},DCC,\n`);
+
+            await expect(page.getByText("Cariboo-Chilcotin").first()).toBeVisible({
+                timeout: 60_000,
+            });
+            await expect(
+                page.getByText(/not a natural resource region/i)
+            ).toHaveCount(0);
+        } finally {
+            await deleteRole(page, sandboxApp!.description, code);
+        }
+    });
+
+    test("refuses a region on a role that is not granted per region", async ({
+        sandboxApp,
+        page,
+        request,
+    }) => {
+        const code = `E2E_BULKRU_${uniqueSuffix()}`;
+
+        try {
+            await createRole(page, sandboxApp!.description, {
+                code,
+                name: "E2E bulk unscoped role",
+            });
+
+            const guid = await guidOf(request);
+            test.skip(!guid, "the directory returned no GUID");
+
+            await openBulkUpload(page, sandboxApp!.description);
+            await upload(page, `${guid},IDIR,${code},,,CARIBOO\n`);
+
+            // As with district: the value would otherwise be ignored and the row
+            // would grant wider access than the file asks for.
+            await expect(
+                page.getByText(/not granted per region/i).first()
+            ).toBeVisible({ timeout: 60_000 });
+        } finally {
+            await deleteRole(page, sandboxApp!.description, code);
+        }
+    });
+
+    test("refuses a region-scoped role with its region column left empty", async ({
+        sandboxApp,
+        page,
+        request,
+    }) => {
+        const code = `E2E_BULKRS_${uniqueSuffix()}`;
+
+        try {
+            await createRole(page, sandboxApp!.description, {
+                code,
+                name: "E2E bulk region role",
+                region: true,
+            });
+
+            const guid = await guidOf(request);
+            test.skip(!guid, "the directory returned no GUID");
+
+            await openBulkUpload(page, sandboxApp!.description);
+            await upload(page, `${guid},IDIR,${code}\n`);
+
+            await expect(
+                page.getByText(/granted per region/i).first()
+            ).toBeVisible({ timeout: 60_000 });
+        } finally {
+            await deleteRole(page, sandboxApp!.description, code);
+        }
+    });
+
+    test("refuses a region code that is not one", async ({
+        sandboxApp,
+        page,
+        request,
+    }) => {
+        const code = `E2E_BULKRX_${uniqueSuffix()}`;
+
+        try {
+            await createRole(page, sandboxApp!.description, {
+                code,
+                name: "E2E bulk region role",
+                region: true,
+            });
+
+            const guid = await guidOf(request);
+            test.skip(!guid, "the directory returned no GUID");
+
+            await openBulkUpload(page, sandboxApp!.description);
+            await upload(page, `${guid},IDIR,${code},,,NOPE\n`);
+
+            await expect(
+                page.getByText(/not a natural resource region/i).first()
+            ).toBeVisible({ timeout: 60_000 });
+        } finally {
+            await deleteRole(page, sandboxApp!.description, code);
+        }
+    });
+
     test("refuses a user type that is neither IDIR nor BCEID", async ({
         sandboxApp,
         page,
@@ -244,12 +396,21 @@ test.describe("bulk upload", () => {
         }
     });
 
-    test("offers the template as a link, above the file picker", async ({ sandboxApp, page }) => {
+    test("offers the template beside the file picker", async ({ sandboxApp, page }) => {
         await openApplication(page, sandboxApp!.description);
         await page.getByRole("button", { name: /bulk|upload/i }).first().click();
 
+        // A button, not an anchor, though it is styled as a link: it builds a
+        // blob and hands it to the browser, so there is no href to follow. This
+        // asked for role "link" and so could never have matched.
         await expect(
-            page.getByRole("link", { name: /download the template/i })
+            page.getByRole("button", { name: /download the template/i })
         ).toBeVisible({ timeout: 30_000 });
+
+        // And the shape of the file is on screen beside it, so nobody has to
+        // open the template to learn what the columns are.
+        await expect(
+            page.getByText(/user_guid,user_type,role/).first()
+        ).toBeVisible();
     });
 });

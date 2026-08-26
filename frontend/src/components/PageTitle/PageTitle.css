@@ -1,0 +1,26 @@
+/*
+    Lifts every page title off the header above it. Here rather than per page,
+    so a new screen inherits the spacing instead of being the one that forgot.
+*/
+.fam-page-title {
+  padding-top: 1.5rem;
+}
+
+.fam-page-title__title {
+  /* Carbon heading-05, matching what the Vue component asked for by name. */
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.fam-page-title__subtitle {
+  /* Carbon body-01. */
+  font-size: 0.875rem;
+  line-height: 1.42857;
+  letter-spacing: 0.16px;
+  color: var(--cds-text-secondary);
+  margin: 0.25rem 0 0;
+}

@@ -49,6 +49,12 @@ export interface CssRoleCreateRequest {
      * @type {boolean}
      * @memberof CssRoleCreateRequest
      */
+    'requires_region'?: boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CssRoleCreateRequest
+     */
     'requires_forest_client'?: boolean;
 }
 

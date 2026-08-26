@@ -1,0 +1,35 @@
+.my-permissions-container {
+  padding-bottom: 2.5rem;
+}
+
+/*
+    Separates "Application roles" from the page title above it.
+
+    An adjacent-sibling selector rather than `:first-of-type`: PageTitle renders
+    a bare <div>, so the first step container is never the first div on the page
+    and that rule silently does nothing - which is how the gap went missing in
+    the port.
+
+    padding, not margin: the heading's own top margin sits inside the step
+    container with nothing between, so a margin here would collapse with it and
+    add almost nothing.
+*/
+.my-permissions-container .fam-page-title + .step-container {
+  padding-top: 2rem;
+}
+
+.my-permissions-container .section-note {
+  margin-bottom: 1.5rem;
+  max-width: 46rem;
+  color: var(--cds-text-secondary);
+}
+
+.my-permissions-container .not-applicable {
+  color: var(--cds-text-secondary);
+}
+
+.my-permissions-container .cds--inline-notification {
+  max-width: none;
+  width: 100%;
+  margin-bottom: 1rem;
+}

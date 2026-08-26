@@ -1,0 +1,64 @@
+.bulk-grant-container {
+  padding-bottom: 2.5rem;
+}
+
+.bulk-grant-container .step-note {
+  margin-bottom: 1rem;
+  max-width: 46rem;
+  color: var(--cds-text-secondary);
+}
+
+.bulk-grant-container .example {
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--cds-layer-01);
+  border: 0.0625rem solid var(--cds-border-subtle-01);
+  border-radius: 0.25rem;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* A real button stripped back to look like the sentence it sits in. */
+.bulk-grant-container .template-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--cds-link-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.bulk-grant-container .template-link:hover {
+  color: var(--cds-link-primary-hover);
+}
+
+.bulk-grant-container .scope-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.bulk-grant-container .scope-code,
+.bulk-grant-container .no-scope {
+  color: var(--cds-text-secondary);
+}
+
+.bulk-grant-container .row-error,
+.bulk-grant-container .unresolved {
+  color: var(--cds-text-error);
+}
+
+.bulk-grant-container .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.bulk-grant-container .upload-error {
+  margin-top: 1rem;
+  max-width: none;
+  width: 100%;
+}

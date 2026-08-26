@@ -310,12 +310,12 @@ class CssIntegrationServiceTest {
    */
   private static CssRoleCreateRequest createRequest(
       String code, String roleName, boolean district, boolean client) {
-    return new CssRoleCreateRequest(code, roleName, null, district, client);
+    return new CssRoleCreateRequest(code, roleName, null, district, false, client);
   }
 
   private static CssRoleCreateRequest createRequest(
       String code, String roleName, String description, boolean district, boolean client) {
-    return new CssRoleCreateRequest(code, roleName, description, district, client);
+    return new CssRoleCreateRequest(code, roleName, description, district, false, client);
   }
 
   @Test
@@ -2133,7 +2133,7 @@ class CssIntegrationServiceTest {
   @DisplayName("refuses to create a role on FAM's own integration")
   void refusesCreatingItsOwnRole() {
     assertThatThrownBy(() -> service.createRole(FAM_OWN_INTEGRATION, ENV,
-        new CssRoleCreateRequest("SOMETHING", "Something", null, false, false),
+        new CssRoleCreateRequest("SOMETHING", "Something", null, false, false, false),
         DEFINER))
         .isInstanceOf(FamHttpException.class);
 
@@ -2158,7 +2158,7 @@ class CssIntegrationServiceTest {
     // Its own entry point, so guarding only the single-environment one would
     // leave the wider operation open.
     assertThatThrownBy(() -> service.createRoleInAllEnvironments(FAM_OWN_INTEGRATION,
-        new CssRoleCreateRequest("SOMETHING", "Something", null, false, false),
+        new CssRoleCreateRequest("SOMETHING", "Something", null, false, false, false),
         DEFINER))
         .isInstanceOf(FamHttpException.class);
 

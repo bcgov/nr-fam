@@ -4,10 +4,13 @@ import {
     chooseUser,
     openApplication,
     permissionRow,
+    pickFirstScope,
     revokePermission,
+    scopePanel,
     tickRole,
 } from "./helpers/permissions";
 import { createRole, deleteRole } from "./helpers/roles";
+import { chips, tickCheckbox, toast } from "./carbon";
 import { TARGET_USER, uniqueSuffix } from "./utils";
 
 /**
@@ -53,7 +56,7 @@ test.describe("grant lifecycle", () => {
             await page.getByRole("button", { name: "Grant permission" }).click();
 
             // Back on Manage permissions, with a toast and the new row marked.
-            await expect(page.getByText("Permission granted").first()).toBeVisible({
+            await expect(toast(page)).toContainText("Permission granted", {
                 timeout: 60_000,
             });
             await expect(
@@ -62,7 +65,7 @@ test.describe("grant lifecycle", () => {
 
             await revokePermission(page, TARGET_USER, roleName);
 
-            await expect(page.getByText("Permission removed").first()).toBeVisible({
+            await expect(toast(page)).toContainText("Permission removed", {
                 timeout: 30_000,
             });
         } finally {
@@ -90,16 +93,10 @@ test.describe("grant lifecycle", () => {
             await chooseUser(page, TARGET_USER);
             await tickRole(page, roleName);
 
-            // The scope card appears only for a role that needs narrowing, and
-            // the form cannot be submitted until it is answered.
-            const card = page.locator(".role-scope-card");
-            await expect(card).toBeVisible({ timeout: 30_000 });
-
-            const firstDistrict = card
-                .locator(".district-select-table-container .p-checkbox input")
-                .first();
-            await expect(firstDistrict).toBeAttached({ timeout: 30_000 });
-            await firstDistrict.dispatchEvent("change");
+            // Ticking a scoped role opens its own row; the form cannot be
+            // submitted until what is inside is answered.
+            await expect(scopePanel(page)).toBeVisible({ timeout: 30_000 });
+            await pickFirstScope(page, "District");
 
             await page.getByRole("button", { name: "Grant permission" }).click();
 
@@ -107,7 +104,7 @@ test.describe("grant lifecycle", () => {
             await expect(row).toBeVisible({ timeout: 60_000 });
             // The scope is recorded in the CSS role name and parsed back out.
             // A row with no chip means the suffix was lost on the way through.
-            await expect(row.locator(".p-chip")).not.toHaveCount(0);
+            await expect(chips(row)).not.toHaveCount(0);
         } finally {
             await revokePermission(page, TARGET_USER, roleName).catch(() => {});
             await deleteRole(page, sandboxApp!.description, code);

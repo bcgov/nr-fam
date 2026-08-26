@@ -1,7 +1,8 @@
 import { expect, test } from "./fixtures";
 
 import { createRole, deleteRole, roleRow } from "./helpers/roles";
-import { selectApplication, uniqueSuffix } from "./utils";
+import { dangerButton, openDialog, toast } from "./carbon";
+import { applicationPicker, selectApplication, uniqueSuffix } from "./utils";
 
 /**
  * Defining a role, then removing it.
@@ -94,9 +95,9 @@ test.describe("role lifecycle", () => {
         // once, and nothing here would say so.
         await page.goto("/manage-roles");
         await page.locator("#protected-layout-container").waitFor();
-        await page.locator("#application-selector-dropdown-id").click();
+        await applicationPicker(page).click();
 
-        const options = page.locator(".p-select-overlay .p-select-option");
+        const options = page.getByRole("option");
         await expect(options.first()).toBeVisible({ timeout: 30_000 });
 
         await expect(
@@ -116,16 +117,18 @@ test.describe("role lifecycle", () => {
         await page.locator("#protected-layout-container").waitFor();
         await selectApplication(page, sandboxApp!.description);
 
-        await roleRow(page, code).getByRole("button", { name: "Delete role" }).click();
-        await page.getByRole("button", { name: "Delete", exact: true }).click();
+        await roleRow(page, code)
+            .getByRole("button", { name: `Delete ${code}` })
+            .click();
+        await openDialog(page);
+        await dangerButton(page, "Delete").click();
 
         // A toast naming the role and the application, and nothing else. The
         // derived roles that went with it are a consequence of the deletion,
         // not a separate outcome to recite.
-        const toast = page.locator(".p-toast-message");
-        await expect(toast).toBeVisible({ timeout: 60_000 });
-        await expect(toast).toContainText("Role deleted");
-        await expect(toast).toContainText(code);
+        await expect(toast(page)).toBeVisible({ timeout: 60_000 });
+        await expect(toast(page)).toContainText("Role deleted");
+        await expect(toast(page)).toContainText(code);
         await expect(roleRow(page, code)).toBeHidden({ timeout: 60_000 });
     });
 });

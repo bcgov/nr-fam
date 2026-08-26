@@ -1,0 +1,29 @@
+/*
+    The count, which is the part worth reading before the pickers: a role scoped
+    two ways is granted per pair, so the number grows faster than the selections
+    suggest.
+*/
+.role-scope-fields__count {
+  margin: 1rem 0 0;
+  color: var(--cds-text-secondary);
+  font-size: 0.875rem;
+}
+
+.role-scope-fields__count.over-limit {
+  color: var(--cds-text-error);
+  font-weight: 700;
+}
+
+.role-scope-fields__limit {
+  margin: 0.5rem 0 0;
+  color: var(--cds-text-error);
+}
+
+/* The pickers space themselves for a full-width step; inside a row they sit closer. */
+.role-scope-fields .subsection-title-container {
+  margin: 1rem 0 0.75rem;
+}
+
+.fixed-scope-picker__input {
+  max-width: 32rem;
+}

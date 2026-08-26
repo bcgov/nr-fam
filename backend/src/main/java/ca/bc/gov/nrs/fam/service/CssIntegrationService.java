@@ -205,7 +205,9 @@ public class CssIntegrationService {
           role.composite(),
           chain,
           chain.contains(CssRoleNaming.MARKER_DISTRICT),
+          chain.contains(CssRoleNaming.MARKER_REGION),
           chain.contains(CssRoleNaming.MARKER_FOREST_CLIENT),
+          null,
           null,
           null));
     }
@@ -250,6 +252,7 @@ public class CssIntegrationService {
     // Base role name -> the scopes every delegation for it names, merged. A
     // person delegated the same role for two districts holds two delegations.
     Map<String, Set<String>> districts = new LinkedHashMap<>();
+    Map<String, Set<String>> regions = new LinkedHashMap<>();
     Map<String, Set<String>> clients = new LinkedHashMap<>();
 
     for (String delegation : requester.delegatedRolesFor(integrationId, environment)) {
@@ -257,11 +260,14 @@ public class CssIntegrationService {
       String base = parsed.baseRoleName().toUpperCase(Locale.ROOT);
 
       districts.computeIfAbsent(base, key -> new LinkedHashSet<>());
+      regions.computeIfAbsent(base, key -> new LinkedHashSet<>());
       clients.computeIfAbsent(base, key -> new LinkedHashSet<>());
 
       for (CssRoleNaming.Scope scope : parsed.scopes()) {
         if (CssRoleNaming.SCOPE_DISTRICT.equals(scope.type())) {
           districts.get(base).add(scope.value());
+        } else if (CssRoleNaming.SCOPE_REGION.equals(scope.type())) {
+          regions.get(base).add(scope.value());
         } else if (CssRoleNaming.SCOPE_FOREST_CLIENT.equals(scope.type())) {
           clients.get(base).add(scope.value());
         }
@@ -282,11 +288,12 @@ public class CssIntegrationService {
           return new CssRoleOptionDto(
               option.name(), option.displayName(), option.description(),
               option.roleCode(), option.composite(), option.composites(),
-              option.roleTypeDistrict(), option.roleTypeClient(),
+              option.roleTypeDistrict(), option.roleTypeRegion(), option.roleTypeClient(),
               // Only for the dimension the role actually uses. A district list
               // on a role granted per client would narrow a picker that is
               // never shown, and read as a restriction that does not exist.
               option.roleTypeDistrict() ? List.copyOf(districts.get(base)) : null,
+              option.roleTypeRegion() ? List.copyOf(regions.get(base)) : null,
               option.roleTypeClient()
                   ? clients.get(base).stream()
                       .map(resolved::get)
@@ -544,9 +551,11 @@ public class CssIntegrationService {
           !scopeTypes.isEmpty(),
           CssRoleNaming.markersFor(scopeTypes),
           scopeTypes.contains(CssRoleNaming.SCOPE_DISTRICT),
+          scopeTypes.contains(CssRoleNaming.SCOPE_REGION),
           scopeTypes.contains(CssRoleNaming.SCOPE_FOREST_CLIENT),
           // The role has just been created by somebody who may grant it
           // everywhere; nothing narrows it.
+          null,
           null,
           null);
     }

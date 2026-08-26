@@ -1,0 +1,41 @@
+/* Shared by the three scope pickers - districts, and both organisation shapes. */
+
+.scope-select-table-container .fam-table {
+  margin-top: 1rem;
+}
+
+.scope-select-table-container .cds--inline-notification {
+  max-width: none;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.forest-client-add-table .forest-client-autocomplete {
+  max-width: 32rem;
+}
+
+.scope-select-table-container .btn.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.scope-select-table-container .btn.btn-icon svg {
+  fill: var(--cds-link-primary);
+}
+
+/*
+    The client number beside the organisation's name in the suggestion list.
+
+    The option text also carries a leading space, but an option is a flex row and
+    a flex item's leading whitespace is trimmed - so the space survives a copy
+    but never reaches the screen. Both are needed: the margin for the eye, the
+    space for anything reading or copying the text.
+*/
+.cds--list-box__menu-item .option-number {
+  margin-left: 0.25rem;
+  color: var(--cds-text-secondary);
+}

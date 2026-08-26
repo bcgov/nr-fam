@@ -561,6 +561,28 @@
         }
       }
     },
+    "/regions" : {
+      "get" : {
+        "tags" : [ "FAM Regions" ],
+        "summary" : "List the BC natural resource regions available for scoping roles",
+        "operationId" : "get_regions",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/FamRegionDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/permission-audit-history" : {
       "get" : {
         "tags" : [ "Permission Audit" ],
@@ -1144,6 +1166,9 @@
           "requires_district" : {
             "type" : "boolean"
           },
+          "requires_region" : {
+            "type" : "boolean"
+          },
           "requires_forest_client" : {
             "type" : "boolean"
           }
@@ -1176,10 +1201,19 @@
           "role_type_district" : {
             "type" : "boolean"
           },
+          "role_type_region" : {
+            "type" : "boolean"
+          },
           "role_type_client" : {
             "type" : "boolean"
           },
           "grantable_districts" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "grantable_regions" : {
             "type" : "array",
             "items" : {
               "type" : "string"
@@ -1192,7 +1226,7 @@
             }
           }
         },
-        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district" ]
+        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district", "role_type_region" ]
       },
       "FamForestClientDto" : {
         "properties" : {
@@ -1281,6 +1315,12 @@
             "type" : "string"
           },
           "district_name" : {
+            "type" : "string"
+          },
+          "region" : {
+            "type" : "string"
+          },
+          "region_name" : {
             "type" : "string"
           },
           "forest_client_number" : {
@@ -1379,6 +1419,20 @@
             "type" : "boolean"
           }
         }
+      },
+      "FamRegionDto" : {
+        "properties" : {
+          "region_code" : {
+            "type" : "string"
+          },
+          "region_name" : {
+            "type" : "string"
+          },
+          "expired" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "expired", "region_code", "region_name" ]
       },
       "PermissionAuditHistoryDto" : {
         "properties" : {

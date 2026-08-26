@@ -41,11 +41,16 @@ test.describe("my permissions", () => {
         await gotoProtected(page, "/my-permissions");
 
         // Either outcome is correct; a permanent loading state is not. This is
-        // the shape of failure a broken CSS fan-out actually produces.
-        const settled = page
-            .locator("table, .p-datatable-emptymessage")
-            .or(page.getByText(/no |none|nothing/i));
+        // the shape of failure a broken CSS fan-out actually produces, and
+        // "Checking every application…" is what it looks like forever.
+        await expect(
+            page
+                .getByText("You hold no roles in any application")
+                .or(page.locator("table tbody tr").first())
+        ).toBeVisible({ timeout: 60_000 });
 
-        await expect(settled.first()).toBeVisible({ timeout: 60_000 });
+        await expect(
+            page.getByText("Checking every application…")
+        ).toBeHidden({ timeout: 60_000 });
     });
 });
