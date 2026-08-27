@@ -56,6 +56,12 @@ export interface CssUserRoleAssignmentRequest {
      * @memberof CssUserRoleAssignmentRequest
      */
     'scopes'?: Array<CssScopeSelection>;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssUserRoleAssignmentRequest
+     */
+    'expires_on'?: string;
 }
 
 

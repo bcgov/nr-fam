@@ -1,7 +1,7 @@
-import { Breadcrumb, BreadcrumbItem, Button } from "@carbon/react";
+import { ArrowLeft } from "@carbon/icons-react";
 import type { UserType } from "fam-api";
 import type { FC } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { PageTitle } from "@/components/PageTitle";
 import { UserPermissionHistoryTable } from "@/components/UserPermissionHistoryTable";
 import { ROUTES } from "@/routes/routePaths";
@@ -26,11 +26,20 @@ export const UserPermissionHistory: FC = () => {
 
     return (
         <div className="user-detail-page-container">
-            <Breadcrumb noTrailingSlash>
-                <BreadcrumbItem>
-                    <Link to={ROUTES.managePermissions}>Manage permissions</Link>
-                </BreadcrumbItem>
-            </Breadcrumb>
+            {/*
+                One way back, at the top, where somebody looks for it - the same
+                shape nr-fsp-new uses. There were two before, a breadcrumb above
+                the title and a Back button below the table, which went to the
+                same place and had to be found first: the button sat past however
+                many rows of history the person had just scrolled through.
+            */}
+            <button
+                type="button"
+                className="history-back"
+                onClick={() => navigate(ROUTES.managePermissions)}
+            >
+                <ArrowLeft size={16} /> Back to Manage permissions
+            </button>
 
             <PageTitle
                 title="Permissions History"
@@ -44,15 +53,6 @@ export const UserPermissionHistory: FC = () => {
                     integrationId={integrationId}
                     environment={environment}
                 />
-
-                <div className="back-button-container">
-                    <Button
-                        kind="secondary"
-                        onClick={() => navigate(ROUTES.managePermissions)}
-                    >
-                        Back
-                    </Button>
-                </div>
             </div>
         </div>
     );

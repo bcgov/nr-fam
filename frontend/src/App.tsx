@@ -1,14 +1,16 @@
 import { Theme } from "@carbon/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { FC } from "react";
+import type { FC, ReactNode } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Layout } from "@/components/Layout";
+import { SessionTimeout } from "@/components/SessionTimeout";
 import { SelectedAppProvider } from "@/context/application/SelectedAppProvider";
 import { AuthProvider } from "@/context/auth/AuthProvider";
 import { useAuth } from "@/context/auth/useAuth";
 import { NotificationProvider } from "@/context/notification/NotificationProvider";
 import { Landing } from "@/pages/Landing";
 import { AddAppPermission } from "@/pages/AddAppPermission";
+import { EditAppPermission } from "@/pages/EditAppPermission";
 import { AddApplicationAdmin } from "@/pages/AddApplicationAdmin";
 import { AddDelegatedAdmin } from "@/pages/AddDelegatedAdmin";
 import { BulkGrant } from "@/pages/BulkGrant";
@@ -50,6 +52,18 @@ const queryClient = new QueryClient({
  * who have nowhere to navigate to, and a nav offering pages they cannot open
  * would only mislead.
  */
+/**
+ * Renders its children only while somebody is signed in.
+ *
+ * The idle guard needs this: mounted unconditionally it would start counting
+ * down against the sign-in screen, and mounted inside the routes it would miss
+ * /no-access, which has a live session and so a session that can go stale.
+ */
+const SignedInOnly: FC<{ children: ReactNode }> = ({ children }) => {
+    const { authState } = useAuth();
+    return authState.isAuthenticated ? <>{children}</> : null;
+};
+
 const ProtectedLayout: FC = () => {
     const { authState } = useAuth();
 
@@ -94,6 +108,15 @@ export const App: FC = () => (
                     only ever has one position is machinery with no purpose.
                 */}
                 <Theme theme="white">
+                    {/*
+                        The inactivity guard, inside the providers it needs and
+                        outside the routes so it covers every signed-in screen -
+                        including /no-access, which is behind a session too.
+                        It renders nothing until it has something to say.
+                    */}
+                    <SignedInOnly>
+                        <SessionTimeout />
+                    </SignedInOnly>
                     <Routes>
                         <Route
                             path={ROUTES.landing}
@@ -134,6 +157,20 @@ export const App: FC = () => (
                                 element={
                                     <RequireGrantTarget>
                                         <AddAppPermission />
+                                    </RequireGrantTarget>
+                                }
+                            />
+                            {/*
+                                Behind the same guard as granting: editing what
+                                somebody holds is the same authority as giving it
+                                to them, and it needs the same application in
+                                context to know what it is editing.
+                            */}
+                            <Route
+                                path={ROUTES.editAppPermission}
+                                element={
+                                    <RequireGrantTarget>
+                                        <EditAppPermission />
                                     </RequireGrantTarget>
                                 }
                             />

@@ -46,7 +46,7 @@ public record RoleDeletionDetailsDto(
 
     return new RoleDeletionDetailsDto(
         PrivilegeDetailsPermissionType.ROLE_DEFINITION,
-        List.of(new PrivilegeDetailsRoleDto(roleCode, null, null)),
+        List.of(new PrivilegeDetailsRoleDto(roleCode, null, null, null)),
         roleCode,
         roleName,
         removedRoles,

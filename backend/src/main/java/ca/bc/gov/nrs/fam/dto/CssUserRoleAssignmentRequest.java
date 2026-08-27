@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -51,7 +52,23 @@ public record CssUserRoleAssignmentRequest(
      * the grant covers every district/client pair - being a submitter for DCC
      * and for client 00001012 is not the same as being one for either.
      */
-    @Valid List<CssScopeSelection> scopes) {
+    @Valid List<CssScopeSelection> scopes,
+
+    /**
+     * The last day this access is good for, or null for access that does not
+     * expire.
+     *
+     * <p>A date rather than an instant, and read in BC time: the person granting
+     * is choosing a day, not a moment, and the access lasts to the end of it.
+     * That is how the legacy application read the same field, so a grant made
+     * there and one made here mean the same thing.
+     *
+     * <p>Recorded in CSS as a sidecar role assigned alongside the grant - see
+     * {@link CssRoleNaming#EXPIRY_PREFIX}. CSS has nowhere else to put it: a role
+     * is a name, and the assignment call carries nothing but names.
+     */
+    @Schema(type = "string", format = "date", example = "2026-09-30")
+    LocalDate expiresOn) {
 
   /** Never null, so callers can iterate without a guard. */
   public List<CssScopeSelection> scopes() {

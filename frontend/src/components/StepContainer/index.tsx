@@ -6,6 +6,8 @@ type Props = {
     subtitle?: string;
     /** A rule beneath the step, separating it from the next one. */
     divider?: boolean;
+    /** For a step that needs spacing of its own - see the expiry step. */
+    className?: string;
     children: ReactNode;
 };
 
@@ -20,9 +22,10 @@ export const StepContainer: FC<Props> = ({
     title,
     subtitle,
     divider,
+    className,
     children,
 }) => (
-    <div className="step-container">
+    <div className={className ? `step-container ${className}` : "step-container"}>
         {title ? <h2 className="step-container__title">{title}</h2> : null}
         {subtitle ? (
             <p className="step-container__subtitle">{subtitle}</p>

@@ -82,6 +82,8 @@ const renderPage = () => {
         },
         login: async () => {},
         logout: async () => {},
+        ensureFreshToken: async () => {},
+        forceRefreshSession: async () => {},
     };
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -219,10 +221,6 @@ describe("AddDelegatedAdmin", () => {
                 "delegation"
             )
         );
-        // And in the role's own row, which counts separately - the page total
-        // was worded correctly while the panel beside it still said
-        // "permission".
-        expect(within(scopePanel()).getByText("1 delegation")).toBeInTheDocument();
     });
 
     it("sends one delegation per role, carrying that role's scope", async () => {

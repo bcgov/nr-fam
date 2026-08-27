@@ -18,3 +18,37 @@
 .user-detail-page-container .back-button-container {
   margin-top: 2rem;
 }
+
+/*
+    The one way back, matching nr-fsp-new's. A button rather than a link because
+    it navigates within the app - and styled as a link because that is what it
+    behaves like.
+*/
+.history-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0;
+  margin-block-end: 0.5rem;
+  font: inherit;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+}
+
+.history-back:hover {
+  text-decoration: underline;
+}
+
+.history-back:focus-visible {
+  outline: 2px solid var(--cds-focus);
+  outline-offset: 2px;
+}
+
+/* Several scope chips on one line, wrapping rather than stretching the row. */
+.history-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}

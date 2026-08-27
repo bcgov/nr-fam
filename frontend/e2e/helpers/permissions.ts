@@ -136,7 +136,7 @@ export const revokePermission = async (
         return;
     }
 
-    await row.getByRole("button", { name: "Delete user permission" }).click();
+    await row.getByRole("button", { name: /^Remove /}).click();
 
     await openDialog(page);
     // "danger Remove", not "Remove" - see carbon.ts.

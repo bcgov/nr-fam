@@ -22,7 +22,8 @@
 
 export const PrivilegeDetailsScopeType = {
     Client: 'Client',
-    District: 'District'
+    District: 'District',
+    Region: 'Region'
 } as const;
 
 export type PrivilegeDetailsScopeType = typeof PrivilegeDetailsScopeType[keyof typeof PrivilegeDetailsScopeType];

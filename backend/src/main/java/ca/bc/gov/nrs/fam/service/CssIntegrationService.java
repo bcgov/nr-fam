@@ -32,6 +32,8 @@ import ca.bc.gov.nrs.fam.integration.CssApiService;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
 import ca.bc.gov.nrs.fam.security.TargetOrganizationGuard;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1458,6 +1460,54 @@ public class CssIntegrationService {
    * is the only place it is recorded. It happens after the assignment and
    * reflects what actually succeeded.
    */
+  /**
+   * The zone the expiry date is read in.
+   *
+   * <p>Somebody in Victoria choosing "30 September" means the end of that day
+   * where they are, not wherever a pod happens to run. Fixed rather than taken
+   * from the JVM so a container with a different clock cannot quietly shift
+   * everybody's access by a day.
+   */
+  public static final ZoneId BC_ZONE = ZoneId.of("America/Vancouver");
+
+  /**
+   * Checks the date can be honoured before any of it is applied.
+   *
+   * <p>Both failures are refusals rather than warnings, and both are raised
+   * before the first CSS call. A grant that half-applies is the bad case here:
+   * the role lands and the expiry does not, so somebody keeps access they asked
+   * to have taken away, and nothing on the screen says so.
+   */
+  private LocalDate requireGrantableExpiry(LocalDate expiresOn, List<String> targetRoles) {
+    if (expiresOn == null) {
+      return null;
+    }
+
+    LocalDate today = LocalDate.now(BC_ZONE);
+    if (expiresOn.isBefore(today)) {
+      throw FamHttpException.badRequest(
+          ErrorCode.INVALID_REQUEST_PARAMETER,
+          "The expiry date must be today or later. Access lasts to the end of the day chosen.");
+    }
+
+    // Keycloak caps a role name at 255 characters, and the sidecar carries the
+    // granted name inside its own. A role scoped three ways can be long enough
+    // that no expiry fits - better to say so than to grant without one.
+    targetRoles.stream()
+        .filter(roleName -> !CssRoleNaming.canCarryExpiry(roleName))
+        .findFirst()
+        .ifPresent(roleName -> {
+          throw FamHttpException.badRequest(
+              ErrorCode.INVALID_REQUEST_PARAMETER,
+              "This role's name is too long to carry an expiry date (%d characters, and the "
+                  .formatted(roleName.length())
+                  + "expiry needs %d more). Grant it without one, or narrow the scope."
+                      .formatted(CssRoleNaming.EXPIRY_PREFIX.length() + 11));
+        });
+
+    return expiresOn;
+  }
+
   public List<CssUserRoleAssignmentResult> assignUserRoles(
       int integrationId, String environment, CssUserRoleAssignmentRequest request,
       Requester requester) {
@@ -1488,12 +1538,17 @@ public class CssIntegrationService {
     authorizationService.requireGrantableRoles(
         requester, integrationId, environment, targetRoles);
 
+    LocalDate expiresOn = requireGrantableExpiry(request.expiresOn(), targetRoles);
+
     Set<String> existing = new HashSet<>();
     cssApiService.getRoles(integrationId, environment)
         .forEach(role -> existing.add(role.name()));
 
     List<CssUserRoleAssignmentResult> results = new ArrayList<>();
     List<String> assignable = new ArrayList<>();
+    // Held apart from `assignable` only so the result matching below stays about
+    // roles somebody asked for. They are assigned in the same call.
+    List<String> expirySidecars = new ArrayList<>();
 
     for (String roleName : targetRoles) {
       try {
@@ -1502,6 +1557,21 @@ public class CssIntegrationService {
           cssApiService.createRole(integrationId, environment, roleName);
           created = true;
         }
+
+        /*
+          Prepared in the same breath as the role it governs, and inside the same
+          try. A role assigned without its expiry is access that outlives what
+          was asked for and says nothing about it, so if the sidecar cannot be
+          made, the role is not assigned either.
+        */
+        if (expiresOn != null) {
+          String sidecar = CssRoleNaming.buildExpiryRoleName(expiresOn, roleName);
+          if (!existing.contains(sidecar)) {
+            cssApiService.createRole(integrationId, environment, sidecar);
+          }
+          expirySidecars.add(sidecar);
+        }
+
         assignable.add(roleName);
         results.add(new CssUserRoleAssignmentResult(
             roleName, created, false, null, EmailSendingStatus.NOT_REQUIRED));
@@ -1515,10 +1585,13 @@ public class CssIntegrationService {
       return results;
     }
 
+    List<String> toAssign = new ArrayList<>(assignable);
+    toAssign.addAll(expirySidecars);
+
     // One call assigns every role that was successfully prepared, so this either
     // succeeds for all of them or fails for all of them.
     try {
-      cssApiService.assignUserRoles(integrationId, environment, username, assignable);
+      cssApiService.assignUserRoles(integrationId, environment, username, toAssign);
       results.replaceAll(result -> assignable.contains(result.roleName())
           ? new CssUserRoleAssignmentResult(result.roleName(), result.roleCreated(), true, null,
               EmailSendingStatus.NOT_REQUIRED)
@@ -1530,6 +1603,18 @@ public class CssIntegrationService {
               result.roleName(), result.roleCreated(), false, e.getMessage(),
               EmailSendingStatus.NOT_REQUIRED)
           : result);
+    }
+
+    /*
+      A role has one expiry, so any other marker for it is stale.
+
+      Re-granting a role somebody already holds is how its expiry is changed -
+      the assignment itself is unchanged, only the marker beside it. Left in
+      place, the old marker would still be found by the sweep and would take the
+      access away on the old date, silently overriding what was just asked for.
+    */
+    if (expiresOn != null) {
+      clearStaleExpiryMarkers(integrationId, environment, username, assignable, expiresOn);
     }
 
     log.debug("CSS assignment for {}: {}", username, results);
@@ -1598,6 +1683,17 @@ public class CssIntegrationService {
 
     cssApiService.removeUserRole(integrationId, environment, username, cssRoleName);
 
+    /*
+      And the expiry marker with it.
+
+      Left behind it is a role the person still holds that means nothing: it
+      reaches their token, and the sweep finds it every half hour, tries to
+      remove access that has already gone, fails, and keeps the marker for next
+      time - for ever.
+    */
+    clearStaleExpiryMarkers(
+        integrationId, environment, username, List.of(cssRoleName), null);
+
     log.info("Revoked {} from {} on integration {} ({}).",
         cssRoleName, username, integrationId, environment);
 
@@ -1605,6 +1701,41 @@ public class CssIntegrationService {
     auditWriteService.storeCssRevoked(
         requester, request.userGuid(), request.userType(),
         integrationId, environment, request.roleName(), List.of(cssRoleName));
+  }
+
+  /**
+   * Removes expiry markers this person holds for these roles, except the current one.
+   *
+   * <p>Best effort. The access itself is already correct by the time this runs,
+   * and failing the whole operation to tidy a marker would turn a successful
+   * grant into a reported failure. A marker left behind is swept up on the next
+   * pass through here.
+   *
+   * @param keep the date whose marker should survive, or null to remove them all
+   */
+  private void clearStaleExpiryMarkers(
+      int integrationId, String environment, String username,
+      List<String> roleNames, java.time.LocalDate keep) {
+
+    try {
+      for (CssRoleDto held : cssApiService.getUserRoles(integrationId, environment, username)) {
+        CssRoleNaming.parseExpiry(held.name())
+            .filter(expiry -> roleNames.contains(expiry.roleName()))
+            .filter(expiry -> keep == null || !expiry.expiresOn().equals(keep))
+            .ifPresent(expiry -> {
+              try {
+                cssApiService.removeUserRole(
+                    integrationId, environment, username, held.name());
+              } catch (Exception e) {
+                log.warn("Could not remove stale expiry marker {} from {}: {}",
+                    held.name(), username, e.getMessage());
+              }
+            });
+      }
+    } catch (Exception e) {
+      log.warn("Could not read {}'s roles to tidy expiry markers: {}",
+          username, e.getMessage());
+    }
   }
 
   /**
@@ -1628,6 +1759,40 @@ public class CssIntegrationService {
    * <p>Fans out over every role - see the class note on cost. Scope is recovered
    * by parsing the role name, the only place it is recorded.
    */
+  /** One person's hold on one fully-named role, which is what a sidecar governs. */
+  private record ExpiryKey(String username, String grantedRoleName) {}
+
+  /**
+   * Reads every live expiry on this integration, by who holds it and for what.
+   *
+   * <p>Malformed sidecars are skipped rather than guessed at: the name is the
+   * whole record, so one that cannot be read is one FAM must not act on - here
+   * or in the sweep that removes access.
+   */
+  private Map<ExpiryKey, LocalDate> readExpiries(
+      int integrationId, String environment, List<CssRoleDto> roles) {
+
+    Map<ExpiryKey, LocalDate> expiries = new HashMap<>();
+
+    for (CssRoleDto role : roles) {
+      Optional<CssRoleNaming.RoleExpiry> parsed = CssRoleNaming.parseExpiry(role.name());
+      if (parsed.isEmpty()) {
+        continue;
+      }
+      CssRoleNaming.RoleExpiry expiry = parsed.get();
+      for (CssApiService.CssUserDto user
+          : cssApiService.getUsersWithRole(integrationId, environment, role.name())) {
+        // Earliest wins if somebody somehow holds two for the same role: the
+        // grant that ends soonest is the honest answer to "until when".
+        expiries.merge(
+            new ExpiryKey(user.username(), expiry.roleName()),
+            expiry.expiresOn(),
+            (a, b) -> a.isBefore(b) ? a : b);
+      }
+    }
+    return expiries;
+  }
+
   public List<CssUserRoleRowDto> getUserRoleAssignments(
       int integrationId, String environment, Requester requester) {
     List<CssRoleDto> roles = cssApiService.getRoles(integrationId, environment);
@@ -1643,6 +1808,17 @@ public class CssIntegrationService {
     }
 
     Map<String, String> displayNames = sidecarText(roles, CssRoleNaming::parseLabel);
+
+    /*
+      Who holds an expiry, and until when.
+
+      One request per expiry sidecar, which is one per distinct (date, role)
+      pair actually in use - and none at all until somebody grants with an
+      expiry. Keyed on the full granted name rather than the base role, because
+      that is what a sidecar governs: the same role expiring on different days
+      for two districts is two sidecars.
+    */
+    Map<ExpiryKey, LocalDate> expiries = readExpiries(integrationId, environment, roles);
 
     List<CssUserRoleRowDto> rows = new ArrayList<>();
     for (CssRoleDto role : roles) {
@@ -1672,7 +1848,8 @@ public class CssIntegrationService {
             user.email(),
             parsed.baseRoleName(),
             displayNames.get(parsed.baseRoleName()),
-            parsed.scopes().stream().map(ScopeDto::of).toList()));
+            parsed.scopes().stream().map(ScopeDto::of).toList(),
+            expiries.get(new ExpiryKey(user.username(), role.name()))));
       }
     }
 

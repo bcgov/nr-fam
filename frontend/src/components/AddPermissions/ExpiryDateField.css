@@ -1,0 +1,44 @@
+/*
+    The step's own spacing, now that no rule separates it from the one above.
+
+    Weighted towards the top on purpose. The gap above is what says a new
+    question is being asked - it does the work the divider used to - while the
+    gap below only has to keep the field off the heading it belongs to. Even
+    margins made the title look adrift between the two.
+
+    On the field and the step rather than on StepContainer itself, because
+    widening that rule would move every subtitle-less step in the app to space
+    one of them.
+*/
+.step-container.expiry-step {
+  margin-block-start: 2.5rem;
+}
+
+.expiry-date-field {
+  margin-block-start: 0.75rem;
+}
+
+/*
+    A link, not a button: it clears a field rather than doing anything. Sized
+    down from the body text, because it is an aside to the field above it.
+*/
+.expiry-date-field__clear {
+  display: inline-block;
+  margin-block-start: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+}
+
+.expiry-date-field__clear:hover {
+  text-decoration: underline;
+}
+
+.expiry-date-field__clear:focus-visible {
+  outline: 2px solid var(--cds-focus);
+  outline-offset: 2px;
+}

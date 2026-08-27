@@ -1,4 +1,3 @@
-import { TrashCan } from "@carbon/icons-react";
 import {
     Table,
     TableBody,
@@ -12,6 +11,7 @@ import type { FC } from "react";
 import type { SelectedUser } from "@/types/SelectUserType";
 import { formatUserNameAndId } from "@/utils/UserUtils";
 import "./UserSearchSelectedTable.css";
+import { RemoveButton } from "@/components/RemoveButton";
 
 /**
  * The users chosen so far, and the way to take one back off the list.
@@ -67,15 +67,10 @@ export const UserSearchSelectedTable: FC<Props> = ({
                                     </TableCell>
                                     <TableCell>{user.email}</TableCell>
                                     <TableCell className="action-col">
-                                        <button
-                                            className="btn btn-icon"
-                                            type="button"
-                                            title="Delete user"
-                                            aria-label={`Remove ${user.userId}`}
+                                        <RemoveButton
+                                            accessible={`Remove ${user.userId}`}
                                             onClick={() => onDelete(user.userId)}
-                                        >
-                                            <TrashCan />
-                                        </button>
+                                        />
                                     </TableCell>
                                 </TableRow>
                             ))}

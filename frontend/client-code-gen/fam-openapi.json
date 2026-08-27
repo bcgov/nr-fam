@@ -1112,6 +1112,11 @@
             "items" : {
               "$ref" : "#/components/schemas/CssScopeSelection"
             }
+          },
+          "expires_on" : {
+            "type" : "string",
+            "format" : "date",
+            "example" : "2026-09-30"
           }
         },
         "required" : [ "role_name", "user_guid", "user_type" ]
@@ -1525,6 +1530,9 @@
           },
           "role_assignment_expiry_date" : {
             "type" : "string"
+          },
+          "role_display_name" : {
+            "type" : "string"
           }
         },
         "required" : [ "role" ]
@@ -1548,7 +1556,7 @@
       },
       "PrivilegeDetailsScopeType" : {
         "type" : "string",
-        "enum" : [ "Client", "District" ]
+        "enum" : [ "Client", "District", "Region" ]
       },
       "UserLookupIdirSearchResult" : {
         "properties" : {
@@ -1690,6 +1698,11 @@
             "items" : {
               "$ref" : "#/components/schemas/ScopeDto"
             }
+          },
+          "expires_on" : {
+            "type" : "string",
+            "format" : "date",
+            "example" : "2026-09-30"
           }
         },
         "required" : [ "role_name", "scopes", "username" ]

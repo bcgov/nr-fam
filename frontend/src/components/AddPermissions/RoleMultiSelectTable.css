@@ -99,3 +99,53 @@
 .role-multi-select-table tr[data-child-row] .role-scope-fields .fam-table td {
   padding-inline-start: 1rem;
 }
+
+/*
+    No expander, because there is nothing to expand.
+
+    A ticked scoped role is always open and cannot be closed - the panel is the
+    rest of the question the checkbox asks, not a disclosure - so the chevron
+    Carbon draws would be a control that does nothing. Hidden rather than left
+    inert, and the cell keeps its width so these rows still line up with the
+    unscoped ones.
+*/
+.role-multi-select-table .cds--table-expand__button {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/*
+    Nested tables keep their own colours, whatever the pointer is over.
+
+    Carbon paints the child row on parent hover with
+    `.cds--parent-row.cds--expandable-row:hover + tr[data-child-row] td` - a
+    *descendant* selector, so it reaches every cell of the district and region
+    tables inside the panel as well as the panel's own. Hovering the role row
+    made the tables inside it change colour, which reads as though they were
+    about to do something.
+
+    Restated at higher weight than Carbon's three classes rather than fought with
+    !important, and the hover states are pinned to the same values so nothing in
+    here moves under the pointer.
+*/
+.role-multi-select-table tr[data-child-row] .fam-table tbody tr:nth-child(odd) > td,
+.role-multi-select-table tr[data-child-row] .fam-table tbody tr:nth-child(odd):hover > td,
+.role-multi-select-table
+  tr[data-child-row]:hover
+  .fam-table
+  tbody
+  tr:nth-child(odd)
+  > td {
+  background-color: var(--fam-table-row);
+}
+
+.role-multi-select-table tr[data-child-row] .fam-table tbody tr:nth-child(even) > td,
+.role-multi-select-table tr[data-child-row] .fam-table tbody tr:nth-child(even):hover > td,
+.role-multi-select-table
+  tr[data-child-row]:hover
+  .fam-table
+  tbody
+  tr:nth-child(even)
+  > td {
+  background-color: var(--fam-table-row-alt);
+}

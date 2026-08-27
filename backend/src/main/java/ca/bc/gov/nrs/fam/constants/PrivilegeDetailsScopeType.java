@@ -18,7 +18,18 @@ import com.fasterxml.jackson.annotation.JsonValue;
 @Schema(enumAsRef = true)
 public enum PrivilegeDetailsScopeType {
   CLIENT("Client"),
-  DISTRICT("District");
+  DISTRICT("District"),
+
+  /**
+   * Added when regions became a scope dimension.
+   *
+   * <p>Until then anything that was not a district was recorded as a client, so
+   * a region-scoped grant went into the trail labelled as an organisation. Rows
+   * written before this existed still say {@code Client} and cannot be corrected
+   * - the trail is append-only, and the region code sits in the value either
+   * way, so they read as an organisation with a region's name.
+   */
+  REGION("Region");
 
   private final String value;
 

@@ -86,6 +86,15 @@ export type AppPermissionFormType = {
     users: SelectedUser[];
     /** One entry per chosen role, each carrying its own scope. */
     roles: RoleScopeSelection[];
+    /**
+     * The last day the access is good for, as YYYY-MM-DD, or "" for access that
+     * does not expire.
+     *
+     * <p>One date for the whole grant rather than one per role: the person is
+     * answering "how long should this last", and asking it once per role of a
+     * multi-role grant would be a question nobody wants asked four times.
+     */
+    expiresOn: string;
 };
 
 /** Re-exported so the grant screen has one import for its form vocabulary. */
@@ -117,6 +126,7 @@ export const getDefaultFormData = (
     domain,
     users: [],
     roles: [],
+    expiresOn: "",
 });
 
 export const validateAppPermissionForm = () =>
@@ -210,6 +220,9 @@ export const planGrants = (
                         selection.forestClients,
                         selection.regions
                     ),
+                    // Omitted rather than sent empty: the backend reads absent
+                    // as "does not expire", and an empty string is not a date.
+                    expires_on: formData.expiresOn || undefined,
                 },
             });
         }

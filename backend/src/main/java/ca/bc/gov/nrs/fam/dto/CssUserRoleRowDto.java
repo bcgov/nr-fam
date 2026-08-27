@@ -1,6 +1,7 @@
 package ca.bc.gov.nrs.fam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -50,7 +51,18 @@ public record CssUserRoleRowDto(
 
     /** Recovered from the role name, the only place it is recorded. */
     /** Every scope this assignment carries; empty for an unscoped role. */
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<ScopeDto> scopes) {
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) List<ScopeDto> scopes,
+
+    /**
+     * The last day this grant is good for, or null when it does not expire.
+     *
+     * <p>Read from the expiry sidecar the person holds beside the role - see
+     * {@link CssRoleNaming#EXPIRY_PREFIX}. That is the only place CSS keeps it,
+     * so a grant made outside FAM has none, which is right: nothing about it
+     * ever promised to end.
+     */
+    @Schema(type = "string", format = "date", example = "2026-09-30")
+    LocalDate expiresOn) {
 
   public List<ScopeDto> scopes() {
     return scopes == null ? List.of() : scopes;

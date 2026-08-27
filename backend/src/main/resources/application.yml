@@ -175,6 +175,21 @@ fam:
   # the IDIM search is materially slower than the lookups, which is why it gets
   # 20s of read budget where the others get 10s. Exceeding them surfaces as
   # HTTP 504 with failureCode UPSTREAM_TIMEOUT.
+  # Expired access is removed on a timer, because nothing else can remove it:
+  # CSS has no expiry concept, and BC Gov SSO issues the tokens so FAM cannot
+  # filter roles out at sign-in the way the legacy application did.
+  expiry:
+    sweep:
+      enabled: ${EXPIRY_SWEEP_ENABLED:true}
+      # From the end of the previous run, so a slow sweep never overlaps itself.
+      # An expiry is a date, so being half an hour late is invisible - and
+      # sweeping more often only multiplies requests to CSS for nothing.
+      interval: ${EXPIRY_SWEEP_INTERVAL:PT30M}
+      initial-delay: ${EXPIRY_SWEEP_INITIAL_DELAY:PT2M}
+      # The date is read where the person choosing it lives, not where the pod
+      # runs: on UTC, a grant made "until today" would end hours early.
+      zone: ${EXPIRY_SWEEP_ZONE:America/Vancouver}
+
   integration:
     forest-client:
       test:

@@ -22,6 +22,8 @@ const withAuth = (state: Partial<AuthState>, children: ReactNode) => {
         },
         login: async () => {},
         logout: async () => {},
+        ensureFreshToken: async () => {},
+        forceRefreshSession: async () => {},
     };
     return (
         <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

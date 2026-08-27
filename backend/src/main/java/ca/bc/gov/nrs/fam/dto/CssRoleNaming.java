@@ -1,6 +1,8 @@
 package ca.bc.gov.nrs.fam.dto;
 
 import ca.bc.gov.nrs.fam.constants.UserType;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Collection;
 import java.util.Set;
 import java.util.List;
@@ -120,6 +122,35 @@ public final class CssRoleNaming {
   public static final String DESCRIPTION_PREFIX = "FAM:DESC:";
 
   /**
+   * Prefix of the sidecar carrying when one person's grant of one role ends.
+   *
+   * <p>{@code FAM:EXPIRES:<YYYY-MM-DD>:<the role it governs>}, e.g.
+   * {@code FAM:EXPIRES:2026-09-30:FSPTS_EDITOR_DISTRICT-DCC}.
+   *
+   * <p><b>Unlike the other two sidecars, this one is assigned to a person.</b>
+   * That is what makes it per-grant: the label and description sidecars describe
+   * a role, so one of each is enough for everybody, but two people may hold the
+   * same role until different dates. Assigning it is the only way CSS can record
+   * something about one person's grant - a role is a name and nothing else, and
+   * the assignment call carries nothing but names.
+   *
+   * <p>Two consequences worth knowing, because neither can be designed away.
+   *
+   * <p>It reaches the access token, since every role a person holds does. An
+   * application matching on its own role names ignores it; one that enumerates
+   * roles will see it. The {@code FAM:} namespace at least says whose it is.
+   *
+   * <p>And it costs {@value #EXPIRY_PREFIX}+11 characters on top of a name that
+   * already carries scope suffixes, against Keycloak's 255. A grant that cannot
+   * be named is refused at the point of granting rather than silently dropping
+   * the expiry - see {@link #canCarryExpiry}.
+   */
+  public static final String EXPIRY_PREFIX = "FAM:EXPIRES:";
+
+  /** Keycloak's limit on a role name, which every built name must fit inside. */
+  public static final int MAX_ROLE_NAME_LENGTH = 255;
+
+  /**
    * A role code FAM will create: upper case, starting with a letter.
    *
    * <p>Deliberately narrower than what CSS accepts (which is close to anything,
@@ -158,6 +189,65 @@ public final class CssRoleNaming {
     return "%s%s:%s".formatted(DESCRIPTION_PREFIX, roleCode, description);
   }
 
+  /**
+   * Name of the sidecar recording when a grant of {@code grantedRoleName} ends.
+   *
+   * <pre>2026-09-30 + FSPTS_EDITOR_DISTRICT-DCC
+   *   -> FAM:EXPIRES:2026-09-30:FSPTS_EDITOR_DISTRICT-DCC</pre>
+   *
+   * <p>The date is written first so the name sorts by it, and so a sweep can
+   * find what has lapsed by reading role names alone - without asking about a
+   * single user.
+   */
+  public static String buildExpiryRoleName(LocalDate expiresOn, String grantedRoleName) {
+    return "%s%s:%s".formatted(EXPIRY_PREFIX, expiresOn, grantedRoleName);
+  }
+
+  /**
+   * Whether an expiry sidecar for this role would fit inside Keycloak's limit.
+   *
+   * <p>Checked before granting rather than after: a name that is too long comes
+   * back from CSS as a generic failure part-way through a grant, which would
+   * leave the role assigned and the expiry silently absent - access that outlives
+   * what somebody asked for, and no sign of it.
+   */
+  public static boolean canCarryExpiry(String grantedRoleName) {
+    return grantedRoleName != null
+        && buildExpiryRoleName(LocalDate.EPOCH, grantedRoleName).length()
+            <= MAX_ROLE_NAME_LENGTH;
+  }
+
+  /** Whether this role records a grant's expiry rather than being grantable. */
+  public static boolean isExpiryRole(String roleName) {
+    return roleName != null && roleName.startsWith(EXPIRY_PREFIX);
+  }
+
+  /**
+   * Read an expiry sidecar back into its date and the role it governs.
+   *
+   * <p>Empty for anything that is not well formed - a missing colon, a date that
+   * is not a date - so a hand-made role that merely starts with the prefix is
+   * ignored rather than half-read. Ignoring it is the safe direction: the sweep
+   * acts on what it parses, and a name it cannot read is a name it must not act
+   * on.
+   */
+  public static Optional<RoleExpiry> parseExpiry(String roleName) {
+    if (!isExpiryRole(roleName)) {
+      return Optional.empty();
+    }
+    String rest = roleName.substring(EXPIRY_PREFIX.length());
+    int split = rest.indexOf(':');
+    if (split <= 0 || split == rest.length() - 1) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(
+          new RoleExpiry(LocalDate.parse(rest.substring(0, split)), rest.substring(split + 1)));
+    } catch (DateTimeParseException e) {
+      return Optional.empty();
+    }
+  }
+
   /** Whether this role carries a display name rather than being grantable. */
   public static boolean isLabelRole(String roleName) {
     return roleName != null && roleName.startsWith(LABEL_PREFIX);
@@ -169,14 +259,21 @@ public final class CssRoleNaming {
   }
 
   /**
-   * Whether this role is one of FAM's sidecars, of either kind.
+   * Whether this role is one of FAM's sidecars, of any kind.
    *
-   * <p>What every "is this something a person can hold" check wants: a sidecar is
-   * assigned to nobody and must never appear as a grantable role, a table row or
-   * a permission somebody holds.
+   * <p>What every "is this something a person can hold" check wants: a sidecar
+   * must never appear as a grantable role, a table row, or a permission somebody
+   * holds.
+   *
+   * <p>The expiry sidecar <em>is</em> assigned to somebody, unlike the other two,
+   * so it is the one case where this is not the same as "assigned to nobody". It
+   * still belongs here: it is FAM's bookkeeping, not access, and a person reading
+   * their permissions should no more see it than they should see a label role.
+   * Anything that needs the expiry reads it before filtering - see
+   * {@link #parseExpiry}.
    */
   public static boolean isSidecarRole(String roleName) {
-    return isLabelRole(roleName) || isDescriptionRole(roleName);
+    return isLabelRole(roleName) || isDescriptionRole(roleName) || isExpiryRole(roleName);
   }
 
   /**
@@ -268,6 +365,14 @@ public final class CssRoleNaming {
 
   /** A sidecar's text and the role code it belongs to. */
   public record RoleLabel(String roleCode, String text) {}
+
+  /**
+   * One grant's end date and the role it governs.
+   *
+   * <p>The date is the last day the access is good for: it lapses at the end of
+   * that day, BC time, which is how the legacy application read the same field.
+   */
+  public record RoleExpiry(LocalDate expiresOn, String roleName) {}
 
   /**
    * Name for the scope-specific role created on demand at grant time.

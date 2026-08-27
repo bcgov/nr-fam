@@ -182,3 +182,14 @@
     gap: 3rem;
   }
 }
+
+/*
+    The idle-logout notice. Full width of the content column rather than
+    Carbon's default max-width, which is sized for a notification sitting in a
+    page of content and looks stranded in this narrow column.
+*/
+.landing-session-expired {
+  max-width: none;
+  width: 100%;
+  margin-block: 1rem 0;
+}

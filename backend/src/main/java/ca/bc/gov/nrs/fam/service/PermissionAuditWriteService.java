@@ -292,22 +292,59 @@ public class PermissionAuditWriteService {
         .map(result -> ca.bc.gov.nrs.fam.dto.CssRoleNaming.parse(result.roleName()))
         .flatMap(parsed -> parsed.scopes().stream())
         .map(scope -> new PrivilegeDetailsScopeDto(
-            toDetailScopeType(scope.type()), scope.value(), null, null))
+            toDetailScopeType(scope.type()),
+            scope.value(),
+            // The readable name, where FAM knows one. Written into the row
+            // rather than resolved when the history is read: the trail has to
+            // stay truthful about what a code meant at the time, and a region
+            // renamed later would otherwise silently rewrite its own past.
+            readableName(scope.type(), scope.value()),
+            null))
         .toList();
 
     PrivilegeDetailsRoleDto roleDetails = scopes.isEmpty()
-        ? new PrivilegeDetailsRoleDto(roleName, null, null)
-        : new PrivilegeDetailsRoleDto(roleName, scopes, null);
+        ? new PrivilegeDetailsRoleDto(roleName, null, null, null)
+        : new PrivilegeDetailsRoleDto(roleName, scopes, null, null);
 
     return new PrivilegeDetailsDto(
         PrivilegeDetailsPermissionType.END_USER, List.of(roleDetails));
   }
 
-  /** Defaults to CLIENT, which is the only scope type FAM had before districts. */
+  /**
+   * The name a person would recognise for a scope value, or null.
+   *
+   * <p>Only regions have one FAM can resolve without asking anybody: districts
+   * come from an upstream list and organisations from the Forest Client API, and
+   * neither is worth a call on the write path of an audit row.
+   */
+  private static String readableName(String scopeType, String value) {
+    if (!"REGION".equalsIgnoreCase(scopeType)) {
+      return null;
+    }
+    // Optional rather than valueOf: a region retired from the enum must not
+    // throw on the write path of an audit row. The code is already in the row
+    // and reads perfectly well on its own.
+    return ca.bc.gov.nrs.fam.constants.Region.fromRegionCode(value)
+        .map(ca.bc.gov.nrs.fam.constants.Region::getRegionName)
+        .orElse(null);
+  }
+
+  /**
+   * Maps a role name's scope type onto the trail's.
+   *
+   * <p>Still defaults to CLIENT, which is the only scope FAM had before
+   * districts - but REGION is named explicitly now. It used to fall through that
+   * default, so every region-scoped grant was recorded as an organisation and the
+   * history read back as one.
+   */
   private static PrivilegeDetailsScopeType toDetailScopeType(String scopeType) {
-    return "DISTRICT".equalsIgnoreCase(scopeType)
-        ? PrivilegeDetailsScopeType.DISTRICT
-        : PrivilegeDetailsScopeType.CLIENT;
+    if ("DISTRICT".equalsIgnoreCase(scopeType)) {
+      return PrivilegeDetailsScopeType.DISTRICT;
+    }
+    if ("REGION".equalsIgnoreCase(scopeType)) {
+      return PrivilegeDetailsScopeType.REGION;
+    }
+    return PrivilegeDetailsScopeType.CLIENT;
   }
 
   private String toJson(Object value) {

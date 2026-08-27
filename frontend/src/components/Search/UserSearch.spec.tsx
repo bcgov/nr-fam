@@ -67,6 +67,8 @@ const renderSearch = (
         authState,
         login: async () => {},
         logout: async () => {},
+        ensureFreshToken: async () => {},
+        forceRefreshSession: async () => {},
     };
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

@@ -108,6 +108,8 @@ const renderPage = () => {
         },
         login: async () => {},
         logout: async () => {},
+        ensureFreshToken: async () => {},
+        forceRefreshSession: async () => {},
     };
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -324,9 +326,35 @@ describe("AddAppPermission", () => {
         expect(
             within(scopePanel()).getByRole("combobox", { name: "District" })
         ).toBeInTheDocument();
-        expect(
+    });
+
+    it("will not let a chosen role's scope fields be closed", async () => {
+        // The panel is not a disclosure - it is the rest of the question the
+        // checkbox asks. Closing it hid the very fields the form refuses to
+        // submit without, and the submit button then did nothing with nothing on
+        // screen saying why.
+        renderPage();
+        await chooseUser();
+        await tickRole("Editor");
+        await waitFor(() => expect(scopePanel()).not.toBeNull());
+
+        await userEvent.click(
             within(roleRow("Editor")).getByRole("button", { name: /Scope for/ })
-        ).toBeInTheDocument();
+        );
+
+        expect(scopePanel()).not.toBeNull();
+    });
+
+    it("closes it when the role itself is unticked", async () => {
+        // Which leaves the checkbox as the only control over the panel.
+        renderPage();
+        await chooseUser();
+        await tickRole("Editor");
+        await waitFor(() => expect(scopePanel()).not.toBeNull());
+
+        await tickRole("Editor");
+
+        await waitFor(() => expect(scopePanel()).toBeNull());
     });
 
     it("closes the scope fields again when the role is unticked", async () => {
@@ -588,6 +616,30 @@ describe("AddAppPermission", () => {
         Carbon's zebra counts in fours and did exactly that, putting a role's
         panel on the opposite stripe to the role itself.
     */
+    it("lists the roles in code order, not the order CSS returned them", async () => {
+        // CSS answers in an order that is neither alphabetical nor stable, so
+        // the same application listed its roles differently between two visits.
+        getCssApplicationRoles.mockResolvedValue({
+            data: [REGIONAL, VIEWER, EDITOR],
+        });
+        renderPage();
+        await chooseUser();
+
+        const table = document.querySelector(
+            ".role-multi-select-table"
+        ) as HTMLElement;
+        await waitFor(() =>
+            expect(within(table).getByLabelText("Editor")).toBeInTheDocument()
+        );
+
+        const names = [...table.querySelectorAll("tbody tr")]
+            .map((row) => row.querySelector("td:nth-child(3)")?.textContent?.trim())
+            .filter(Boolean);
+
+        // FREP_EDITOR, FREP_REGIONAL, FREP_VIEWER.
+        expect(names).toEqual(["Editor", "Regional lead", "Viewer"]);
+    });
+
     describe("row striping", () => {
         const shaded = (row: HTMLElement) =>
             row.classList.contains("role-row--shaded");
@@ -615,12 +667,13 @@ describe("AddAppPermission", () => {
             await tickRole("Editor");
             await waitFor(() => expect(scopePanel()).not.toBeNull());
 
-            // Viewer, Editor, Regional: the stripe alternates per role, so
-            // Regional matches Viewer however many rows Editor has grown to.
-            // Counting <tr>s would make Regional the fourth row and flip it.
+            // Sorted by code, the order is EDITOR, REGIONAL, VIEWER. The stripe
+            // alternates per role, so Viewer matches Editor however many rows
+            // Editor has grown to - counting <tr>s would flip everything after
+            // the expanded one.
+            expect(shaded(roleRow("Editor"))).toBe(false);
+            expect(shaded(roleRow("Regional lead"))).toBe(true);
             expect(shaded(roleRow("Viewer"))).toBe(false);
-            expect(shaded(roleRow("Editor"))).toBe(true);
-            expect(shaded(roleRow("Regional lead"))).toBe(false);
         });
 
         it("leaves Carbon's own zebra off", async () => {

@@ -77,5 +77,11 @@ export interface CssUserRoleRowDto {
      * @memberof CssUserRoleRowDto
      */
     'scopes': Array<ScopeDto>;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssUserRoleRowDto
+     */
+    'expires_on'?: string;
 }
 

@@ -36,8 +36,6 @@ type Props = {
     regionSubtitle?: string;
     clientTitle?: string;
     clientSubtitle?: string;
-    /** Singular noun for the count, e.g. "delegation" or "permission". */
-    countNoun?: string;
     districtError?: string;
     regionError?: string;
     clientError?: string;
@@ -55,7 +53,6 @@ export const RoleScopeFields: FC<Props> = ({
     regionSubtitle = "Select one or more regions for this role",
     clientTitle = "Organizations",
     clientSubtitle = "Add one or more organizations for this role",
-    countNoun = "permission",
     districtError,
     regionError,
     clientError,
@@ -70,19 +67,18 @@ export const RoleScopeFields: FC<Props> = ({
      */
     const restrictedClients = selection.role.grantable_forest_clients ?? null;
 
-    const count = scopeCombinationCount(selection);
-    const overTheLimit = count > MAX_SCOPE_COMBINATIONS;
+    /*
+        Still counted, no longer announced. The running total sat above the
+        pickers restating what the tables below already showed, and cost a line
+        of text plus its margins at the top of every expanded row. What it was
+        genuinely for is the ceiling - which now speaks only when it is about to
+        be crossed.
+    */
+    const overTheLimit =
+        scopeCombinationCount(selection) > MAX_SCOPE_COMBINATIONS;
 
     return (
         <div className="role-scope-fields">
-            <p
-                className={`role-scope-fields__count${
-                    overTheLimit ? " over-limit" : ""
-                }`}
-            >
-                {count === 1 ? `1 ${countNoun}` : `${count} ${countNoun}s`}
-            </p>
-
             {overTheLimit ? (
                 // Said before the request rather than after: the backend refuses
                 // anything past this, and finding out on submit means re-doing

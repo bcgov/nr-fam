@@ -6,6 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { bootstrapLogin, fetchSelf } from "@/services/AuthApiService";
 import {
     AUTH_CALLBACK_PATH,
+    ensureFreshToken as ensureFreshTokenFor,
+    forceRenew,
     getUserManager,
     KC_IDP_HINT,
     loadStoredUser,
@@ -14,13 +16,24 @@ import { ROUTES } from "@/routes/routePaths";
 import type { AuthState, FamLoginUser, IdpTypes } from "@/types/AuthTypes";
 import { IdpProvider } from "@/enum/IdpEnum";
 import { AuthContext } from "./AuthContext";
+import { markSessionExpired } from "./sessionExpiry";
 
 const ONE_SECOND = 1000;
-const THREE_MINUTES = 3 * 60 * ONE_SECOND;
-const HALF_HOUR = 30 * 60 * ONE_SECOND;
 
-const REFRESH_INTERVAL = THREE_MINUTES;
-const INACTIVITY_TIMEOUT = HALF_HOUR;
+/**
+ * How often the background renewal wakes up - not how often it renews.
+ *
+ * It renews only when the token is inside the skew window (see
+ * RENEW_WHEN_SECONDS_LEFT), so this is a polling rate rather than a token
+ * lifetime. It has to divide the access token's five minutes finely enough that
+ * the check lands inside that window: this used to poll every three minutes and
+ * only renew once the token had <em>already</em> expired, which left up to three
+ * minutes in every five where the app held a token the backend refused.
+ *
+ * The idle guard - see components/SessionTimeout - is what ends a session. This
+ * only keeps a live one usable while background queries are running.
+ */
+const REFRESH_POLL_INTERVAL = 60 * ONE_SECOND;
 
 const SIGNED_OUT: AuthState = {
     isAuthenticated: false,
@@ -59,7 +72,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Timers and re-entrancy flags live in refs: changing them must not
     // re-render, and a re-render must not restart them.
     const refreshIntervalId = useRef<number | null>(null);
-    const inactivityTimeoutId = useRef<number | null>(null);
     const isRefreshing = useRef(false);
     const bootstrapped = useRef(false);
 
@@ -77,30 +89,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
      * `id_token_hint` off it and removes it itself; clearing it here first sends
      * a logout Keycloak cannot attribute to a session, so the realm session
      * survives and the next sign-in walks straight back in.
+     *
+     * <b>And it always finishes.</b> This used to publish the signed-out state
+     * first and then await the redirect with nothing catching it. Every caller
+     * invokes it as `void logout()`, so a redirect that threw - a silent renewal
+     * having already removed the stored user, Keycloak refusing the request -
+     * rejected into nothing, leaving the app showing a signed-out page on top of
+     * a realm session that was still very much alive. Pressing sign in walked
+     * straight back in without a prompt, which is what "logout does not work"
+     * looks like from the outside.
      */
-    const logout = useCallback(async () => {
-        stopSilentRefresh();
-        delete axios.defaults.headers.common["Authorization"];
-        setAuthState({ ...SIGNED_OUT, isAuthRestored: true });
-        await getUserManager().signoutRedirect();
-    }, [stopSilentRefresh]);
+    const logout = useCallback(
+        async ({ expired = false }: { expired?: boolean } = {}) => {
+            stopSilentRefresh();
+            delete axios.defaults.headers.common["Authorization"];
 
-    const resetInactivityTimeout = useCallback(() => {
-        if (inactivityTimeoutId.current) {
-            clearTimeout(inactivityTimeoutId.current);
-        }
-        inactivityTimeoutId.current = window.setTimeout(() => {
-            // Read from the setter rather than a captured value: this closure
-            // outlives the render that made it, and a stale `isAuthenticated`
-            // would either log out a signed-out user or never log out at all.
-            setAuthState((current) => {
-                if (current.isAuthenticated) {
-                    void logout();
-                }
-                return current;
-            });
-        }, INACTIVITY_TIMEOUT);
-    }, [logout]);
+            // Written before leaving: the sign-in screen is a fresh page load
+            // after the round trip through Keycloak.
+            if (expired) {
+                markSessionExpired();
+            }
+
+            try {
+                await getUserManager().signoutRedirect();
+            } catch (error) {
+                // The realm session may survive this - we cannot reach it - but
+                // this browser's must not. Drop the tokens and land on the
+                // sign-in screen under our own steam rather than stalling on a
+                // page the person believes they have left.
+                console.error(
+                    "The sign-out redirect failed. Clearing the local session instead.",
+                    error
+                );
+                await getUserManager()
+                    .removeUser()
+                    .catch(() => undefined);
+                setAuthState({ ...SIGNED_OUT, isAuthRestored: true });
+                window.location.assign(ROUTES.landing);
+            }
+        },
+        [stopSilentRefresh]
+    );
 
     /** Publishes the session. Not `isAuthRestored` - see loadUser. */
     const applySession = useCallback((user: User) => {
@@ -154,8 +183,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             } finally {
                 isRefreshing.current = false;
             }
-        }, REFRESH_INTERVAL);
+        }, REFRESH_POLL_INTERVAL);
     }, [loadUser, logout, stopSilentRefresh]);
+
+    /**
+     * Renews the access token if it is at or near expiry, otherwise does
+     * nothing.
+     *
+     * Driven by user activity rather than by a clock, which is the case a timer
+     * cannot cover: somebody reading a long table makes no request at all, so
+     * nothing else would keep their token alive while they are plainly still
+     * there.
+     */
+    const ensureFreshToken = useCallback(async () => {
+        await ensureFreshTokenFor(getUserManager());
+    }, []);
+
+    /**
+     * Renews now, whatever the access token has left.
+     *
+     * What "Stay logged in" needs. The access token is not really the point -
+     * using the refresh token rotates it, and that is what moves the
+     * thirty-minute ceiling and buys the time the button offers. Throws if the
+     * refresh token has gone, which the caller must treat as a real expiry.
+     */
+    const forceRefreshSession = useCallback(async () => {
+        const user = await forceRenew(getUserManager());
+        if (!user?.access_token) {
+            throw new Error("The session could not be renewed");
+        }
+        axios.defaults.headers.common["Authorization"] =
+            `Bearer ${user.access_token}`;
+    }, []);
 
     const login = useCallback(async (idp: IdpTypes) => {
         try {
@@ -181,11 +240,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         bootstrapped.current = true;
 
-        const onActivity = debounce(resetInactivityTimeout, ONE_SECOND);
-        window.addEventListener("mousemove", onActivity);
-        window.addEventListener("keydown", onActivity);
-        window.addEventListener("click", onActivity);
-
         const start = async () => {
             try {
                 if (window.location.pathname === AUTH_CALLBACK_PATH) {
@@ -200,14 +254,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         isAuthRestored: true,
                     }));
                     startSilentRefresh();
-                    resetInactivityTimeout();
                     navigate(ROUTES.managePermissions, { replace: true });
                     return;
                 }
 
                 await loadUser();
                 startSilentRefresh();
-                resetInactivityTimeout();
             } catch (error) {
                 // Distinguishes "nobody is signed in" from "the session was
                 // refused". The Vue version logged both as one warning and
@@ -235,12 +287,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         return () => {
             stopSilentRefresh();
-            if (inactivityTimeoutId.current) {
-                clearTimeout(inactivityTimeoutId.current);
-            }
-            window.removeEventListener("mousemove", onActivity);
-            window.removeEventListener("keydown", onActivity);
-            window.removeEventListener("click", onActivity);
         };
         // Intentionally once: the guard above makes re-runs no-ops, and the
         // callbacks are stable.
@@ -252,19 +298,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return (
-        <AuthContext.Provider value={{ authState, login, logout }}>
+        <AuthContext.Provider
+            value={{
+                authState,
+                login,
+                logout,
+                ensureFreshToken,
+                forceRefreshSession,
+            }}
+        >
             {children}
         </AuthContext.Provider>
     );
 };
-
-/** So a mouse move does not reset the inactivity timer on every pixel. */
-function debounce<T extends (...args: never[]) => void>(fn: T, delay: number) {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    return (...args: Parameters<T>) => {
-        if (timer) {
-            clearTimeout(timer);
-        }
-        timer = setTimeout(() => fn(...args), delay);
-    };
-}

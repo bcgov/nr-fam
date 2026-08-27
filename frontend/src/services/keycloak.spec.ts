@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+    ensureFreshToken,
+    forceRenew,
     getUserManager,
     loadStoredUser,
+    needsRenewal,
+    RENEW_WHEN_SECONDS_LEFT,
     resetUserManager,
     KC_IDP_HINT,
     AUTH_CALLBACK_PATH,
@@ -152,3 +156,95 @@ describe("loadStoredUser", () => {
         expect(silentCalls).toBe(1);
     });
 });
+
+/**
+ * Renewing before expiry rather than after it.
+ *
+ * This realm issues a five-minute access token. The app used to poll every three
+ * minutes and renew only once the token had <em>already</em> expired, which left
+ * up to three minutes in every five where every request carried a token the
+ * backend refused - and no amount of clicking fixed it, because clicking is not
+ * what drove the renewal.
+ */
+describe("token freshness", () => {
+    const user = (expiresIn: number, expired = false) =>
+        ({ expires_in: expiresIn, expired }) as unknown as User;
+
+    describe("needsRenewal", () => {
+        it("is true for a token that has already gone", () => {
+            expect(needsRenewal(user(0, true))).toBe(true);
+        });
+
+        it("is true inside the skew window, before it expires", () => {
+            expect(needsRenewal(user(RENEW_WHEN_SECONDS_LEFT - 1))).toBe(true);
+        });
+
+        it("is false while there is comfortable life left", () => {
+            expect(needsRenewal(user(RENEW_WHEN_SECONDS_LEFT + 60))).toBe(false);
+        });
+
+        it("trusts an explicit not-expired when the seconds are not to hand", () => {
+            // The two fields are not independent - oidc-client-ts derives
+            // `expired` from `expires_in` - so `false` here already means there
+            // is life left, and renewing anyway would rotate for nothing.
+            expect(needsRenewal({ expired: false } as unknown as User)).toBe(false);
+        });
+
+        it("renews when neither field says anything", () => {
+            // An unknown expiry is the case where being wrong costs a refused
+            // request, so this guesses in the direction that recovers.
+            expect(needsRenewal({} as unknown as User)).toBe(true);
+        });
+    });
+
+    describe("ensureFreshToken", () => {
+        it("does nothing when nobody is signed in", async () => {
+            const signinSilent = vi.fn();
+            const result = await ensureFreshToken({
+                getUser: async () => null,
+                signinSilent,
+            } as never);
+
+            expect(result).toBeNull();
+            expect(signinSilent).not.toHaveBeenCalled();
+        });
+
+        it("leaves a healthy token alone, so it is cheap to call often", async () => {
+            const signinSilent = vi.fn();
+            const healthy = user(240);
+
+            const result = await ensureFreshToken({
+                getUser: async () => healthy,
+                signinSilent,
+            } as never);
+
+            expect(result).toBe(healthy);
+            expect(signinSilent).not.toHaveBeenCalled();
+        });
+
+        it("renews a token that is near expiry but not yet expired", async () => {
+            const renewed = user(300);
+            const signinSilent = vi.fn(async () => renewed);
+
+            const result = await ensureFreshToken({
+                getUser: async () => user(30),
+                signinSilent,
+            } as never);
+
+            expect(signinSilent).toHaveBeenCalled();
+            expect(result).toBe(renewed);
+        });
+    });
+
+    describe("forceRenew", () => {
+        it("renews however much life is left", async () => {
+            // "Stay logged in" is not about the access token. Using the refresh
+            // token rotates it, and that is what moves the thirty-minute
+            // ceiling the dialog is counting down to.
+            const signinSilent = vi.fn(async () => user(300));
+            await forceRenew({ signinSilent } as never);
+            expect(signinSilent).toHaveBeenCalled();
+        });
+    });
+});
+

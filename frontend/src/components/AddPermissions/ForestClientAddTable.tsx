@@ -1,4 +1,3 @@
-import { TrashCan } from "@carbon/icons-react";
 import {
     ComboBox,
     Table,
@@ -19,6 +18,7 @@ import { useErrorToast } from "@/context/notification/useErrorToast";
 import { AppActlApiService } from "@/services/ApiServiceFactory";
 import { getAxiosErrorStatus } from "@/utils/ApiUtils";
 import "./ScopeSelectTable.css";
+import { RemoveButton } from "@/components/RemoveButton";
 
 /**
  * Organisation picker as a search, for a caller who may grant any of them.
@@ -279,11 +279,8 @@ export const ForestClientAddTable: FC<Props> = ({
                                             ) : null}
                                         </TableCell>
                                         <TableCell>
-                                            <button
-                                                type="button"
-                                                className="btn btn-icon"
-                                                title="Remove organization"
-                                                aria-label={`Remove ${client.forest_client_number}`}
+                                            <RemoveButton
+                                                accessible={`Remove ${client.forest_client_number}`}
                                                 onClick={() =>
                                                     onChange(
                                                         selected.filter(
@@ -293,9 +290,7 @@ export const ForestClientAddTable: FC<Props> = ({
                                                         )
                                                     )
                                                 }
-                                            >
-                                                <TrashCan />
-                                            </button>
+                                            />
                                         </TableCell>
                                     </TableRow>
                                 ))

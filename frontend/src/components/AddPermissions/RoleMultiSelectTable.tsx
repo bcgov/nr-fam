@@ -12,10 +12,11 @@ import {
     TableRow,
 } from "@carbon/react";
 import type { FamDistrictDto, FamForestClientDto, FamRegionDto } from "fam-api";
-import { useEffect, useState, type FC } from "react";
+import { useMemo, type FC } from "react";
 import { Chip } from "@/components/Chip";
 import { PLACE_HOLDER } from "@/constants/constants";
 import type { RoleOption } from "@/pages/AddAppPermission/grantUtils";
+import { roleOptionKey, sortedByRole } from "@/utils/RoleSort";
 import { requiresScope, type RoleScopeSelection } from "@/utils/ScopeUtils";
 import { RoleScopeFields } from "./RoleScopeFields";
 import "./RoleMultiSelectTable.css";
@@ -52,7 +53,6 @@ type Props = {
     regionSubtitle?: string;
     clientTitle?: string;
     clientSubtitle?: string;
-    countNoun?: string;
     /** Per-role complaints, keyed by role name. */
     errors?: Record<
         string,
@@ -86,31 +86,15 @@ export const RoleMultiSelectTable: FC<Props> = ({
     errors = {},
     ...wording
 }) => {
-    const [expanded, setExpanded] = useState<string[]>([]);
-
     /*
-        A role that needs narrowing opens as soon as it is ticked, and drops out
-        of the open set when it is unticked. Left shut, it would hide the very
-        fields the form refuses to submit without, with nothing on screen saying
-        why - which is the failure the old separate step at least made obvious by
-        appearing.
+        Sorted here rather than by the caller, so every screen offering roles
+        offers them in the same order. It has to happen before the rows are
+        indexed, because the striping counts roles - see below.
     */
-    useEffect(() => {
-        const needing = selections
-            .filter((one) => requiresScope(one.role))
-            .map((one) => one.role.name);
-        setExpanded((open) => [
-            ...open.filter((name) => needing.includes(name)),
-            ...needing.filter((name) => !open.includes(name)),
-        ]);
-    }, [selections]);
-
-    const toggleExpanded = (name: string) =>
-        setExpanded((open) =>
-            open.includes(name)
-                ? open.filter((one) => one !== name)
-                : [...open, name]
-        );
+    const orderedRoles = useMemo(
+        () => sortedByRole(roleOptions, roleOptionKey),
+        [roleOptions]
+    );
 
     return (
         <div className="fam-table role-multi-select-table">
@@ -126,12 +110,12 @@ export const RoleMultiSelectTable: FC<Props> = ({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {roleOptions.length === 0 ? (
+                        {orderedRoles.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5}>No role available</TableCell>
                             </TableRow>
                         ) : (
-                            roleOptions.flatMap((role, index) => {
+                            orderedRoles.flatMap((role, index) => {
                                 /*
                                     Striped per role rather than per row, and by
                                     hand rather than by Carbon.
@@ -155,10 +139,6 @@ export const RoleMultiSelectTable: FC<Props> = ({
                                     (one) => one.role.name === role.name
                                 );
                                 const scoped = requiresScope(role);
-                                const isOpen =
-                                    Boolean(selection) &&
-                                    scoped &&
-                                    expanded.includes(role.name);
 
                                 const cells = (
                                     <>
@@ -213,8 +193,30 @@ export const RoleMultiSelectTable: FC<Props> = ({
                                     <TableExpandRow
                                         key={role.name}
                                         className={rowClass}
-                                        isExpanded={isOpen}
-                                        onExpand={() => toggleExpanded(role.name)}
+                                        /*
+                                            Always. The guard above has already
+                                            returned a plain row for anything
+                                            unticked or unscoped, so reaching
+                                            here means the panel belongs open.
+
+                                            It used to be closable, which let
+                                            somebody shut the very fields the
+                                            form refuses to submit without - the
+                                            submit then did nothing, with nothing
+                                            on screen saying why. The panel is
+                                            not a disclosure, it is the rest of
+                                            the question the checkbox asks, so
+                                            the checkbox is the only control
+                                            over it.
+                                        */
+                                        isExpanded
+                                        // Carbon requires the handler and always
+                                        // draws a chevron; there is nothing for
+                                        // either to do. The chevron is hidden in
+                                        // the CSS rather than left inert, so
+                                        // there is no control on screen that
+                                        // looks like it does something.
+                                        onExpand={() => undefined}
                                         aria-label={`Scope for ${label}`}
                                     >
                                         {cells}
@@ -228,13 +230,12 @@ export const RoleMultiSelectTable: FC<Props> = ({
                                         className={`${rowClass} role-scope-row`}
                                     >
                                         {/*
-                                            Mounted only while open: the pickers
-                                            fetch their lists, and a closed row
-                                            should not be asking CSS for
-                                            organisations nobody is looking at.
+                                            Mounted with the row. The row itself
+                                            only exists while the role is ticked,
+                                            so the pickers never fetch their
+                                            lists for a role nobody has chosen.
                                         */}
-                                        {isOpen ? (
-                                            <RoleScopeFields
+                                        <RoleScopeFields
                                                 selection={selection}
                                                 environment={environment}
                                                 onDistrictsChange={(districts) =>
@@ -263,7 +264,6 @@ export const RoleMultiSelectTable: FC<Props> = ({
                                                 }
                                                 {...wording}
                                             />
-                                        ) : null}
                                     </TableExpandedRow>,
                                 ];
                             })

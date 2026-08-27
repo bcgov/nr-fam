@@ -13,6 +13,7 @@ export const ROUTES = {
     landing: "/",
     managePermissions: "/manage-permissions",
     addAppPermission: "/manage-permissions/add-app-permission",
+    editAppPermission: "/manage-permissions/edit-app-permission",
     addDelegatedAdmin: "/manage-permissions/add-delegated-admin",
     addApplicationAdmin: "/manage-permissions/add-application-admin",
     bulkGrant: "/manage-permissions/bulk-upload",
@@ -48,6 +49,7 @@ export const MENU: MenuLeaf[] = [
         icon: UserMultiple,
         subPaths: [
             ROUTES.addAppPermission,
+            ROUTES.editAppPermission,
             ROUTES.addDelegatedAdmin,
             ROUTES.addApplicationAdmin,
             ROUTES.bulkGrant,

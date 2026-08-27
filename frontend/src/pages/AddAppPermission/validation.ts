@@ -14,6 +14,7 @@ import { MAX_USERS_GRANTING_ALLOWED } from "@/pages/AddAppPermission/grantUtils"
 export type GrantFormErrors = {
     users?: string;
     roles?: string;
+    expiresOn?: string;
     /**
      * Keyed by role name, because that is what the card renders under. Index
      * would break the moment a role is removed from the middle of the list.
@@ -24,13 +25,35 @@ export type GrantFormErrors = {
     >;
 };
 
+/** Today where the person is, for comparing against a typed YYYY-MM-DD. */
+const todayIso = (): string => {
+    const now = new Date();
+    return [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+};
+
 export const NO_ERRORS: GrantFormErrors = { perRole: {} };
 
 export const validateGrantForm = (form: {
     users: SelectedUser[];
     roles: RoleScopeSelection[];
+    expiresOn?: string;
 }): GrantFormErrors => {
     const errors: GrantFormErrors = { perRole: {} };
+
+    /*
+        Checked here as well as at the backend, which refuses it too. Not
+        belt-and-braces for its own sake: the date picker offers no past date,
+        so a past one arriving means it was typed, and catching it at the field
+        says so where it was typed rather than after a round trip.
+    */
+    if (form.expiresOn && form.expiresOn < todayIso()) {
+        errors.expiresOn =
+            "The expiry date must be today or later. Access lasts to the end of the day chosen.";
+    }
 
     if (form.users.length === 0) {
         errors.users = "At least one user is required";

@@ -28,6 +28,8 @@ export type AuthState = {
 export interface AuthContext {
     authState: AuthState;
     login: (idp: IdpTypes) => Promise<void>;
-    logout: () => Promise<void>;
+    logout: (options?: { expired?: boolean }) => Promise<void>;
+    ensureFreshToken: () => Promise<void>;
+    forceRefreshSession: () => Promise<void>;
     handlePostLogin: () => Promise<void>;
 }

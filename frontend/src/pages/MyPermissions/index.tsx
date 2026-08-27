@@ -9,12 +9,13 @@ import {
 } from "@carbon/react";
 import { useQuery } from "@tanstack/react-query";
 import type { SelfApplicationRoleDto } from "fam-api";
-import type { FC } from "react";
+import { useMemo, type FC } from "react";
 import { PageTitle } from "@/components/PageTitle";
 import { StepContainer } from "@/components/StepContainer";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { PLACE_HOLDER } from "@/constants/constants";
 import { useErrorToast } from "@/context/notification/useErrorToast";
+import { sortedByRole } from "@/utils/RoleSort";
 import {
     fetchSelfApplicationRoles,
     fetchSelfPermissions,
@@ -69,8 +70,24 @@ export const MyPermissions: FC = () => {
         refetchOnMount: true,
     });
 
-    const applicationRoles = applicationRolesQuery.data ?? [];
-    const permissions = permissionsQuery.data ?? [];
+    /*
+        Both tables ordered by role, like every other role table. The
+        application-roles one keys on the base role rather than the granted
+        name, so a role held for four districts arrives as four adjacent rows
+        instead of scattered by whatever each scope suffix sorts to.
+    */
+    const applicationRoles = useMemo(
+        () =>
+            sortedByRole(
+                applicationRolesQuery.data ?? [],
+                (role) => role.base_role_name
+            ),
+        [applicationRolesQuery.data]
+    );
+    const permissions = useMemo(
+        () => sortedByRole(permissionsQuery.data ?? [], (one) => one.role_name),
+        [permissionsQuery.data]
+    );
 
     useErrorToast({
         when: applicationRolesQuery.isError,

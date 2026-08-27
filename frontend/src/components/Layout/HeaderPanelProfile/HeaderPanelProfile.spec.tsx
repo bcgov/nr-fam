@@ -20,6 +20,8 @@ const renderPanel = (
         },
         login: async () => {},
         logout,
+        ensureFreshToken: async () => {},
+        forceRefreshSession: async () => {},
     };
     const ui: ReactNode = (
         <AuthContext.Provider value={value}>
