@@ -292,7 +292,6 @@ export const AddDelegatedAdmin: FC = () => {
                             regionSubtitle={"They will be able to grant this role for these regions, and no others"}
                             clientTitle={"Organizations they may grant it for"}
                             clientSubtitle={"They will be able to grant this role for these organizations, and no others"}
-                            countNoun={"delegation"}
                             errors={errors.perRole}
                         />
 

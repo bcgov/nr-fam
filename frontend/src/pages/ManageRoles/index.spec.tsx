@@ -110,7 +110,7 @@ const fillForm = async (code: string, name: string, description = "") => {
     await userEvent.type(screen.getByLabelText("Role code"), code);
     await userEvent.type(screen.getByLabelText("Role name"), name);
     if (description) {
-        await userEvent.type(screen.getByLabelText("Description"), description);
+        await userEvent.type(screen.getByLabelText("Description (Optional)"), description);
     }
 };
 
@@ -321,9 +321,10 @@ describe("ManageRoles", () => {
             expect(createCssApplicationRoleAllEnvironments).toHaveBeenCalled()
         );
         expect(createCssApplicationRoleAllEnvironments.mock.calls[0]).toHaveLength(2);
+        // Named twice on purpose now: the line below the form, and the toast.
         expect(
-            await screen.findByText(/dev, test, prod/)
-        ).toBeInTheDocument();
+            (await screen.findAllByText(/dev, test, prod/)).length
+        ).toBeGreaterThan(0);
     });
 
     it("refuses a malformed code without sending it", async () => {
@@ -402,7 +403,7 @@ describe("ManageRoles", () => {
         renderPage();
         await chooseApplication();
         await userEvent.click(
-            await screen.findByRole("button", { name: "Delete FREP_EDITOR" })
+            await screen.findByRole("button", { name: "Remove FREP_EDITOR" })
         );
 
         const message = await screen.findByText(/Are you sure you want to delete/);
@@ -419,7 +420,7 @@ describe("ManageRoles", () => {
             expect(getCssApplicationRoleMemberCounts).toHaveBeenCalled()
         );
         await userEvent.click(
-            screen.getByRole("button", { name: "Delete FREP_EDITOR" })
+            screen.getByRole("button", { name: "Remove FREP_EDITOR" })
         );
 
         const message = await screen.findByText(/Are you sure you want to delete/);
@@ -430,7 +431,7 @@ describe("ManageRoles", () => {
         renderPage();
         await chooseApplication();
         await userEvent.click(
-            await screen.findByRole("button", { name: "Delete FREP_EDITOR" })
+            await screen.findByRole("button", { name: "Remove FREP_EDITOR" })
         );
         await userEvent.click(
             await screen.findByRole("button", { name: CONFIRM_DELETE })
@@ -452,5 +453,21 @@ describe("ManageRoles", () => {
             "Role FREP_EDITOR was deleted from FREP (DEV)."
         );
         expect(toast.textContent).not.toMatch(/derived/i);
+    });
+
+    it("says out loud that the role was created", async () => {
+        /*
+            The line under the form already names the new role, but the form
+            empties itself on success - and a cleared form is exactly what an
+            unsaved one looks like. Creating a role is announced the same way
+            granting a permission is.
+        */
+        renderPage();
+        await chooseApplication();
+        await fillForm("FREP_NEW", "New role");
+
+        await userEvent.click(screen.getByRole("button", { name: "Create role" }));
+
+        expect(await screen.findByText("Role created")).toBeInTheDocument();
     });
 });

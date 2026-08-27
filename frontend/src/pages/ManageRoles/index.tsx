@@ -1,4 +1,3 @@
-import { TrashCan } from "@carbon/icons-react";
 import {
     Button,
     Checkbox,
@@ -31,10 +30,10 @@ import { PLACE_HOLDER } from "@/constants/constants";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { invalidateAfterRoleChange } from "@/utils/QueryInvalidation";
+import { roleOptionKey, sortedByRole } from "@/utils/RoleSort";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import {
     applyScopeChoice,
-    describeScope,
     getDefaultFormData,
     MAX_DESCRIPTION_LENGTH,
     MAX_ROLE_NAME_LENGTH,
@@ -46,6 +45,7 @@ import {
     type RoleFormErrors,
 } from "./validation";
 import "./ManageRoles.css";
+import { RemoveButton } from "@/components/RemoveButton";
 
 /**
  * Define the roles an application offers.
@@ -168,6 +168,12 @@ export const ManageRoles: FC = () => {
         enabled: Boolean(selectedApp),
     });
 
+    /** Every table that lists roles lists them the same way - see RoleSort. */
+    const orderedRoles = useMemo(
+        () => sortedByRole(rolesQuery.data ?? [], roleOptionKey),
+        [rolesQuery.data]
+    );
+
     /**
      * How many people hold each role.
      *
@@ -230,6 +236,13 @@ export const ManageRoles: FC = () => {
         onSuccess: (role) => {
             setCreated(role);
             setForm(getDefaultFormData());
+            // Said the same way a grant is. The line below the form already
+            // names the new role, but the form has just emptied itself, and a
+            // cleared form is exactly what an unsaved one looks like.
+            permissionToast.succeeded(
+                "Role created",
+                `${role.display_name ?? role.name} was added to ${applicationName}.`
+            );
             // So the role shows up here and on the grant screen without a
             // reload.
             invalidateAfterRoleChange(
@@ -264,6 +277,10 @@ export const ManageRoles: FC = () => {
         onSuccess: (result) => {
             setCreatedEverywhere(result);
             setForm(getDefaultFormData());
+            permissionToast.succeeded(
+                "Role created in every environment",
+                `${result.role_code} was added to ${result.environments?.join(", ") ?? "every environment"}.`
+            );
             // Only the selected environment's listings are on screen, but the
             // role now exists in the others too.
             invalidateAfterRoleChange(
@@ -424,7 +441,7 @@ export const ManageRoles: FC = () => {
                                 */}
                                 <TextInput
                                     id="description"
-                                    labelText="Description"
+                                    labelText="Description (Optional)"
                                     placeholder="Allows users to view all the FSPs but not edit"
                                     maxCount={MAX_DESCRIPTION_LENGTH}
                                     enableCounter
@@ -438,7 +455,7 @@ export const ManageRoles: FC = () => {
                                     }
                                     invalid={Boolean(errors.description)}
                                     invalidText={errors.description}
-                                    helperText="Optional. A sentence explaining what the role allows."
+                                    helperText="A sentence explaining what the role allows."
                                 />
                                 {descriptionLength >= MAX_DESCRIPTION_LENGTH ? (
                                     <p className="description-at-limit">
@@ -491,11 +508,6 @@ export const ManageRoles: FC = () => {
                                         )
                                     }
                                 />
-                                {describeScope(form) ? (
-                                    <p className="scope-note">
-                                        {describeScope(form)}
-                                    </p>
-                                ) : null}
                             </div>
                         </div>
 
@@ -574,7 +586,7 @@ export const ManageRoles: FC = () => {
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {(rolesQuery.data ?? []).length === 0 ? (
+                                        {orderedRoles.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={6}>
                                                     This application has no roles
@@ -582,7 +594,7 @@ export const ManageRoles: FC = () => {
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            (rolesQuery.data ?? []).map((role) => {
+                                            orderedRoles.map((role) => {
                                                 const count = memberCountFor(role);
                                                 return (
                                                     <TableRow key={role.name}>
@@ -645,11 +657,8 @@ export const ManageRoles: FC = () => {
                                                             )}
                                                         </TableCell>
                                                         <TableCell>
-                                                            <button
-                                                                title="Delete role"
-                                                                aria-label={`Delete ${role.name}`}
-                                                                className="btn btn-icon"
-                                                                type="button"
+                                                            <RemoveButton
+                                                                accessible={`Remove ${role.name}`}
                                                                 disabled={
                                                                     deleteMutation.isPending
                                                                 }
@@ -658,9 +667,7 @@ export const ManageRoles: FC = () => {
                                                                         role
                                                                     )
                                                                 }
-                                                            >
-                                                                <TrashCan />
-                                                            </button>
+                                                            />
                                                         </TableCell>
                                                     </TableRow>
                                                 );

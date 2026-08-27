@@ -572,7 +572,7 @@ class CssIntegrationServiceTest {
   private CssUserRoleAssignmentRequest request(String scopeType, List<String> values) {
     return new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
-        "jane@gov.bc.ca", selections(scopeType, values));
+        "jane@gov.bc.ca", selections(scopeType, values), null);
   }
 
   /** One scope dimension, or none when the test is exercising an unscoped role. */
@@ -796,7 +796,7 @@ class CssIntegrationServiceTest {
     // grant the unscoped base role, which is a wider grant than was asked for.
     CssUserRoleAssignmentRequest untyped = new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
-        "jane@gov.bc.ca", List.of(new CssScopeSelection(" ", List.of("DCC"))));
+        "jane@gov.bc.ca", List.of(new CssScopeSelection(" ", List.of("DCC"))), null);
 
     assertThatThrownBy(() -> service.assignUserRoles(INTEGRATION, ENV, untyped, GRANTER))
         .isInstanceOf(FamHttpException.class)
@@ -816,7 +816,7 @@ class CssIntegrationServiceTest {
     service.assignUserRoles(INTEGRATION, ENV, new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR", null,
         List.of(new CssScopeSelection("DISTRICT", List.of("DCC", "DKA")),
-            new CssScopeSelection("FOREST_CLIENT", List.of("00001012")))), GRANTER);
+            new CssScopeSelection("FOREST_CLIENT", List.of("00001012"))), null), GRANTER);
 
     verify(cssApiService).createRole(
         INTEGRATION, ENV, "CHR_FREP_EDITOR_DISTRICT-DCC_FOREST_CLIENT-00001012");
@@ -837,7 +837,7 @@ class CssIntegrationServiceTest {
     CssUserRoleAssignmentRequest tooMany = new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR", null,
         List.of(new CssScopeSelection("DISTRICT", districts),
-            new CssScopeSelection("FOREST_CLIENT", clients)));
+            new CssScopeSelection("FOREST_CLIENT", clients)), null);
 
     assertThatThrownBy(() -> service.assignUserRoles(INTEGRATION, ENV, tooMany, GRANTER))
         .isInstanceOf(FamHttpException.class)

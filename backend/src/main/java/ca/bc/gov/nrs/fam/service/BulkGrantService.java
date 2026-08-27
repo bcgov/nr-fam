@@ -130,7 +130,12 @@ public class BulkGrantService {
       List<CssUserRoleAssignmentResult> results = cssIntegrationService.assignUserRoles(
           integrationId, environment,
           new CssUserRoleAssignmentRequest(
-              row.userGuid(), row.userType(), row.roleCode(), row.email(), scopesOf(row)),
+              row.userGuid(), row.userType(), row.roleCode(), row.email(), scopesOf(row),
+              // Bulk upload grants no expiry. The CSV is positional, so carrying
+              // one means an appended column here, in the parser, in the preview
+              // and in the e2e fixture - a change of its own rather than a
+              // by-product of adding expiry to the single-grant screen.
+              null),
           requester);
 
       Optional<CssUserRoleAssignmentResult> failure =

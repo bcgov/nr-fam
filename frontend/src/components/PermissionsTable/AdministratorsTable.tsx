@@ -1,4 +1,3 @@
-import { TrashCan } from "@carbon/icons-react";
 import {
     Table,
     TableBody,
@@ -14,17 +13,19 @@ import {
     type AdminRoleAuthGroup,
     type CssAdministratorRowDto,
 } from "fam-api";
-import { useState, type FC } from "react";
+import { useMemo, useState, type FC } from "react";
 import { Chip } from "@/components/Chip";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { DestructiveModal } from "@/components/DestructiveModal";
 import { PLACE_HOLDER } from "@/constants/constants";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
+import { sortedByRole } from "@/utils/RoleSort";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { describeError } from "./CssPermissionsTable";
 import "./permissionsTable.css";
+import { RemoveButton } from "@/components/RemoveButton";
 
 /**
  * Who administers one application, at one tier.
@@ -104,7 +105,19 @@ export const AdministratorsTable: FC<Props> = ({
         refetchOnMount: true,
     });
 
-    const rows = administratorsQuery.data ?? [];
+    /*
+        By the role being delegated, falling back to the administrative role
+        itself - an application administrator delegates nothing, so that column
+        is empty for them and there is nothing else to order on.
+    */
+    const rows = useMemo(
+        () =>
+            sortedByRole(
+                administratorsQuery.data ?? [],
+                (row) => row.delegated_role_name || row.role_name
+            ),
+        [administratorsQuery.data]
+    );
 
     /* Both tiers share four columns; a delegated administrator adds two. */
     const headers = isDelegated(tier)
@@ -302,23 +315,15 @@ export const AdministratorsTable: FC<Props> = ({
 
                                     <TableCell className="action-col">
                                         <div className="nowrap-cell action-button-group">
-                                            <button
-                                                title={
-                                                    isRemovable(row)
-                                                        ? "Remove administrator"
-                                                        : "This administrator cannot be identified, so they cannot be removed here"
-                                                }
-                                                aria-label="Remove administrator"
-                                                className="btn btn-icon"
-                                                type="button"
+                                            <RemoveButton
+                                                accessible={`Remove ${row.username} as an administrator`}
+                                                disabledReason="This administrator cannot be identified, so they cannot be removed here"
                                                 disabled={
                                                     !isRemovable(row) ||
                                                     removeMutation.isPending
                                                 }
                                                 onClick={() => setPendingRemove(row)}
-                                            >
-                                                <TrashCan />
-                                            </button>
+                                            />
                                         </div>
                                     </TableCell>
                                 </TableRow>

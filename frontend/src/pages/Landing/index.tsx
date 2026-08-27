@@ -1,9 +1,10 @@
 import { Login } from "@carbon/icons-react";
-import { Button, Column, Grid } from "@carbon/react";
-import type { FC } from "react";
+import { Button, Column, Grid, InlineNotification } from "@carbon/react";
+import { useEffect, useState, type FC } from "react";
 import logo from "@/assets/images/bc-gov-logo.png";
 import treeLogs from "@/assets/images/tree-logs.jpg";
 import { useAuth } from "@/context/auth/useAuth";
+import { consumeSessionExpired } from "@/context/auth/sessionExpiry";
 import { IdpProvider } from "@/enum/IdpEnum";
 import "./Landing.css";
 
@@ -21,6 +22,24 @@ import "./Landing.css";
  */
 export const Landing: FC = () => {
     const { login } = useAuth();
+
+    /*
+        Why this is a notification and not a toast.
+
+        Every other report in this app moved to a toast, because a banner pushed
+        the screen's own content down to say something about a request. This one
+        says why the screen is here at all. There is no content to push - a
+        person who was working a moment ago is looking at a sign-in page and is
+        owed an explanation in the place they are already reading, not in the
+        corner. It is the same reasoning that left the no-access message as page
+        content, and it matches nr-fsp-new, where this notice already sits under
+        the title.
+
+        Read once and cleared, so refreshing the sign-in page does not keep
+        re-announcing a sign-out that happened once.
+    */
+    const [sessionExpired, setSessionExpired] = useState(false);
+    useEffect(() => setSessionExpired(consumeSessionExpired()), []);
 
     return (
         <div className="landing-grid-container">
@@ -43,6 +62,19 @@ export const Landing: FC = () => {
                         <h2 id="landing-subtitle" className="landing-subtitle">
                             Forests Access Management
                         </h2>
+
+                        {sessionExpired ? (
+                            <InlineNotification
+                                kind="warning"
+                                lowContrast
+                                className="landing-session-expired"
+                                title="You've been logged out"
+                                subtitle="Your session expired for security reasons and any unsaved changes were lost. Log in again to continue."
+                                onCloseButtonClick={() =>
+                                    setSessionExpired(false)
+                                }
+                            />
+                        ) : null}
 
                         <div className="landing-actions">
                             <div className="buttons-container single-row">

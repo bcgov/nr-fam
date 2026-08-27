@@ -33,7 +33,6 @@
   max-width: 32rem;
 }
 
-.manage-roles-container .scope-note,
 .manage-roles-container .description-at-limit {
   font-size: 0.75rem;
   color: var(--cds-text-secondary);

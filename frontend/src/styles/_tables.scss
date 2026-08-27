@@ -46,7 +46,85 @@
 // Header fill on the cell only — leave the sort button's own :hover
 // background intact for sortable columns.
 .cds--data-table thead th {
-  background-color: #dfdfe1;
+  background-color: var(--fam-table-chrome);
+}
+
+// The footer takes the header's grey, so the table is bounded by the same
+// colour top and bottom rather than fading out into a lighter strip. Carbon
+// paints the pagination bar `$layer-01` by default, which sat a shade off the
+// header and read as though the two belonged to different components.
+//
+// The selects inside it are pinned to the same fill: left alone they keep
+// Carbon's own layer colour and show as two pale boxes on the grey.
+.cds--pagination,
+.cds--pagination .cds--select-input,
+.cds--pagination .cds--select__item-count,
+.cds--pagination .cds--select__page-number {
+  background-color: var(--fam-table-chrome);
+}
+
+// The two dividers Carbon draws in the footer, repainted so they survive that
+// fill. They separate "how many per page" from "how many there are" and both
+// from the page controls - without them the bar is one undifferentiated strip
+// of text.
+//
+// This one is already full height - it sits on the right-hand group, which
+// spans the bar.
+.cds--pagination .cds--pagination__right {
+  border-inline-start-color: var(--fam-table-chrome-rule);
+}
+
+/*
+    The rest are drawn as full-height rules rather than as borders.
+
+    A border can only be as tall as the thing it is on, and everything inside
+    this bar is inset: the app gives the selects and the arrows a 0.25rem margin
+    (see _overrides.scss), so Carbon's own borders on them come out 40px against
+    a 56px bar and read as ticks rather than dividers. A pseudo-element can be
+    told to ignore that margin, which is what `inset-block: -0.25rem` does.
+*/
+.cds--pagination .cds--select__item-count,
+.cds--pagination .cds--pagination__button {
+  position: relative;
+}
+
+.cds--pagination .cds--select__item-count::after,
+.cds--pagination .cds--pagination__button::before {
+  content: "";
+  position: absolute;
+  inline-size: 1px;
+  background-color: var(--fam-table-chrome-rule);
+  // Decoration, and the buttons already have an accessible name.
+  pointer-events: none;
+}
+
+/*
+    After "items per page", separating how many are shown from how many there
+    are. Backs out through the 0.25rem margin the app puts on the select.
+*/
+.cds--pagination .cds--select__item-count::after {
+  inset-block: -0.25rem;
+  inset-inline-end: 0;
+}
+
+/*
+    Before each arrow. Two buttons, so this draws the line before the back arrow
+    and the one between the two - which closes the arrows off as a group.
+
+    Half a rem rather than a quarter, and the difference is not a typo: Carbon
+    fixes these buttons at 40px and centres them in a 56px bar, so the gap above
+    and below is 8px, not the 4px of margin the app adds. Measured rather than
+    assumed - at 0.25rem these came out 48px against a 56px bar and read as
+    ticks beside two full-height rules.
+*/
+.cds--pagination .cds--pagination__button::before {
+  inset-block: -0.5rem;
+  inset-inline-start: -0.25rem;
+}
+
+// Carbon's own short borders on those controls, now replaced by the rules above.
+.cds--pagination .cds--select__item-count .cds--select-input {
+  border-inline-end: 0;
 }
 
 // Header typography. Target the th (covers plain headers + cascades) plus
@@ -82,6 +160,13 @@
 :root {
   --fam-table-row: #ffffff;
   --fam-table-row-alt: #f3f3f5;
+  // The header and footer share one grey, so the table reads as one component
+  // bounded top and bottom rather than two strips of slightly different colour.
+  --fam-table-chrome: #dfdfe1;
+  // Dividers drawn *on* that grey. Carbon draws them in $border-subtle
+  // (#e0e0e0), which was visible while the footer was near-white and vanished
+  // the moment it took the header's colour - one level apart in each channel.
+  --fam-table-chrome-rule: #a8a8a8;
 }
 
 .cds--data-table tbody tr:nth-child(odd),
@@ -134,6 +219,8 @@
   // role picker - flips with everything else rather than staying light.
   --fam-table-row: var(--cds-layer-01);
   --fam-table-row-alt: var(--fsp-zebra-stripe);
+  --fam-table-chrome: var(--cds-layer-accent-01);
+  --fam-table-chrome-rule: var(--cds-border-strong-01);
 
   .cds--data-table {
     --cds-text-secondary: var(--cds-text-primary);

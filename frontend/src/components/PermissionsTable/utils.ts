@@ -2,6 +2,7 @@ import {
     UserType,
     type CssUserRoleRevokeRequest,
     type CssUserRoleRowDto,
+    type ScopeDto,
 } from "fam-api";
 
 /**
@@ -128,6 +129,7 @@ export const permissionsTableHeaders = [
     "Email",
     "Scope",
     "Role",
+    "Expires",
 ];
 
 /**
@@ -150,6 +152,9 @@ export const toCsv = (rows: CssUserRoleRowDto[]): string => {
             scopeText(row),
             // What the table shows, so the file matches what was exported from.
             roleLabel(row),
+            // Worded, not raw: a file full of dates would leave the reader
+            // working out which of them have already passed.
+            formatExpiry(row.expires_on),
         ]
             .map(cell)
             .join(",")
@@ -192,3 +197,144 @@ export const downloadPermissionsCsv = (
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 };
+
+/**
+ * How a grant's end date reads in the table.
+ *
+ * <p>Three states, and the middle one is the point: "Expired" rather than a past
+ * date, because a date alone leaves the reader doing the arithmetic to work out
+ * whether the access is still live.
+ *
+ * <p>Access lasts to the end of the day named, so a grant expiring today is not
+ * expired. Comparing the strings works because both are YYYY-MM-DD, which sorts
+ * the same way it reads.
+ */
+export const formatExpiry = (expiresOn: string | null | undefined): string => {
+    if (!expiresOn) {
+        return "Never expires";
+    }
+    const now = new Date();
+    const today = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    return expiresOn < today ? "Expired" : expiresOn;
+};
+
+/**
+ * One person's hold on one role, however many scopes it took to grant.
+ *
+ * <p>CSS has no idea of a scoped role: a district-scoped Viewer granted for
+ * three regions is three roles and three assignments, and the table showed three
+ * rows that differed in one column. Reading "who has what" meant collating them
+ * by eye, and the more scopes a role carried the worse it got.
+ *
+ * <p><b>Grouped by expiry as well as by role.</b> Two grants of the same role
+ * ending on different days are genuinely different grants - collapsing them
+ * would put one date in a column describing both, and the wrong one for half the
+ * scopes.
+ */
+export type PermissionGroup = {
+    /** Every assignment behind this row. Never empty. */
+    assignments: CssUserRoleRowDto[];
+    /** One entry per assignment: the scopes that assignment was granted for. */
+    combinations: ScopeDto[][];
+};
+
+/** What decides whether two assignments are the same grant. */
+const groupKey = (row: CssUserRoleRowDto): string =>
+    [
+        row.user_guid ?? row.username,
+        row.role_name,
+        // Undefined and "never expires" are the same thing; both differ from a
+        // date, and two dates differ from each other.
+        row.expires_on ?? "",
+    ].join("|");
+
+/**
+ * Collapses assignments into one row per person, role and expiry.
+ *
+ * <p>Order is preserved: the first assignment of a group fixes where the group
+ * sits, so a table sorted by role stays sorted after grouping.
+ */
+export const groupByRole = (rows: CssUserRoleRowDto[]): PermissionGroup[] => {
+    const groups = new Map<string, PermissionGroup>();
+
+    for (const row of rows) {
+        const key = groupKey(row);
+        const existing = groups.get(key);
+        const scopes = row.scopes ?? [];
+
+        if (existing) {
+            existing.assignments.push(row);
+            // An unscoped role has nothing to add; it would show as an empty
+            // combination and push the others onto their own lines for nothing.
+            if (scopes.length > 0) {
+                existing.combinations.push(scopes);
+            }
+        } else {
+            groups.set(key, {
+                assignments: [row],
+                combinations: scopes.length > 0 ? [scopes] : [],
+            });
+        }
+    }
+
+    return [...groups.values()];
+};
+
+/**
+ * Whether this group's scopes need spelling out rather than simply listing.
+ *
+ * <p>Two things force it. A role scoped more than one way is granted per
+ * <em>combination</em> - being a submitter for a district and an organisation is
+ * not the same as being one for either - so those pairs have to stay visibly
+ * paired. And a group holding more than one kind of scope needs each value
+ * labelled, or a column of bare codes says nothing about what they are.
+ */
+export const needsScopeDetail = (group: PermissionGroup): boolean => {
+    const types = new Set(
+        group.combinations.flat().map((scope) => scope.type)
+    );
+    return types.size > 1 || group.combinations.some((one) => one.length > 1);
+};
+
+/** The prefix the history page uses, so one scope reads the same in both. */
+export const scopeTypeAbbreviation = (type: string): string => {
+    switch (type.toUpperCase()) {
+        case "DISTRICT":
+            return "DIS";
+        case "REGION":
+            return "REG";
+        default:
+            return "ORG";
+    }
+};
+
+/** One scope, named or coded, prefixed when the column carries more than one kind. */
+export const scopeChipLabel = (scope: ScopeDto, withType: boolean): string =>
+    withType
+        ? `${scopeTypeAbbreviation(scope.type)}: ${scope.label || scope.value}`
+        : scope.label || scope.value;
+
+/**
+ * Everything in a group as one searchable, sortable string.
+ *
+ * <p>Carries the codes as well as the names: a chip reads "Kootenay-Boundary"
+ * but the code is what the grant was made against and what somebody arrives with
+ * from a ticket.
+ */
+export const groupScopeText = (group: PermissionGroup): string =>
+    group.combinations
+        .map((combination) =>
+            combination
+                .map((scope) =>
+                    scope.label && scope.label !== scope.value
+                        ? `${scope.label} ${scope.value}`
+                        : scope.value
+                )
+                .join(" + ")
+        )
+        .join(", ");

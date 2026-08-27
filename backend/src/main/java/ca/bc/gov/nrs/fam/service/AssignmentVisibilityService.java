@@ -152,7 +152,11 @@ public class AssignmentVisibilityService {
         first(user.email(), row.email()),
         row.roleName(),
         row.roleDisplayName(),
-        row.scopes());
+        row.scopes(),
+        // Carried through: these two rebuild a row to correct the name on it,
+        // and dropping the expiry would quietly turn a temporary grant into a
+        // permanent-looking one on the very rows that needed a lookup.
+        row.expiresOn());
   }
 
   private static String first(String preferred, String fallback) {

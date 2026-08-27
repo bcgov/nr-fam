@@ -117,9 +117,66 @@ export const loadStoredUser = async (
         return null;
     }
 
-    if (!user.expired) {
+    if (!needsRenewal(user)) {
         return user;
     }
 
     return await manager.signinSilent();
 };
+
+/**
+ * How close to expiry a token may get before it is renewed.
+ *
+ * Renewing only once a token has <em>already</em> expired leaves a window where
+ * every request carries a token the backend refuses. The access token lives five
+ * minutes on this realm, so a minute of headroom is a fifth of its life - enough
+ * to cover a slow renewal and clock skew between the browser and Keycloak,
+ * without renewing so eagerly that the refresh token rotates for no reason.
+ */
+export const RENEW_WHEN_SECONDS_LEFT = 60;
+
+/**
+ * Whether this token is expired, or close enough that it soon will be.
+ *
+ * The two fields are not independent: oidc-client-ts derives `expired` from
+ * `expires_in`, so an explicit `false` already means there is life left even
+ * when the remaining seconds are not to hand. Only when neither says anything is
+ * renewing the safer guess - an unknown expiry is exactly the case where being
+ * wrong costs a refused request.
+ */
+export const needsRenewal = (user: Pick<User, "expired" | "expires_in">) => {
+    const secondsLeft = user.expires_in;
+    if (secondsLeft === undefined) {
+        return user.expired !== false;
+    }
+    return secondsLeft <= RENEW_WHEN_SECONDS_LEFT;
+};
+
+/**
+ * The stored user, renewed if the access token is at or near expiry.
+ *
+ * Cheap to call often - it is a no-op until the token is nearly out - which is
+ * what lets the idle guard run it on user activity. That matters because the app
+ * makes no request while somebody is reading a screen: without it, a person who
+ * is plainly still there can return from five quiet minutes to a dead token.
+ */
+export const ensureFreshToken = async (
+    manager: Pick<UserManager, "getUser" | "signinSilent">
+): Promise<User | null> => {
+    const user = await manager.getUser();
+    if (!user) {
+        return null;
+    }
+    return needsRenewal(user) ? await manager.signinSilent() : user;
+};
+
+/**
+ * Renews regardless of how much life the access token has left.
+ *
+ * For "Stay logged in", where the point is not the access token but the refresh
+ * token behind it: using it rotates it, which is what actually moves the
+ * thirty-minute ceiling and buys the extra time the button promises.
+ */
+export const forceRenew = async (
+    manager: Pick<UserManager, "signinSilent">
+): Promise<User | null> => await manager.signinSilent();

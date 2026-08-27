@@ -14,6 +14,9 @@
   display: inline-flex;
   flex-wrap: wrap;
   gap: 0.25rem;
+  /* The "+" between a pair sits on the chips' centre line rather than riding
+     up like a superscript. */
+  align-items: center;
 }
 
 .fam-table .action-button-group {
@@ -136,4 +139,31 @@
 */
 .permissions-table .cds--pagination {
   inline-size: 100%;
+}
+
+/*
+    "Never expires" is two words that should stay on one line, and a date should
+    never break across one. On the span rather than the cell - see the note at
+    the call site.
+*/
+.permissions-table .expiry-text {
+  white-space: nowrap;
+}
+
+/*
+    A role scoped two ways is granted per combination, so each pairing gets its
+    own line and the values in it are joined by a "+". Flat, they would read as
+    four separate grants when they are two.
+*/
+.permissions-table .scope-combinations {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.permissions-table .scope-combinations__join {
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  /* Holds the two chips it sits between apart without looking like one. */
+  padding-inline: 0.125rem;
 }

@@ -1,5 +1,7 @@
 package ca.bc.gov.nrs.fam.service;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.PrivilegeChangeType;
@@ -7,7 +9,10 @@ import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.PermissionAuditHistoryDto;
 import ca.bc.gov.nrs.fam.security.AuditUser;
 import ca.bc.gov.nrs.fam.dto.PrivilegeChangePerformerDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
+import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsRoleDto;
+import ca.bc.gov.nrs.fam.integration.CssApiService;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository;
@@ -33,6 +38,7 @@ public class PermissionAuditService {
 
   private final FamPrivilegeChangeAuditRepository auditRepository;
   private final ObjectMapper objectMapper;
+  private final CssApiService cssApiService;
 
   /**
    * Most recent change first.
@@ -47,12 +53,63 @@ public class PermissionAuditService {
       String targetUserGuid, UserType targetUserType,
       Integer cssIntegrationId, String cssEnvironment) {
     String targetUser = AuditUser.of(targetUserType, targetUserGuid);
+
+    /*
+      One lookup for the whole page rather than one per row. The trail records a
+      role's code, which is the part that has to stay true; what people
+      recognise is its name, and that lives in a sidecar in CSS.
+    */
+    Map<String, String> displayNames = roleDisplayNames(cssIntegrationId, cssEnvironment);
+
     return auditRepository.findHistory(targetUser, cssIntegrationId, cssEnvironment).stream()
-        .map(this::toDto)
+        .map(audit -> toDto(audit, displayNames))
         .toList();
   }
 
-  private PermissionAuditHistoryDto toDto(FamPrivilegeChangeAudit audit) {
+  /**
+   * Role code to the name people know it by, for one application.
+   *
+   * <p>Best effort. CSS being unreachable must not turn a history request into a
+   * failure - the trail is complete without it, and every code reads perfectly
+   * well on its own. An empty map simply means every pill shows its code.
+   */
+  private Map<String, String> roleDisplayNames(Integer integrationId, String environment) {
+    if (integrationId == null || environment == null) {
+      return Map.of();
+    }
+    try {
+      Map<String, String> names = new HashMap<>();
+      cssApiService.getRoles(integrationId, environment).forEach(role ->
+          CssRoleNaming.parseLabel(role.name())
+              .ifPresent(label -> names.put(label.roleCode(), label.text())));
+      return names;
+    } catch (Exception e) {
+      log.warn("Could not read role names for integration {} ({}); "
+          + "the history will show role codes.", integrationId, environment, e);
+      return Map.of();
+    }
+  }
+
+  /** Fills in the name beside each code, where one is known. */
+  private PrivilegeDetailsDto withDisplayNames(
+      PrivilegeDetailsDto details, Map<String, String> displayNames) {
+
+    if (details == null || details.roles() == null) {
+      return details;
+    }
+    return new PrivilegeDetailsDto(
+        details.permissionType(),
+        details.roles().stream()
+            .map(role -> new PrivilegeDetailsRoleDto(
+                role.role(),
+                role.scopes(),
+                role.roleAssignmentExpiryDate(),
+                displayNames.get(role.role())))
+            .toList());
+  }
+
+  private PermissionAuditHistoryDto toDto(
+      FamPrivilegeChangeAudit audit, Map<String, String> displayNames) {
     return new PermissionAuditHistoryDto(
         audit.getPrivilegeChangeAuditId(),
         audit.getCreateDate(),
@@ -65,8 +122,10 @@ public class PermissionAuditService {
         PrivilegeChangeType.valueOf(
             audit.getPrivilegeChangeType().getPrivilegeChangeTypeCode()),
         audit.getPrivilegeChangeType().getDescription(),
-        readJson(audit.getPrivilegeDetails(), PrivilegeDetailsDto.class,
-            audit.getPrivilegeChangeAuditId(), "privilege_details"));
+        withDisplayNames(
+            readJson(audit.getPrivilegeDetails(), PrivilegeDetailsDto.class,
+                audit.getPrivilegeChangeAuditId(), "privilege_details"),
+            displayNames));
   }
 
   /**

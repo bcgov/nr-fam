@@ -237,3 +237,52 @@ describe("totalPermissions", () => {
         expect(totalPermissions(form({ users: [] }))).toBe(0);
     });
 });
+
+/**
+ * The expiry date on its way into the request.
+ *
+ * <p>CSS has nowhere to keep a date, so the backend turns this into a sidecar
+ * role assigned beside the grant. What matters here is only that it arrives -
+ * and that "no expiry" arrives as absent rather than as an empty string, which
+ * is not a date and which the backend would have to guess at.
+ */
+describe("planGrants expiry", () => {
+    it("carries the chosen date to every role in the grant", () => {
+        const planned = planGrants(
+            form({
+                roles: [selection(role("FREP_EDITOR")), selection(role("FREP_VIEWER"))],
+                expiresOn: "2026-09-30",
+            })
+        );
+
+        expect(planned).toHaveLength(2);
+        expect(planned.map((one) => one.request.expires_on)).toEqual([
+            "2026-09-30",
+            "2026-09-30",
+        ]);
+    });
+
+    it("omits it entirely for access that does not expire", () => {
+        // Absent, not "". The backend reads absent as "never expires"; an empty
+        // string is not a date and would have to be guessed at.
+        expect(planGrants(form({ expiresOn: "" }))[0].request.expires_on).toBeUndefined();
+    });
+
+    it("carries it to every user, not just the first", () => {
+        const planned = planGrants(
+            form({
+                users: [
+                    { userId: "JSMITH", guid: "ABC", email: "a@gov.bc.ca" },
+                    { userId: "BLEE", guid: "DEF", email: "b@gov.bc.ca" },
+                ],
+                expiresOn: "2026-09-30",
+            })
+        );
+
+        expect(planned.map((one) => one.request.expires_on)).toEqual([
+            "2026-09-30",
+            "2026-09-30",
+        ]);
+    });
+});
+

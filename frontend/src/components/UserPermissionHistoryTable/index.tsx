@@ -8,13 +8,21 @@ import {
     TableRow,
 } from "@carbon/react";
 import { useQuery } from "@tanstack/react-query";
-import type { PermissionAuditHistoryDto, UserType } from "fam-api";
-import type { FC } from "react";
+import type {
+    PermissionAuditHistoryDto,
+    PrivilegeDetailsScopeDto,
+    UserType,
+} from "fam-api";
+import { PrivilegeDetailsScopeType } from "fam-api";
+import { useMemo, type FC } from "react";
 import { Chip } from "@/components/Chip";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { PLACE_HOLDER } from "@/constants/constants";
 import { useErrorToast } from "@/context/notification/useErrorToast";
-import { AppActlApiService } from "@/services/ApiServiceFactory";
+import {
+    AdminMgmtApiService,
+    AppActlApiService,
+} from "@/services/ApiServiceFactory";
 import { utcToLocalDateTime } from "@/utils/DateUtils";
 import "./UserPermissionHistoryTable.css";
 
@@ -37,7 +45,7 @@ type Props = {
     environment: string;
 };
 
-const HEADERS = ["Date", "Activity", "Details", "Performed by"];
+const HEADERS = ["Date", "Activity", "Role", "Scope", "Performed by"];
 
 /** "Jane Smith (JSMITH)", or nothing when the system performed it. */
 const performer = (row: PermissionAuditHistoryDto): string => {
@@ -51,14 +59,51 @@ const performer = (row: PermissionAuditHistoryDto): string => {
     return name ? `${name} (${details.username})` : (details.username ?? PLACE_HOLDER);
 };
 
-/** The roles a change covered, each with its scopes if it had any. */
-const roleLines = (row: PermissionAuditHistoryDto) =>
+/**
+ * How one scope reads in the trail.
+ *
+ * <p>Prefixed, because the three are not distinguishable from their values
+ * alone: a district is a code, a region is a word, an organisation is a number,
+ * and a column mixing them unlabelled leaves the reader guessing which is which.
+ *
+ * <p>Regions show the name where the row carries one - it is written in at the
+ * time of the change, so a region renamed since still reads as it did then - and
+ * fall back to the code for rows written before that was recorded.
+ */
+const scopeLabel = (scope: PrivilegeDetailsScopeDto): string => {
+    const value = scope.client_id ?? scope.client_name ?? "";
+
+    switch (scope.scope_type) {
+        case PrivilegeDetailsScopeType.District:
+            return `DIS: ${value}`;
+        case PrivilegeDetailsScopeType.Region:
+            return `REG: ${scope.client_name ?? value}`;
+        default:
+            return `ORG: ${value}`;
+    }
+};
+
+/**
+ * The roles a change covered, each with its scopes if it had any.
+ *
+ * <p>Two sources for the name, in order. The row carries one, resolved when the
+ * history was read; failing that the application's own role list is consulted,
+ * which is the same list the grant screen uses and is usually already cached.
+ * The code is the last resort, not the first.
+ */
+const roleLines = (
+    row: PermissionAuditHistoryDto,
+    namesByCode: Map<string, string>
+) =>
     (row.privilege_details?.roles ?? []).map((role) => ({
+        /*
+            The code is the identity, so it keys the row - two roles in one
+            change are two lines and the display name is not guaranteed unique.
+        */
         role: role.role,
-        scopes: (role.scopes ?? [])
-            .map((scope) => scope.client_id ?? scope.client_name)
-            .filter(Boolean)
-            .join(", "),
+        /** What the pill shows: the name where there is one, else the code. */
+        label: role.role_display_name ?? namesByCode.get(role.role) ?? role.role,
+        scopes: (role.scopes ?? []).map(scopeLabel).filter(Boolean),
     }));
 
 export const UserPermissionHistoryTable: FC<Props> = ({
@@ -67,6 +112,32 @@ export const UserPermissionHistoryTable: FC<Props> = ({
     integrationId,
     environment,
 }) => {
+    /*
+        The application's roles, for their names.
+
+        Shares its key with the grant and Manage roles screens, so arriving here
+        from either costs nothing. It is a fallback, not the source: the row's
+        own name wins where there is one, and a failure here leaves the code
+        showing rather than emptying the column.
+    */
+    const rolesQuery = useQuery({
+        queryKey: ["css-roles", integrationId, environment],
+        queryFn: () =>
+            AdminMgmtApiService.cssIntegrationsApi
+                .getCssApplicationRoles(integrationId, environment)
+                .then((res) => res.data),
+        enabled: Boolean(integrationId && environment),
+    });
+
+    const namesByCode = useMemo(
+        () =>
+            new Map(
+                (rolesQuery.data ?? [])
+                    .filter((role) => role.display_name)
+                    .map((role) => [role.name, role.display_name as string])
+            ),
+        [rolesQuery.data]
+    );
     const historyQuery = useQuery({
         queryKey: [
             "permission-audit-history",
@@ -146,20 +217,29 @@ export const UserPermissionHistoryTable: FC<Props> = ({
                                         {row.privilege_change_type_description}
                                     </TableCell>
                                     <TableCell>
-                                        {roleLines(row).map((line) => (
+                                        {roleLines(row, namesByCode).map((line) => (
+                                            <Chip
+                                                key={line.role}
+                                                label={line.label}
+                                            />
+                                        ))}
+                                    </TableCell>
+                                    <TableCell>
+                                        {roleLines(row, namesByCode).map((line) => (
                                             <div
                                                 key={line.role}
-                                                className="permission-details-col-container"
+                                                className="history-scopes"
                                             >
-                                                <div className="permission-type-container">
-                                                    <p>Role:</p>
-                                                    <Chip label={line.role} />
-                                                </div>
-                                                {line.scopes ? (
-                                                    <p className="scopes">
-                                                        {line.scopes}
-                                                    </p>
-                                                ) : null}
+                                                {line.scopes.length === 0 ? (
+                                                    PLACE_HOLDER
+                                                ) : (
+                                                    line.scopes.map((scope) => (
+                                                        <Chip
+                                                            key={scope}
+                                                            label={scope}
+                                                        />
+                                                    ))
+                                                )}
                                             </div>
                                         ))}
                                     </TableCell>

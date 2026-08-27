@@ -49,7 +49,7 @@ public record RoleDefinitionDetailsDto(
 
     return new RoleDefinitionDetailsDto(
         PrivilegeDetailsPermissionType.ROLE_DEFINITION,
-        List.of(new PrivilegeDetailsRoleDto(roleCode, null, null)),
+        List.of(new PrivilegeDetailsRoleDto(roleCode, null, null, null)),
         roleCode,
         roleName,
         description,

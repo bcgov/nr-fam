@@ -60,12 +60,12 @@ class AssignmentVisibilityServiceTest {
 
   private static CssUserRoleRowDto bceidRow(String guid, String roleName) {
     return new CssUserRoleRowDto(
-        guid.toLowerCase() + "@bceidbusiness", guid, "BCEID", null, null, null, roleName, null, List.of());
+        guid.toLowerCase() + "@bceidbusiness", guid, "BCEID", null, null, null, roleName, null, List.of(), null);
   }
 
   private static CssUserRoleRowDto idirRow() {
     return new CssUserRoleRowDto(
-        "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, List.of());
+        "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, List.of(), null);
   }
 
   private void directoryReports(String guid, String organization) {
@@ -132,7 +132,7 @@ class AssignmentVisibilityServiceTest {
     directoryReports("AAA1", OWN_ORG);
     CssUserRoleRowDto described = new CssUserRoleRowDto(
         "aaa1@bceidbusiness", "AAA1", "BCEID", null, null, null,
-        "FOM_SUBMITTER", "Submitter", List.of());
+        "FOM_SUBMITTER", "Submitter", List.of(), null);
 
     assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(described)))
         .singleElement()

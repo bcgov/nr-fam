@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserType, type CssRoleOptionDto } from "fam-api/model";
 import { useMemo, useState, type FC, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { ExpiryDateField } from "@/components/AddPermissions/ExpiryDateField";
 import { RoleMultiSelectTable } from "@/components/AddPermissions/RoleMultiSelectTable";
 import { Chip } from "@/components/Chip";
 import { InlineSpinner } from "@/components/InlineSpinner";
@@ -53,6 +54,7 @@ export const AddAppPermission: FC = () => {
     const [users, setUsers] = useState<SelectedUser[]>([]);
     const [domain, setDomain] = useState<UserType>(UserType.Idir);
     const [roles, setRoles] = useState<RoleScopeSelection[]>([]);
+    const [expiresOn, setExpiresOn] = useState("");
     const [errors, setErrors] = useState(NO_ERRORS);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -84,7 +86,7 @@ export const AddAppPermission: FC = () => {
 
     const grantMutation = useMutation({
         mutationFn: async (): Promise<AppPermissionGrantSummary> => {
-            const planned = planGrants({ domain, users, roles });
+            const planned = planGrants({ domain, users, roles, expiresOn });
 
             // One call per user per role. Sequential rather than concurrent:
             // each may create scope roles, and CSS treats creation as
@@ -161,7 +163,7 @@ export const AddAppPermission: FC = () => {
     );
 
     const overTheLimit = useMemo(() => selectionsOverTheLimit(roles), [roles]);
-    const permissionTotal = totalPermissions({ domain, users, roles });
+    const permissionTotal = totalPermissions({ domain, users, roles, expiresOn });
 
     /**
      * Ticking a role adds it; unticking drops it and everything chosen for it.
@@ -213,7 +215,7 @@ export const AddAppPermission: FC = () => {
         event.preventDefault();
         setSubmitError(null);
 
-        const found = validateGrantForm({ users, roles });
+        const found = validateGrantForm({ users, roles, expiresOn });
         setErrors(found);
         if (hasErrors(found)) {
             // No banner: every one of these errors is already rendered beside
@@ -262,7 +264,7 @@ export const AddAppPermission: FC = () => {
                     for.
                 */}
                 {users.length > 0 ? (
-                    <StepContainer title="Select the roles to grant" divider>
+                    <StepContainer title="Select the roles to grant">
                         <p className="step-note">
                             Everybody chosen above gets every role selected here.
                             Pick as many as they should have.
@@ -313,6 +315,25 @@ export const AddAppPermission: FC = () => {
                                 ))}
                             </div>
                         ) : null}
+                    </StepContainer>
+                ) : null}
+
+                {/*
+                    Asked once for the whole grant, not once per role: the
+                    question is how long this access should last, and a
+                    four-role grant should not ask it four times.
+                */}
+                {roles.length > 0 ? (
+                    <StepContainer
+                        title="Set an expiry date"
+                        className="expiry-step"
+                        divider
+                    >
+                        <ExpiryDateField
+                            value={expiresOn}
+                            onChange={setExpiresOn}
+                            invalidText={errors.expiresOn}
+                        />
                     </StepContainer>
                 ) : null}
 

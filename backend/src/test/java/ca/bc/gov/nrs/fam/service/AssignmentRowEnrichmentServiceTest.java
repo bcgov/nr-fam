@@ -49,12 +49,12 @@ class AssignmentRowEnrichmentServiceTest {
   /** A user CSS has never seen sign in: a username and nothing else. */
   private static CssUserRoleRowDto unnamed(String guid, String roleName) {
     return new CssUserRoleRowDto(
-        guid.toLowerCase() + "@azureidir", guid, "IDIR", null, null, null, roleName, null, List.of());
+        guid.toLowerCase() + "@azureidir", guid, "IDIR", null, null, null, roleName, null, List.of(), null);
   }
 
   private static CssUserRoleRowDto named() {
     return new CssUserRoleRowDto(
-        "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, List.of());
+        "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, List.of(), null);
   }
 
   private void directoryKnows(String guid, String userId, String first, String last) {
@@ -125,7 +125,7 @@ class AssignmentRowEnrichmentServiceTest {
 
     CssUserRoleRowDto scoped = new CssUserRoleRowDto(
         GUID.toLowerCase() + "@azureidir", GUID, "IDIR", null, null, null,
-        "CHR_FREP_EDITOR", "Submitter (CHR)", List.of(new ScopeDto("DISTRICT", "DCC", null)));
+        "CHR_FREP_EDITOR", "Submitter (CHR)", List.of(new ScopeDto("DISTRICT", "DCC", null)), null);
 
     assertThat(service.withResolvedNames(List.of(scoped)))
         .singleElement()
@@ -191,7 +191,7 @@ class AssignmentRowEnrichmentServiceTest {
   @DisplayName("does not resolve BCeID rows")
   void skipsBceidRows() {
     CssUserRoleRowDto bceid = new CssUserRoleRowDto(
-        "abc@bceidbusiness", "ABC", "BCEID", null, null, null, "R", null, List.of());
+        "abc@bceidbusiness", "ABC", "BCEID", null, null, null, "R", null, List.of(), null);
 
     service.withResolvedNames(List.of(bceid));
 

@@ -1,0 +1,81 @@
+/*
+    The session-timeout warning.
+
+    A hand-built alertdialog rather than Carbon's Modal, because every dismiss
+    affordance Carbon's Modal ships with is one this dialog must not have - no
+    close button, no Escape, no backdrop click. Colours come from Carbon's own
+    custom properties so it still tracks the theme.
+*/
+
+.session-timeout__overlay {
+  position: fixed;
+  inset: 0;
+  /* Above the UI Shell header and anything it has open. */
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--cds-overlay, rgba(22, 22, 22, 0.5));
+}
+
+.session-timeout__dialog {
+  width: 26rem;
+  max-width: 100%;
+  padding: 1.5rem;
+  background: var(--cds-layer-01, #ffffff);
+  color: var(--cds-text-primary, #161616);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  /* Focus sits here so the dialog is announced, but a ring around the whole
+     panel would read as though the panel itself were the control. */
+  outline: none;
+}
+
+.session-timeout__title {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.session-timeout__body p {
+  margin: 0 0 0.75rem;
+  color: var(--cds-text-primary, #131315);
+  line-height: 1.5;
+}
+
+.session-timeout__body p:last-child {
+  margin-bottom: 0;
+}
+
+.session-timeout__count-wrap {
+  white-space: nowrap;
+}
+
+.session-timeout__count {
+  font-weight: 600;
+  /* Stops the sentence twitching as the digits change. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* The last thirty seconds. */
+.session-timeout__count--danger {
+  color: var(--cds-support-error, #da1e28);
+}
+
+.session-timeout__warn-icon {
+  align-items: center;
+  margin-left: 0.25rem;
+  color: var(--cds-support-error, #da1e28);
+  /* Optically centred on the digits: `text-bottom` sat it too low. */
+  vertical-align: middle;
+  position: relative;
+  top: -0.125rem;
+}
+
+.session-timeout__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}

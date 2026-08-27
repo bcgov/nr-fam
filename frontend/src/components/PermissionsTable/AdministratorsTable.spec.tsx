@@ -120,7 +120,7 @@ describe("AdministratorsTable", () => {
         const row = await rowFor("JSMITH");
 
         await userEvent.click(
-            within(row).getByRole("button", { name: "Remove administrator" })
+            within(row).getByRole("button", { name: /^Remove /})
         );
         await userEvent.click(
             await screen.findByRole("button", { name: CONFIRM_REMOVE })
@@ -144,7 +144,7 @@ describe("AdministratorsTable", () => {
         const row = await rowFor("JSMITH");
 
         await userEvent.click(
-            within(row).getByRole("button", { name: "Remove administrator" })
+            within(row).getByRole("button", { name: /^Remove /})
         );
         await userEvent.click(
             await screen.findByRole("button", { name: CONFIRM_REMOVE })
@@ -165,7 +165,7 @@ describe("AdministratorsTable", () => {
         const row = await rowFor("JSMITH");
 
         await userEvent.click(
-            within(row).getByRole("button", { name: "Remove administrator" })
+            within(row).getByRole("button", { name: /^Remove /})
         );
 
         // A delegated administrator loses the right to grant one role and keeps
@@ -181,7 +181,7 @@ describe("AdministratorsTable", () => {
         const row = await rowFor("JSMITH");
 
         await userEvent.click(
-            within(row).getByRole("button", { name: "Remove administrator" })
+            within(row).getByRole("button", { name: /^Remove /})
         );
 
         const message = await screen.findByText(/Are you sure/);
@@ -201,10 +201,10 @@ describe("AdministratorsTable", () => {
         const ghost = await rowFor("GHOST");
         const removable = await rowFor("JSMITH");
         expect(
-            within(ghost).getByRole("button", { name: "Remove administrator" })
+            within(ghost).getByRole("button", { name: /^Remove /})
         ).toBeDisabled();
         expect(
-            within(removable).getByRole("button", { name: "Remove administrator" })
+            within(removable).getByRole("button", { name: /^Remove /})
         ).toBeEnabled();
     });
 
@@ -213,7 +213,7 @@ describe("AdministratorsTable", () => {
         const row = await rowFor("JSMITH");
 
         await userEvent.click(
-            within(row).getByRole("button", { name: "Remove administrator" })
+            within(row).getByRole("button", { name: /^Remove /})
         );
         await userEvent.click(
             await screen.findByRole("button", { name: CONFIRM_REMOVE })

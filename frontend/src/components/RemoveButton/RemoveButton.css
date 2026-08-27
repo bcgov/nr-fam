@@ -1,0 +1,38 @@
+/*
+    Destructive, and said so in red rather than by weight.
+
+    Carbon's own danger-ghost kind exists, but it prefixes the accessible name
+    with "danger" - which a screen reader then reads before every one of these,
+    and which the e2e suite has already had to work around once. The colours are
+    Carbon's danger tokens either way; only the announcement differs.
+*/
+.remove-button.cds--btn--ghost {
+  color: var(--cds-text-error, #da1e28);
+  /* The column is narrow; the word and the icon should not wrap apart. */
+  white-space: nowrap;
+  /* Pulled back to the cell's edge so the text lines up with other columns
+     rather than sitting on Carbon's default button padding. */
+  padding-inline: 0.5rem;
+}
+
+.remove-button.cds--btn--ghost .cds--btn__icon {
+  fill: currentColor;
+}
+
+.remove-button.cds--btn--ghost:hover {
+  background-color: var(--cds-button-danger-hover, #ba1b23);
+  color: var(--cds-text-on-color, #ffffff);
+}
+
+.remove-button.cds--btn--ghost:active {
+  background-color: var(--cds-button-danger-active, #750e13);
+  color: var(--cds-text-on-color, #ffffff);
+}
+
+/* Disabled while a removal is in flight: grey, so it does not still read as
+   something to press. */
+.remove-button.cds--btn--ghost:disabled,
+.remove-button.cds--btn--ghost:disabled:hover {
+  color: var(--cds-text-disabled, #c6c6c6);
+  background-color: transparent;
+}

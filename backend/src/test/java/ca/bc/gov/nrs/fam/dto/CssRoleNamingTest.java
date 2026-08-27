@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -413,6 +414,108 @@ class CssRoleNamingTest {
       assertThat(CssRoleNaming.isValidRoleCode(LONGEST_CODE + "A"))
           .as("a longer code is accepted than the sidecar budget allows for")
           .isFalse();
+    }
+  }
+
+  @Nested
+  @DisplayName("expiry sidecar")
+  class ExpirySidecar {
+
+    private static final String GRANTED = "FSPTS_EDITOR_DISTRICT-DCC";
+
+    @Test
+    void writesTheDateBeforeTheRoleSoNamesSortByIt() {
+      assertThat(CssRoleNaming.buildExpiryRoleName(LocalDate.of(2026, 9, 30), GRANTED))
+          .isEqualTo("FAM:EXPIRES:2026-09-30:FSPTS_EDITOR_DISTRICT-DCC");
+    }
+
+    @Test
+    void roundTrips() {
+      String name = CssRoleNaming.buildExpiryRoleName(LocalDate.of(2026, 9, 30), GRANTED);
+
+      assertThat(CssRoleNaming.parseExpiry(name))
+          .contains(new CssRoleNaming.RoleExpiry(LocalDate.of(2026, 9, 30), GRANTED));
+    }
+
+    @Test
+    void keepsAGovernedNameThatContainsColons() {
+      // Only the first colon after the date is a delimiter. A role name may
+      // contain more, and truncating one would name a role nobody holds - so
+      // the sweep would leave the real grant in place.
+      String odd = "SOME:ROLE:WITH:COLONS";
+
+      assertThat(CssRoleNaming.parseExpiry(
+              CssRoleNaming.buildExpiryRoleName(LocalDate.of(2026, 1, 2), odd)))
+          .contains(new CssRoleNaming.RoleExpiry(LocalDate.of(2026, 1, 2), odd));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "FAM:EXPIRES:",
+          "FAM:EXPIRES:2026-09-30",
+          "FAM:EXPIRES:2026-09-30:",
+          "FAM:EXPIRES::FSPTS_EDITOR",
+          "FAM:EXPIRES:not-a-date:FSPTS_EDITOR",
+          "FAM:EXPIRES:2026-13-45:FSPTS_EDITOR"
+        })
+    void ignoresAnythingItCannotReadWholly(String malformed) {
+      // The safe direction. The sweep removes access based on what it parses,
+      // so a name it cannot read is a name it must not act on.
+      assertThat(CssRoleNaming.parseExpiry(malformed)).isEmpty();
+    }
+
+    @Test
+    void ignoresARoleThatIsNotOne() {
+      assertThat(CssRoleNaming.parseExpiry("FSPTS_EDITOR")).isEmpty();
+      assertThat(CssRoleNaming.parseExpiry(null)).isEmpty();
+    }
+
+    @Test
+    void isNotSomethingAPersonCanBeGranted() {
+      // It is assigned to a person, unlike the other two sidecars, so this is
+      // the check that keeps it out of every role list and permissions table.
+      assertThat(CssRoleNaming.isSidecarRole(
+              CssRoleNaming.buildExpiryRoleName(LocalDate.of(2026, 9, 30), GRANTED)))
+          .isTrue();
+    }
+
+    @Test
+    void leavesTheOtherSidecarsAlone() {
+      assertThat(CssRoleNaming.isExpiryRole("FAM:LABEL:FSPTS_EDITOR:Editor")).isFalse();
+      assertThat(CssRoleNaming.isExpiryRole("FAM:DESC:FSPTS_EDITOR:Edits things")).isFalse();
+    }
+
+    @Test
+    void acceptsARoleThatLeavesRoomForThePrefix() {
+      String name = "A".repeat(CssRoleNaming.MAX_ROLE_NAME_LENGTH - "FAM:EXPIRES:2026-09-30:".length());
+
+      assertThat(CssRoleNaming.canCarryExpiry(name)).isTrue();
+      assertThat(CssRoleNaming.buildExpiryRoleName(LocalDate.of(2026, 9, 30), name))
+          .hasSize(CssRoleNaming.MAX_ROLE_NAME_LENGTH);
+    }
+
+    @Test
+    void refusesARoleOneCharacterTooLong() {
+      // Refused at the point of granting. Left to CSS it comes back as a
+      // generic failure part-way through, with the role assigned and the expiry
+      // quietly missing - access outliving what somebody asked for.
+      String name =
+          "A".repeat(CssRoleNaming.MAX_ROLE_NAME_LENGTH - "FAM:EXPIRES:2026-09-30:".length() + 1);
+
+      assertThat(CssRoleNaming.canCarryExpiry(name)).isFalse();
+    }
+
+    @Test
+    void judgesLengthByTheDateWidthNotTheDateItself() {
+      // Every ISO date is ten characters, so the answer must not depend on
+      // which one is being granted - otherwise a grant accepted in 2026 would
+      // be refused in 2100.
+      String name = "A".repeat(CssRoleNaming.MAX_ROLE_NAME_LENGTH - 23);
+
+      assertThat(CssRoleNaming.buildExpiryRoleName(LocalDate.of(2100, 12, 31), name))
+          .hasSize(CssRoleNaming.MAX_ROLE_NAME_LENGTH);
+      assertThat(CssRoleNaming.canCarryExpiry(name)).isTrue();
     }
   }
 }

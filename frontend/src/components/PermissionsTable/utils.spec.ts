@@ -2,7 +2,7 @@ import type { CssUserRoleRowDto } from "fam-api";
 import { describe, expect, it } from "vitest";
 import type { AppPermissionGrantSummary } from "@/pages/AddAppPermission/grantUtils";
 import { UserType } from "fam-api";
-import {
+import { groupScopeText, scopeChipLabel, needsScopeDetail, groupByRole, formatExpiry,
     csvFileName,
     roleLabel,
     toRevokeRequest,
@@ -38,7 +38,8 @@ describe("toCsv", () => {
 
         expect(lines).toHaveLength(2);
         expect(lines[1]).toBe(
-            '"JSMITH","IDIR","Jane Smith","jane@gov.bc.ca","","FREP_ADMINISTRATOR"'
+            '"JSMITH","IDIR","Jane Smith","jane@gov.bc.ca","","FREP_ADMINISTRATOR",'
+                + '"Never expires"'
         );
     });
 
@@ -52,13 +53,32 @@ describe("toCsv", () => {
         expect(lines[1]).not.toContain("FREP_ADMINISTRATOR");
     });
 
+    it("has a value for every heading, so nothing shifts a column", () => {
+        // The count is the assertion. A heading added without its value - or a
+        // value without its heading - slides every field after it under the
+        // wrong name, and a spreadsheet gives no sign that it happened.
+        const [headings, body] = toCsv([row()]).split("\r\n");
+
+        expect(body.split('","')).toHaveLength(headings.split('","').length);
+    });
+
+    it("says how a grant ends, in the words the table uses", () => {
+        // Not the raw date: a file full of them leaves the reader working out
+        // which have already passed.
+        const lines = toCsv([row({ expires_on: "2000-01-01" })]).split("\r\n");
+
+        expect(lines[1]).toContain('"Expired"');
+    });
+
     it("keeps a value containing a comma in one field", () => {
         // "Smith, Jane" would otherwise become two columns and shift every
         // field after it.
         const lines = toCsv([row({ last_name: "Smith, Jr" })]).split("\r\n");
 
         expect(lines[1]).toContain('"Jane Smith, Jr"');
-        expect(lines[1].split('","')).toHaveLength(6);
+        // Still one field per heading: the comma stayed inside its quotes
+        // rather than becoming a column of its own.
+        expect(lines[1].split('","')).toHaveLength(permissionsTableHeaders.length);
     });
 
     it("escapes an embedded quote by doubling it", () => {
@@ -296,3 +316,222 @@ describe("toRevokeRequest", () => {
         expect(toRevokeRequest(row({ domain: "IDIR" })).user_type).toBe(UserType.Idir);
     });
 });
+
+/**
+ * How a grant's end date reads in the table.
+ *
+ * The middle state is the point: a past date alone leaves the reader doing the
+ * arithmetic to work out whether the access is still live.
+ */
+describe("formatExpiry", () => {
+    const isoDaysFromNow = (days: number) => {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return [
+            d.getFullYear(),
+            String(d.getMonth() + 1).padStart(2, "0"),
+            String(d.getDate()).padStart(2, "0"),
+        ].join("-");
+    };
+
+    it("says so plainly when there is no end date", () => {
+        expect(formatExpiry(null)).toBe("Never expires");
+        expect(formatExpiry(undefined)).toBe("Never expires");
+        expect(formatExpiry("")).toBe("Never expires");
+    });
+
+    it("shows the date while the access is still live", () => {
+        const future = isoDaysFromNow(30);
+        expect(formatExpiry(future)).toBe(future);
+    });
+
+    it("counts a grant expiring today as still live", () => {
+        // Access lasts to the end of the day named. Reading it as expired would
+        // cut everybody a day short of what they were promised.
+        expect(formatExpiry(isoDaysFromNow(0))).toBe(isoDaysFromNow(0));
+    });
+
+    it("says Expired rather than showing a past date", () => {
+        expect(formatExpiry(isoDaysFromNow(-1))).toBe("Expired");
+    });
+});
+
+/**
+ * Collapsing a person's several assignments of one role into one row.
+ *
+ * CSS has no idea of a scoped role, so a Viewer granted for three regions is
+ * three assignments. The table showed three rows differing in one column, and
+ * reading "who has what" meant collating them by eye.
+ */
+describe("groupByRole", () => {
+    const assignment = (over: Partial<CssUserRoleRowDto> = {}) =>
+        ({
+            username: "JSMITH",
+            user_guid: "ABC123",
+            role_name: "FREP_VIEWER",
+            scopes: [],
+            ...over,
+        }) as CssUserRoleRowDto;
+
+    const region = (value: string, label?: string) => ({
+        type: "REGION",
+        value,
+        label,
+    });
+
+    it("puts one person's several scopes of one role on one row", () => {
+        const groups = groupByRole([
+            assignment({ scopes: [region("SKEENA")] }),
+            assignment({ scopes: [region("NORTHEAST")] }),
+        ]);
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0].assignments).toHaveLength(2);
+        expect(groups[0].combinations).toEqual([
+            [region("SKEENA")],
+            [region("NORTHEAST")],
+        ]);
+    });
+
+    it("keeps different roles apart", () => {
+        const groups = groupByRole([
+            assignment({ role_name: "FREP_VIEWER" }),
+            assignment({ role_name: "FREP_EDITOR" }),
+        ]);
+
+        expect(groups).toHaveLength(2);
+    });
+
+    it("keeps different people apart, even in the same role", () => {
+        const groups = groupByRole([
+            assignment({ user_guid: "AAA", username: "JSMITH" }),
+            assignment({ user_guid: "BBB", username: "BLEE" }),
+        ]);
+
+        expect(groups).toHaveLength(2);
+    });
+
+    it("keeps grants that end on different days apart", () => {
+        // Collapsing them would put one date in a column describing both, and
+        // the wrong one for half the scopes.
+        const groups = groupByRole([
+            assignment({ scopes: [region("SKEENA")], expires_on: "2026-09-30" }),
+            assignment({ scopes: [region("NORTHEAST")], expires_on: "2026-12-31" }),
+        ]);
+
+        expect(groups).toHaveLength(2);
+    });
+
+    it("groups an open-ended grant with another open-ended one", () => {
+        const groups = groupByRole([
+            assignment({ scopes: [region("SKEENA")] }),
+            assignment({ scopes: [region("NORTHEAST")], expires_on: undefined }),
+        ]);
+
+        expect(groups).toHaveLength(1);
+    });
+
+    it("leaves an unscoped role with nothing to enumerate", () => {
+        // An empty combination would show as a blank line and push any others
+        // onto lines of their own for nothing.
+        const groups = groupByRole([assignment({ scopes: [] })]);
+
+        expect(groups[0].combinations).toEqual([]);
+    });
+
+    it("keeps the order it was given, so a sorted table stays sorted", () => {
+        const groups = groupByRole([
+            assignment({ role_name: "FREP_ADMIN" }),
+            assignment({ role_name: "FREP_VIEWER" }),
+            assignment({ role_name: "FREP_ADMIN" }),
+        ]);
+
+        expect(groups.map((g) => g.assignments[0].role_name)).toEqual([
+            "FREP_ADMIN",
+            "FREP_VIEWER",
+        ]);
+    });
+});
+
+describe("needsScopeDetail", () => {
+    const group = (combinations: unknown[][]) =>
+        ({ assignments: [], combinations }) as never;
+
+    const scope = (type: string, value: string) => ({ type, value });
+
+    it("is false for several scopes of one kind", () => {
+        // Three regions read perfectly well as a plain list.
+        expect(
+            needsScopeDetail(
+                group([[scope("REGION", "SKEENA")], [scope("REGION", "NORTHEAST")]])
+            )
+        ).toBe(false);
+    });
+
+    it("is true when a role is scoped more than one way at once", () => {
+        // Being a submitter for a district AND an organisation is not the same
+        // as being one for either, so the pair has to stay visibly paired.
+        expect(
+            needsScopeDetail(
+                group([[scope("DISTRICT", "DCC"), scope("FOREST_CLIENT", "00001012")]])
+            )
+        ).toBe(true);
+    });
+
+    it("is true when one role carries two kinds of scope", () => {
+        // A column mixing a district code and a region code unlabelled says
+        // nothing about which is which.
+        expect(
+            needsScopeDetail(
+                group([[scope("DISTRICT", "DCC")], [scope("REGION", "SKEENA")]])
+            )
+        ).toBe(true);
+    });
+});
+
+describe("scopeChipLabel", () => {
+    it("prefers the name over the code", () => {
+        expect(
+            scopeChipLabel(
+                { type: "REGION", value: "KOOTENAY_BOUNDARY", label: "Kootenay-Boundary" },
+                false
+            )
+        ).toBe("Kootenay-Boundary");
+    });
+
+    it("prefixes the kind when the column carries more than one", () => {
+        expect(
+            scopeChipLabel({ type: "DISTRICT", value: "DCC" }, true)
+        ).toBe("DIS: DCC");
+        expect(
+            scopeChipLabel({ type: "FOREST_CLIENT", value: "00001012" }, true)
+        ).toBe("ORG: 00001012");
+    });
+});
+
+describe("groupScopeText", () => {
+    it("carries the code as well as the name, so both are searchable", () => {
+        const text = groupScopeText({
+            assignments: [],
+            combinations: [
+                [{ type: "REGION", value: "KOOTENAY_BOUNDARY", label: "Kootenay-Boundary" }],
+            ],
+        } as never);
+
+        expect(text).toContain("Kootenay-Boundary");
+        expect(text).toContain("KOOTENAY_BOUNDARY");
+    });
+
+    it("keeps a combination together and separates it from the next", () => {
+        const text = groupScopeText({
+            assignments: [],
+            combinations: [
+                [{ type: "DISTRICT", value: "DCC" }, { type: "FOREST_CLIENT", value: "001" }],
+                [{ type: "DISTRICT", value: "DKA" }, { type: "FOREST_CLIENT", value: "001" }],
+            ],
+        } as never);
+
+        expect(text).toBe("DCC + 001, DKA + 001");
+    });
+});
+

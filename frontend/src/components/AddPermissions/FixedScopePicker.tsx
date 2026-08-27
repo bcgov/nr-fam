@@ -1,4 +1,3 @@
-import { TrashCan } from "@carbon/icons-react";
 import {
     ComboBox,
     Table,
@@ -13,6 +12,7 @@ import { useState } from "react";
 import { SubsectionTitle } from "@/components/SubsectionTitle";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import "./ScopeSelectTable.css";
+import { RemoveButton } from "@/components/RemoveButton";
 
 /**
  * Pick values from a fixed list, one at a time, into a table of what is chosen.
@@ -156,15 +156,10 @@ export const FixedScopePicker = <T,>({
                                         <TableCell>{nameOf(item)}</TableCell>
                                         <TableCell>{codeOf(item)}</TableCell>
                                         <TableCell>
-                                            <button
-                                                type="button"
-                                                className="btn btn-icon"
-                                                title={`Remove ${nameOf(item)}`}
-                                                aria-label={`Remove ${nameOf(item)}`}
+                                            <RemoveButton
+                                                accessible={`Remove ${nameOf(item)}`}
                                                 onClick={() => remove(codeOf(item))}
-                                            >
-                                                <TrashCan />
-                                            </button>
+                                            />
                                         </TableCell>
                                     </TableRow>
                                 ))

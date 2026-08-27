@@ -60,7 +60,7 @@ test.describe("administrator lifecycle", () => {
         await openTab(page, sandboxApp!.description, /application admins/i);
         await expect(adminRow(page)).toBeVisible({ timeout: 60_000 });
 
-        await adminRow(page).getByRole("button", { name: "Remove administrator" }).click();
+        await adminRow(page).getByRole("button", { name: /^Remove /}).click();
         await openDialog(page);
         await dangerButton(page, "Remove").click();
 
@@ -103,7 +103,7 @@ test.describe("administrator lifecycle", () => {
             await expect(row).toBeVisible({ timeout: 60_000 });
             await expect(chips(row)).not.toHaveCount(0);
 
-            await row.getByRole("button", { name: "Remove administrator" }).click();
+            await row.getByRole("button", { name: /^Remove /}).click();
             await openDialog(page);
             await dangerButton(page, "Remove").click();
 
