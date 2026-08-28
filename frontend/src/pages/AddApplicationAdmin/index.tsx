@@ -101,9 +101,19 @@ export const AddApplicationAdmin: FC = () => {
                         it. They cannot create or delete roles.
                     </p>
 
+                    {/*
+                        IDIR only. This tier is authority over the application
+                        itself rather than over work done in it, and the backend
+                        refuses anybody else - offering the choice would be
+                        offering a search whose every result is unusable.
+
+                        One domain, so UserSearch disables the selector rather
+                        than showing a list of one.
+                    */}
                     <UserSearch
                         environment={environment}
                         multiUserMode={false}
+                        availableDomains={[UserType.Idir]}
                         onSelectionChange={(users) =>
                             setSelectedUser(users[0] ?? null)
                         }

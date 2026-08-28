@@ -1,7 +1,13 @@
 import { ArrowLeft } from "@carbon/icons-react";
 import { Button } from "@carbon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserType, type CssRoleOptionDto } from "fam-api";
+import {
+    UserType,
+    type CssRoleOptionDto,
+    type FamDistrictDto,
+    type FamForestClientDto,
+    type FamRegionDto,
+} from "fam-api";
 import { useEffect, useMemo, useState, type FC } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ExpiryDateField } from "@/components/AddPermissions/ExpiryDateField";
@@ -17,6 +23,8 @@ import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { AdminMgmtApiService, AppActlApiService } from "@/services/ApiServiceFactory";
 import { ROUTES } from "@/routes/routePaths";
+import { FOREST_CLIENT_SEARCH_MIN_LENGTH } from "@/constants/constants";
+import { describeApiError } from "@/utils/ApiUtils";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import {
     roleLabel,
@@ -25,7 +33,14 @@ import {
 } from "@/utils/ScopeUtils";
 import { useGrantTarget, useGrantTargetName } from "@/pages/grantTarget";
 import { validateGrantForm, hasErrors, NO_ERRORS } from "@/pages/AddAppPermission/validation";
-import { diffScopes, isNoop, plannedGrants, toSelection } from "./editUtils";
+import {
+    diffScopes,
+    forestClientNumbers,
+    isNoop,
+    plannedGrants,
+    toSelection,
+    withResolvedNames,
+} from "./editUtils";
 import "@/pages/AddAppPermission/AddAppPermission.css";
 
 /**
@@ -119,6 +134,81 @@ export const EditAppPermission: FC = () => {
     );
 
     /*
+        What the held organisations are called.
+
+        Districts and regions arrive as whole lists FAM already holds, so a code
+        becomes a name for free. An organisation's name lives in the Forest
+        Client API, which is searched a term at a time - so the numbers on this
+        grant are looked up one by one, and only here, where a handful of them
+        is the whole page rather than a column of a long table.
+
+        Best effort, per number: one that cannot be resolved - the API is down,
+        or the organisation has since been deactivated and the search only
+        returns active ones - leaves that row reading as its number, which is
+        what it did before and is still true. It must not cost the other names,
+        and it must not stop the page.
+    */
+    const heldClientNumbers = useMemo(
+        () =>
+            (group ? forestClientNumbers(group) : []).filter(
+                (number) => number.length >= FOREST_CLIENT_SEARCH_MIN_LENGTH
+            ),
+        [group]
+    );
+
+    const clientsQuery = useQuery({
+        queryKey: ["forest-clients-by-number", environment, heldClientNumbers],
+        enabled: heldClientNumbers.length > 0,
+        queryFn: async () => {
+            const found = await Promise.all(
+                heldClientNumbers.map((number) =>
+                    AppActlApiService.forestClientsApi
+                        .autocompleteForestClients(number, environment)
+                        .then((res) =>
+                            res.data.find(
+                                (client) =>
+                                    client.forest_client_number === number
+                            )
+                        )
+                        .catch(() => undefined)
+                )
+            );
+            return found.filter(Boolean) as FamForestClientDto[];
+        },
+    });
+
+    /*
+        The three reference sets, as lookups.
+
+        Districts and regions are whole lists FAM holds and the pickers already
+        want, so arriving here warms them rather than duplicating them; the
+        organisations are what the search above found.
+    */
+    const knownNames = useMemo(
+        () => ({
+            districts: new Map<string, FamDistrictDto>(
+                (districtsQuery.data ?? []).map((district) => [
+                    district.org_unit_code,
+                    district,
+                ])
+            ),
+            regions: new Map<string, FamRegionDto>(
+                (regionsQuery.data ?? []).map((region) => [
+                    region.region_code,
+                    region,
+                ])
+            ),
+            clients: new Map<string, FamForestClientDto>(
+                (clientsQuery.data ?? []).map((client) => [
+                    client.forest_client_number,
+                    client,
+                ])
+            ),
+        }),
+        [districtsQuery.data, regionsQuery.data, clientsQuery.data]
+    );
+
+    /*
         Filled in once, from what the person already holds.
 
         Guarded by `loaded` rather than by a dependency list: the queries behind
@@ -134,14 +224,19 @@ export const EditAppPermission: FC = () => {
         if (!role) {
             return;
         }
-        setRoles([
-            toSelection(
-                group,
-                role,
-                districtsQuery.data ?? [],
-                regionsQuery.data ?? []
-            ),
-        ]);
+        setRoles(
+            withResolvedNames(
+                [
+                    toSelection(
+                        group,
+                        role,
+                        districtsQuery.data ?? [],
+                        regionsQuery.data ?? []
+                    ),
+                ],
+                knownNames
+            )
+        );
         setLoaded(true);
     }, [
         loaded,
@@ -150,7 +245,23 @@ export const EditAppPermission: FC = () => {
         roleName,
         districtsQuery.data,
         regionsQuery.data,
+        knownNames,
     ]);
+
+    /*
+        And for every list that arrives second, which is the usual way round:
+        the selection is already on screen, so the names are patched onto it.
+
+        This is why the seed above can run before the lists have settled without
+        showing codes for the rest of the session - and why it does not have to
+        wait for them, which would leave the page claiming the permission could
+        not be found while a slow list was still retrying. withResolvedNames
+        returns what it was given when nothing resolved, so this settles rather
+        than looping.
+    */
+    useEffect(() => {
+        setRoles((current) => withResolvedNames(current, knownNames));
+    }, [knownNames]);
 
     const updateSelection = (
         name: string,
@@ -260,9 +371,10 @@ export const EditAppPermission: FC = () => {
         },
         onError: (error: unknown) => {
             setSubmitError(
-                (error as { response?: { data?: { description?: string } } })?.response
-                    ?.data?.description ??
+                describeApiError(
+                    error,
                     "The permission could not be updated. Nothing further was changed."
+                )
             );
         },
     });

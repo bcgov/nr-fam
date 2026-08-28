@@ -1,4 +1,11 @@
-import { Add, Enterprise, HelpDesk, SearchLocate, User } from "@carbon/icons-react";
+import {
+    Add,
+    Enterprise,
+    HelpDesk,
+    SearchLocate,
+    Tools,
+    User,
+} from "@carbon/icons-react";
 import {
     Button,
     ComboBox,
@@ -21,6 +28,7 @@ import { newlyGrantedKeys as newlyGrantedKeysFor } from "@/components/Permission
 import { useSelectedApp } from "@/context/application/useSelectedApp";
 import { useNotification } from "@/context/notification/useNotification";
 import { ROUTES } from "@/routes/routePaths";
+import { matchesTypedTextBeside } from "@/utils/ComboBoxFilter";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { fetchSelfPermissions } from "@/services/AuthApiService";
 import {
@@ -48,6 +56,15 @@ import "./ManagePermissions.css";
  */
 
 const USERS_TAB = 0;
+
+/**
+ * The DevOps tab's index when it is shown.
+ *
+ * <p>Last, and only ever present alongside the other two: it is offered to FAM
+ * administrators, who see those as well - so the three admin tabs are always all
+ * there or all absent, and this index is stable.
+ */
+const DEVOPS_TAB = 3;
 
 export const ManagePermissions: FC = () => {
     const navigate = useNavigate();
@@ -176,6 +193,24 @@ export const ManagePermissions: FC = () => {
         );
     }, [selectedApp, selfPermissionsQuery.data]);
 
+    /*
+        The DevOps tab is a FAM administrator's alone - not an application
+        administrator's, as the other two are.
+
+        A DevOps admin decides what roles an application has. That is not
+        authority an application administrator holds, so they cannot hand it out
+        either; letting them would be a way to acquire it by proxy. The endpoint
+        refuses them regardless - this only stops offering it.
+    */
+    const canSeeDevopsTab = useMemo(() => {
+        if (selectedApp?.fam_application) {
+            return false;
+        }
+        return (selfPermissionsQuery.data ?? []).some(
+            (permission) => permission.role === "FAM_ADMIN"
+        );
+    }, [selectedApp, selfPermissionsQuery.data]);
+
     // Whenever the admin tabs go away, so does any selection of one. An
     // uncontrolled Tabs keeps its index when the tab it names disappears -
     // switching from FREP's Delegated admins tab to FAM left the strip showing
@@ -185,6 +220,15 @@ export const ManagePermissions: FC = () => {
             setActiveTab(USERS_TAB);
         }
     }, [canSeeAdminTabs]);
+
+    // The DevOps tab comes and goes on its own rule, so it needs its own reset:
+    // it is the last tab, and an uncontrolled index left pointing past the end
+    // renders a strip with nothing under it.
+    useEffect(() => {
+        if (!canSeeDevopsTab) {
+            setActiveTab((current) => (current === DEVOPS_TAB ? USERS_TAB : current));
+        }
+    }, [canSeeDevopsTab]);
 
     const handleApplicationChange = (app: CssApplicationOptionDto | null) => {
         setSelectedApp(app ?? undefined);
@@ -233,6 +277,15 @@ export const ManagePermissions: FC = () => {
                         itemToString={(item: CssApplicationOptionDto | null) =>
                             item?.description ?? item?.name ?? ""
                         }
+                        /*
+                            Carbon shows the whole list otherwise. Beside the
+                            selection, because Carbon leaves the chosen
+                            application's name in the box and a plain filter
+                            would narrow the list to it on reopening.
+                        */
+                        shouldFilterItem={matchesTypedTextBeside(
+                            selectedApp?.description ?? selectedApp?.name
+                        )}
                         selectedItem={selectedApp ?? null}
                         onChange={({ selectedItem }) =>
                             handleApplicationChange(selectedItem ?? null)
@@ -277,13 +330,16 @@ export const ManagePermissions: FC = () => {
                                         Application admins
                                     </Tab>
                                 ) : null}
+                                {canSeeDevopsTab ? (
+                                    <Tab renderIcon={Tools}>DevOps admins</Tab>
+                                ) : null}
                             </TabList>
                             <TabPanels>
                                 <TabPanel>
                                     <SectionTile
                                         title={`${appName} users`}
                                         icon={User}
-                                        description={`This table shows all the users in ${appName} and their permissions levels`}
+                                        description={`Who has access to ${appName}, and what each person can do in it`}
                                         actions={
                                             <>
                                                 <Button
@@ -297,7 +353,7 @@ export const ManagePermissions: FC = () => {
                                                     Bulk upload
                                                 </Button>
                                                 <Button
-                                                    kind="tertiary"
+                                                    kind="primary"
                                                     size="md"
                                                     renderIcon={Add}
                                                     onClick={() =>
@@ -335,10 +391,10 @@ export const ManagePermissions: FC = () => {
                                         <SectionTile
                                             title="Delegated admins"
                                             icon={Enterprise}
-                                            description={`Who may grant roles in ${appName}, and which roles they may grant`}
+                                            description={`Who can grant access to ${appName}, and which roles they can grant`}
                                             actions={
                                                 <Button
-                                                    kind="tertiary"
+                                                    kind="primary"
                                                     size="md"
                                                     renderIcon={Add}
                                                     onClick={() =>
@@ -371,10 +427,10 @@ export const ManagePermissions: FC = () => {
                                         <SectionTile
                                             title="Application admins"
                                             icon={HelpDesk}
-                                            description={`Who may administer ${appName}, including appointing delegated admins`}
+                                            description={`Who can grant any role in ${appName}, and appoint delegated admins`}
                                             actions={
                                                 <Button
-                                                    kind="tertiary"
+                                                    kind="primary"
                                                     size="md"
                                                     renderIcon={Add}
                                                     onClick={() =>
@@ -396,6 +452,40 @@ export const ManagePermissions: FC = () => {
                                                     selectedApp.environment
                                                 }
                                                 tier="APP_ADMIN"
+                                                appName={appName}
+                                            />
+                                        </SectionTile>
+                                    </TabPanel>
+                                ) : null}
+
+                                {canSeeDevopsTab ? (
+                                    <TabPanel>
+                                        <SectionTile
+                                            title="DevOps admins"
+                                            icon={Tools}
+                                            description={`Who can define and remove the roles of ${appName}`}
+                                            actions={
+                                                <Button
+                                                    kind="primary"
+                                                    size="md"
+                                                    renderIcon={Add}
+                                                    onClick={() =>
+                                                        goTo(ROUTES.addDevopsAdmin)
+                                                    }
+                                                >
+                                                    Add DevOps admin
+                                                </Button>
+                                            }
+                                        >
+                                            <AdministratorsTable
+                                                key={`devops-${appKey}`}
+                                                integrationId={
+                                                    selectedApp.integration_id
+                                                }
+                                                environment={
+                                                    selectedApp.environment
+                                                }
+                                                tier="DEVOPS_ADMIN"
                                                 appName={appName}
                                             />
                                         </SectionTile>

@@ -53,6 +53,61 @@ describe("Layout", () => {
         expect(screen.getByTestId("side-nav-link-manage-roles")).toBeInTheDocument();
     });
 
+    it("withholds Manage permissions from a DevOps-only administrator", () => {
+        /*
+            They manage no access, so the application picker on that screen is
+            empty for them and every tab under it would be - a screen with
+            nothing on it, offered by name. Manage roles is what they came for
+            and stays.
+        */
+        renderLayout({ accessRoles: ["DEVOPS_ADMIN_6538_DEV"] });
+
+        expect(
+            screen.queryByTestId("side-nav-link-manage-permissions")
+        ).not.toBeInTheDocument();
+        expect(screen.getByTestId("side-nav-link-manage-roles")).toBeInTheDocument();
+    });
+
+    it("keeps Manage permissions for a DevOps admin who also administers access", () => {
+        renderLayout({
+            accessRoles: ["DEVOPS_ADMIN_6538_DEV", "APP_ADMIN_6538_DEV"],
+        });
+
+        expect(
+            screen.getByTestId("side-nav-link-manage-permissions")
+        ).toBeInTheDocument();
+    });
+
+    it("keeps Manage permissions for somebody who administers nothing", () => {
+        // An empty table is a fair answer to "what do I administer"; an absent
+        // screen is not.
+        renderLayout({ accessRoles: [] });
+
+        expect(
+            screen.getByTestId("side-nav-link-manage-permissions")
+        ).toBeInTheDocument();
+    });
+
+    it("offers User history to a FAM administrator", () => {
+        renderLayout({ accessRoles: ["FAM_ADMIN"] });
+
+        expect(screen.getByTestId("side-nav-link-user-history")).toBeInTheDocument();
+    });
+
+    it("withholds User history from everyone else", () => {
+        /*
+            The per-application history is reachable by anyone who administers
+            that application. This screen asks the trail about a person across
+            every application at once, which administering one of them does not
+            entitle somebody to do.
+        */
+        renderLayout({ accessRoles: ["APP_ADMIN", "DELEGATED_ADMIN"] });
+
+        expect(
+            screen.queryByTestId("side-nav-link-user-history")
+        ).not.toBeInTheDocument();
+    });
+
     it("withholds Manage roles from everyone else", () => {
         // Presentation only - the route guard turns them away and the endpoint
         // refuses them regardless. This asserts they are not invited.

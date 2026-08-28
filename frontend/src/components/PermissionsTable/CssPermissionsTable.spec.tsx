@@ -188,7 +188,7 @@ describe("CssPermissionsTable", () => {
         });
         renderTable();
 
-        expect(await screen.findByText("Kootenay-Boundary")).toBeInTheDocument();
+        expect(await screen.findByText("Region: Kootenay-Boundary")).toBeInTheDocument();
         expect(screen.queryByText("KOOTENAY_BOUNDARY")).not.toBeInTheDocument();
     });
 
@@ -211,31 +211,53 @@ describe("CssPermissionsTable", () => {
             ],
         });
         renderTable();
-        await screen.findByText("Kootenay-Boundary");
+        await screen.findByText("Region: Kootenay-Boundary");
 
         await userEvent.type(
             screen.getByPlaceholderText("Search by keyword"),
             "KOOTENAY_BOUNDARY"
         );
 
-        expect(await screen.findByText("Kootenay-Boundary")).toBeInTheDocument();
+        expect(await screen.findByText("Region: Kootenay-Boundary")).toBeInTheDocument();
     });
 
-    it("says when a permission ends, and says so plainly when it does not", async () => {
+    it("dashes the expiry when a permission has none", async () => {
         renderTable();
 
-        // "Never expires" rather than a blank cell: an empty column reads as
-        // something that failed to load. Both fixture rows are open-ended.
-        expect(await screen.findAllByText("Never expires")).toHaveLength(2);
+        /*
+            A dash rather than a blank cell - an empty column reads as something
+            that failed to load - and rather than a sentence: most grants are
+            open-ended, so "Never expires" down the column was the loudest thing
+            in the table and said the least.
+
+            By column, not by counting dashes: other columns use the same
+            placeholder, and a count would pass for the wrong reason.
+        */
+        // rowFor waits for the data: read straight away and the row is the
+        // loading skeleton's, whose cells are all empty.
+        const row = await rowFor("JSMITH");
+        /*
+            Matched loosely, not by equality: a sortable header's text is its
+            sort button's instructions with the label on the end - "Click to
+            sort rows by Expires header in ascending orderExpires".
+        */
+        const expiresAt = screen
+            .getAllByRole("columnheader")
+            .findIndex((header) => header.textContent?.includes("Expires"));
+        const cells = within(row).getAllByRole("cell");
+
+        expect(cells[expiresAt]).toHaveTextContent("—");
     });
 
-    it("shows the role by its display name and the scope by its label", async () => {
+    it("shows the role by its display name and the scope by kind and code", async () => {
         renderTable();
 
         const row = await rowFor("JSMITH");
         // The short name, not the code: "Editor", not FREP_EDITOR_DISTRICT-DCC.
         expect(within(row).getByText("Editor")).toBeInTheDocument();
-        expect(within(row).getByText("Cariboo-Chilcotin")).toBeInTheDocument();
+        // The district's own code though, not its name - which runs to
+        // "Cariboo-Chilcotin Natural Resource District" and does not fit a pill.
+        expect(within(row).getByText("District: DCC")).toBeInTheDocument();
     });
 
     it("marks only the rows a grant just created", async () => {
@@ -313,7 +335,7 @@ describe("CssPermissionsTable", () => {
         // one they are about to remove.
         const message = await screen.findByText(/Are you sure you want to remove/);
         expect(message.textContent).toContain("Editor");
-        expect(message.textContent).toContain("Cariboo-Chilcotin");
+        expect(message.textContent).toContain("District: DCC");
         expect(message.textContent).toContain("JSMITH");
         expect(message.textContent).toContain("FREP (DEV)");
     });
@@ -388,7 +410,7 @@ describe("CssPermissionsTable", () => {
 
     it("reports the backend's own reason when a revoke is refused", async () => {
         deleteCssUserRoleAssignment.mockRejectedValue({
-            response: { data: { description: "You cannot revoke your own access." } },
+            response: { data: { detail: { description: "You cannot revoke your own access." } } },
         });
         renderTable();
         const row = await rowFor("JSMITH");
@@ -440,24 +462,28 @@ describe("CssPermissionsTable", () => {
                 ],
             });
             renderTable();
-            await screen.findByText("Skeena");
+            await screen.findByText("Region: Skeena");
 
             // One body row, and every region on it.
             expect(screen.getAllByRole("row")).toHaveLength(2);
-            expect(screen.getByText("Northeast")).toBeInTheDocument();
-            expect(screen.getByText("Kootenay-Boundary")).toBeInTheDocument();
+            expect(screen.getByText("Region: Northeast")).toBeInTheDocument();
+            expect(screen.getByText("Region: Kootenay-Boundary")).toBeInTheDocument();
         });
 
-        it("keeps a role's scopes plain when they are all of one kind", async () => {
+        it("keeps a role's scopes in one flat list when nothing is paired", async () => {
             // Nothing to explain: each is an independent grant of the same
-            // role, and a list is exactly what that is.
+            // role, and a list is exactly what that is. The pairing layout is
+            // for compound roles, where the grouping carries meaning.
             getCssUserRoleAssignments.mockResolvedValue({
                 data: [regionRow("SKEENA", "Skeena"), regionRow("NORTHEAST", "Northeast")],
             });
             renderTable();
 
-            expect(await screen.findByText("Skeena")).toBeInTheDocument();
-            expect(screen.queryByText("REG: Skeena")).not.toBeInTheDocument();
+            expect(await screen.findByText("Region: Skeena")).toBeInTheDocument();
+            expect(screen.getByText("Region: Northeast")).toBeInTheDocument();
+            expect(
+                document.querySelectorAll(".scope-combinations .scope-chips")
+            ).toHaveLength(0);
         });
 
         it("keeps a compound grant's scopes visibly paired", async () => {
@@ -491,9 +517,9 @@ describe("CssPermissionsTable", () => {
             renderTable();
 
             // Prefixed, because the column now carries two kinds of value.
-            expect(await screen.findByText("DIS: DCC")).toBeInTheDocument();
-            expect(screen.getByText("DIS: DKA")).toBeInTheDocument();
-            expect(screen.getAllByText("ORG: 00001012")).toHaveLength(2);
+            expect(await screen.findByText("District: DCC")).toBeInTheDocument();
+            expect(screen.getByText("District: DKA")).toBeInTheDocument();
+            expect(screen.getAllByText("Organization: 00001012")).toHaveLength(2);
             // One line per pairing, not one flat list.
             expect(
                 document.querySelectorAll(".scope-combinations .scope-chips")
@@ -510,7 +536,7 @@ describe("CssPermissionsTable", () => {
                 ],
             });
             renderTable();
-            await screen.findByText("Skeena");
+            await screen.findByText("Region: Skeena");
 
             await userEvent.click(
                 screen.getByRole("button", { name: /^Remove /})
@@ -539,14 +565,16 @@ describe("CssPermissionsTable", () => {
                 ],
             });
             renderTable();
-            await screen.findByText("Skeena");
+            await screen.findByText("Region: Skeena");
 
             await userEvent.click(
                 screen.getByRole("button", { name: /^Remove /})
             );
 
             const dialog = await screen.findByRole("dialog");
-            expect(within(dialog).getByText(/Skeena, Northeast/)).toBeInTheDocument();
+            expect(
+                within(dialog).getByText(/Region: Skeena, Region: Northeast/)
+            ).toBeInTheDocument();
         });
 
         it("keeps grants that end on different days apart", async () => {
@@ -559,7 +587,7 @@ describe("CssPermissionsTable", () => {
                 ],
             });
             renderTable();
-            await screen.findByText("Skeena");
+            await screen.findByText("Region: Skeena");
 
             expect(screen.getAllByRole("row")).toHaveLength(3);
         });
@@ -591,7 +619,7 @@ describe("CssPermissionsTable", () => {
 
         const cells = within(await rowFor("JSMITH")).getAllByRole("cell");
         expect(cells[at("Role")].textContent).toContain("Editor");
-        expect(cells[at("Scope")].textContent).toContain("Cariboo-Chilcotin");
+        expect(cells[at("Scope")].textContent).toContain("District: DCC");
     });
 
     it("offers an edit beside the remove, carrying the row's own key", async () => {
@@ -611,6 +639,55 @@ describe("CssPermissionsTable", () => {
         expect(
             await screen.findByText(`edit ${ROW.user_guid} ${ROW.role_name}`)
         ).toBeInTheDocument();
+    });
+
+    it("says what each row action does rather than leaving an icon to guess at", async () => {
+        /*
+            A clock and a pencil are a poor pair to guess between, and the third
+            control in the group has said "Remove" in words since it was written.
+            The words are what the eye reads; the accessible names stay
+            row-specific, because a page of controls all called "History" is a
+            page a screen reader cannot navigate.
+        */
+        renderTable();
+        const row = await rowFor("JSMITH");
+
+        const history = within(row).getByRole("button", {
+            name: /^Permission history for /,
+        });
+        const edit = within(row).getByRole("button", { name: /^Edit / });
+
+        expect(history).toHaveTextContent("History");
+        expect(edit).toHaveTextContent("Edit");
+        expect(history).toHaveAccessibleName(
+            `Permission history for ${ROW.username}`
+        );
+    });
+
+    it("marks a new row without painting over what it has to show", async () => {
+        /*
+            The row was filled with a saturated blue, which took the Role and
+            Scope pills with it - those are light blue themselves, so the one row
+            somebody is checking was the one row whose pills could not be read.
+            The accent and the tag mark it between them.
+        */
+        renderTable({
+            newlyGrantedKeys: [
+                "AAAA1111|FREP_EDITOR_DISTRICT-DCC",
+                "JSMITH|FREP_EDITOR_DISTRICT-DCC",
+            ],
+        });
+
+        const row = await rowFor("JSMITH");
+        expect(within(row).getByText("New")).toBeInTheDocument();
+        expect(row).toHaveClass("fam-table__row--new");
+        // No inline fill left behind on the row or its cells.
+        expect(row.getAttribute("style")).toBeNull();
+        expect(
+            [...row.querySelectorAll("td")].some((cell) =>
+                (cell.getAttribute("style") ?? "").includes("background")
+            )
+        ).toBe(false);
     });
 
     it("puts the edit to the left of the remove", async () => {

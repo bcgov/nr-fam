@@ -229,7 +229,7 @@ describe("AdministratorsTable", () => {
         // or a refusal - behind "please try again", advice that would not have
         // helped in either case.
         getCssApplicationAdministrators.mockRejectedValue({
-            response: { data: { description: "CSS_OWN_INTEGRATION_ID is not set." } },
+            response: { data: { detail: { description: "CSS_OWN_INTEGRATION_ID is not set." } } },
         });
         renderTable("APP_ADMIN");
 

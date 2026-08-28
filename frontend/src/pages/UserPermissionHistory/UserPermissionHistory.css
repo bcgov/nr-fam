@@ -1,3 +1,15 @@
+/*
+    Claims the page height so the grey panel below can fill whatever the title
+    leaves. 4rem is the chrome above it: the app header is `position: fixed` and
+    takes no room in the flow, so the only offset is the `margin-block-start`
+    `.cds--content` gets from the sibling-of-header rule in styles/_overrides.scss.
+*/
+.user-detail-page-container {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 4rem);
+}
+
 .user-detail-page-container .fam-page-title {
   margin: 1rem 0 1.5rem;
 }
@@ -5,14 +17,25 @@
 /*
     The raised panel, pulled out to the edges of the Carbon content area, which
     pads its children - without this it floats inside a gutter.
+
+    -1.5rem, matching `.cds--content { padding: 0 1.5rem }` in
+    styles/_overrides.scss. It was -2rem, which overshot that padding by 8px a
+    side and pushed the panel past the content edge - enough to give the whole
+    page a horizontal scrollbar, which is the same mistake ManagePermissions.css
+    records having made.
+
+    It grows into the height the container above claims, rather than being given
+    a height of its own: the old `calc(100vh - 19rem)` had to guess how tall the
+    title and the back link came to, and stopped short of the bottom of the page
+    whenever it guessed high.
 */
 .user-detail-page-container .gray-container {
   display: flex;
   flex-direction: column;
-  margin: 2.5rem -2rem 0;
+  margin: 2.5rem -1.5rem 0;
   padding: 2rem;
   background: var(--cds-layer-01);
-  min-height: calc(100vh - 19rem);
+  flex: 1;
 }
 
 .user-detail-page-container .back-button-container {

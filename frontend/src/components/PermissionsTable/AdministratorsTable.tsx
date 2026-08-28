@@ -47,6 +47,15 @@ type Props = {
 };
 
 const isDelegated = (tier: AdminRoleAuthGroup) => tier === "DELEGATED_ADMIN";
+const isDevops = (tier: AdminRoleAuthGroup) => tier === "DEVOPS_ADMIN";
+
+/** What this tier is called in a sentence, for the toast and the confirmation. */
+const tierLabel = (tier: AdminRoleAuthGroup) =>
+    isDelegated(tier)
+        ? "delegated admin"
+        : isDevops(tier)
+          ? "DevOps admin"
+          : "application admin";
 
 const fullNameOf = (row: CssAdministratorRowDto): string =>
     [row.first_name, row.last_name].filter(Boolean).join(" ");
@@ -142,12 +151,16 @@ export const AdministratorsTable: FC<Props> = ({
                 });
             }
 
-            // No role and no scope: an application administrator is authorised
-            // over the application rather than over any one of its roles.
-            return api.deleteCssApplicationAdmin(integrationId, environment, {
+            // No role and no scope: an application or DevOps administrator is
+            // authorised over the application rather than over any one of its
+            // roles.
+            const appointment = {
                 user_guid: row.user_guid ?? "",
                 user_type: userTypeOf(row),
-            });
+            };
+            return isDevops(tier)
+                ? api.deleteCssDevopsAdmin(integrationId, environment, appointment)
+                : api.deleteCssApplicationAdmin(integrationId, environment, appointment);
         },
         onSuccess: (_result, row) => {
             setRemoveError(null);
@@ -157,12 +170,16 @@ export const AdministratorsTable: FC<Props> = ({
             permissionToast.succeeded(
                 isDelegated(tier)
                     ? "Delegated admin removed"
-                    : "Application admin removed",
+                    : isDevops(tier)
+                      ? "DevOps admin removed"
+                      : "Application admin removed",
                 isDelegated(tier)
                     ? `${row.username} can no longer grant ${roleLabelOf(row)}` +
                           `${scope ? ` for ${scope}` : ""} in ${appName}.`
-                    : `${row.username} is no longer an application administrator of ` +
-                          `${appName}.`
+                    : isDevops(tier)
+                      ? `${row.username} can no longer manage the roles of ${appName}.`
+                      : `${row.username} is no longer an application administrator of ` +
+                        `${appName}.`
             );
 
             invalidateAfterAccessChange(queryClient, integrationId, environment);
@@ -345,11 +362,7 @@ export const AdministratorsTable: FC<Props> = ({
             */}
             <DestructiveModal
                 open={pendingRemove !== null}
-                title={
-                    isDelegated(tier)
-                        ? "Remove delegated admin"
-                        : "Remove application admin"
-                }
+                title={`Remove ${tierLabel(tier)}`}
                 confirmButtonText="Remove"
                 loading={removeMutation.isPending}
                 onCancel={() => setPendingRemove(null)}
@@ -374,6 +387,15 @@ export const AdministratorsTable: FC<Props> = ({
                                 ) : null}{" "}
                                 in {appName}? They will lose that immediately, and
                                 will keep any other roles they have been delegated.
+                            </span>
+                        ) : isDevops(tier) ? (
+                            <span>
+                                Are you sure you want to remove{" "}
+                                <strong>{pendingRemove.username}</strong> as a DevOps
+                                administrator of {appName}? They will immediately
+                                lose the ability to define or remove its roles. Any
+                                roles they created stay, and so does everyone&rsquo;s
+                                access to them.
                             </span>
                         ) : (
                             <span>

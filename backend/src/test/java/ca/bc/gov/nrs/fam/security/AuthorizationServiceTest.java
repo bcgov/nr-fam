@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import java.util.List;
@@ -184,5 +185,149 @@ class AuthorizationServiceTest {
     assertThat(
         assertThatThrownBy(() -> service.forbidSelfGrant(withRoles("X_ADMIN"), "AaAa"))
             .isInstanceOf(FamHttpException.class)).isNotNull();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Managing an application's roles
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("a DevOps administrator may manage the roles of their own application")
+  void devopsAdminManagesItsOwnRoles() {
+    assertThatCode(() -> service.requireRoleManagement(
+        withRoles(FamAdminRole.devopsAdmin(22264, "DEV")), 22264, "DEV"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("and no other application, and no other environment")
+  void devopsAdminIsPennedIn() {
+    Requester devops = withRoles(FamAdminRole.devopsAdmin(22264, "DEV"));
+
+    assertThatThrownBy(() -> service.requireRoleManagement(devops, 99999, "DEV"))
+        .isInstanceOf(FamHttpException.class);
+    // A role invented in DEV is not a role invented in PROD.
+    assertThatThrownBy(() -> service.requireRoleManagement(devops, 22264, "PROD"))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("an application administrator may not manage roles")
+  void appAdminMayNotManageRoles() {
+    /*
+        The rule that was already in force when this was FAM administrators
+        only: they hand out what the application defines without also being able
+        to invent something new for it to mean.
+    */
+    assertThatThrownBy(() -> service.requireRoleManagement(
+        withRoles(FamAdminRole.appAdmin(22264, "DEV")), 22264, "DEV"))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("a FAM administrator manages any application's roles")
+  void famAdminManagesEverything() {
+    assertThatCode(() -> service.requireRoleManagement(
+        withRoles(FamAdminRole.FAM_ADMIN), 99999, "PROD"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("managing DevOps administrators is FAM administrators only")
+  void onlyFamAdminsManageDevopsAdmins() {
+    // Not even a DevOps administrator of that application: holding the tier is
+    // not authority to hand it out.
+    assertThatCode(() ->
+        service.requireDevopsAdminManagement(withRoles(FamAdminRole.FAM_ADMIN)))
+        .doesNotThrowAnyException();
+
+    for (Requester other : List.of(
+        withRoles(FamAdminRole.appAdmin(22264, "DEV")),
+        withRoles(FamAdminRole.devopsAdmin(22264, "DEV")),
+        withRoles())) {
+      assertThatThrownBy(() -> service.requireDevopsAdminManagement(other))
+          .isInstanceOf(FamHttpException.class);
+    }
+  }
+
+  @Test
+  @DisplayName("a DevOps administrator is given no access management at all")
+  void devopsAdminGrantsNoAccess() {
+    /*
+        The whole point of keeping this tier off Requester.tierFor. If it were a
+        rung on that ladder, everything that grants and revokes would read it as
+        authority over access - which is the one thing it is not for.
+    */
+    Requester devops = withRoles(FamAdminRole.devopsAdmin(22264, "DEV"));
+
+    assertThat(devops.canManageAccess(22264, "DEV")).isFalse();
+    assertThat(devops.tierFor(22264, "DEV")).isEmpty();
+    assertThat(devops.canManageDelegatedAdmins(22264, "DEV")).isFalse();
+    assertThat(devops.canGrantRole(22264, "DEV", "ANY_ROLE")).isFalse();
+    // But it does manage roles, which is what it is for.
+    assertThat(devops.canManageRoles(22264, "DEV")).isTrue();
+  }
+
+  @Test
+  @DisplayName("says what the rule is and what to do about it")
+  void selfChangeIsExplained() {
+    /*
+        The guard is reached from granting, revoking, appointing and removing, so
+        it cannot be worded as though the caller were only ever adding something -
+        and a refusal that only says no leaves somebody clicking the same button
+        again.
+    */
+    Requester self = Requester.builder()
+        .userGuid("AAAA").userType(UserType.IDIR).accessRoles(List.of()).build();
+
+    assertThatThrownBy(() -> service.forbidSelfGrant(self, "aaaa"))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("your own permissions")
+        .hasMessageContaining("another administrator");
+  }
+
+  @Test
+  @DisplayName("a DevOps administrator may read the roles of their own application")
+  void devopsAdminMayReadTheRoles() {
+    /*
+        The Manage roles screen they were given could not draw its own table:
+        the listing was gated on administering access, which they do not.
+    */
+    assertThatCode(() -> service.requireRoleVisibility(
+        withRoles(FamAdminRole.devopsAdmin(22264, "DEV")), 22264, "DEV"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("and not of an application they were not appointed for")
+  void devopsAdminReadsOnlyTheirOwn() {
+    assertThatThrownBy(() -> service.requireRoleVisibility(
+        withRoles(FamAdminRole.devopsAdmin(22264, "DEV")), 99999, "DEV"))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("everyone who administers the application may still read them")
+  void everyTierMayStillRead() {
+    // Granting a role means choosing from the same listing.
+    for (String role : List.of(
+        FamAdminRole.appAdmin(22264, "DEV"),
+        FamAdminRole.delegatedAdmin(22264, "DEV"),
+        FamAdminRole.FAM_ADMIN)) {
+      assertThatCode(() ->
+          service.requireRoleVisibility(withRoles(role), 22264, "DEV"))
+          .doesNotThrowAnyException();
+    }
+  }
+
+  @Test
+  @DisplayName("reading is all it admits")
+  void readingIsAllItAdmits() {
+    // Creating and deleting stay on requireRoleManagement; granting stays on
+    // requireApplicationAccess. Neither is opened by being able to look.
+    Requester devops = withRoles(FamAdminRole.devopsAdmin(22264, "DEV"));
+
+    assertThatThrownBy(() -> service.requireApplicationAccess(devops, 22264, "DEV"))
+        .isInstanceOf(FamHttpException.class);
   }
 }

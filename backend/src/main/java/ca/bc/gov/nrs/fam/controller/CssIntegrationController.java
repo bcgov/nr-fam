@@ -17,6 +17,7 @@ import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRevokeRequest;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleManagementApplicationDto;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
 import ca.bc.gov.nrs.fam.service.BulkGrantService;
@@ -82,7 +83,14 @@ public class CssIntegrationController {
         .toList();
   }
 
-  /** Selectable roles for one CSS integration and environment. */
+  /**
+   * Selectable roles for one CSS integration and environment.
+   *
+   * <p>Readable by anyone who administers the application <em>or</em> may define
+   * its roles - see {@code requireRoleVisibility}. Two different jobs need the
+   * same listing: granting a role means choosing from it, and defining one means
+   * seeing what is already there.
+   */
   @GetMapping("/{integrationId}/{environment}/roles")
   @Operation(operationId = "get_css_application_roles",
       summary = "List the selectable roles of a CSS integration environment")
@@ -91,11 +99,30 @@ public class CssIntegrationController {
       @PathVariable String environment,
       Requester requester) {
 
-    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+    authorizationService.requireRoleVisibility(requester, integrationId, environment);
     // Narrowed to what this caller may actually grant. A delegated
     // administrator was being offered every role the application defines, and
     // every district and client, all of which the grant path then refused.
     return cssIntegrationService.getGrantableRoles(integrationId, environment, requester);
+  }
+
+  /**
+   * The applications whose roles the caller may define.
+   *
+   * <p>A separate list from {@code GET /} on purpose. That one is filtered by who
+   * may manage <em>access</em>, which is empty for a DevOps administrator - they
+   * manage none. Serving both from one list would either hide applications from
+   * somebody entitled to them or offer applications the access guards would
+   * refuse.
+   */
+  @GetMapping("/role-management")
+  @Operation(operationId = "get_css_applications_for_role_management",
+      summary = "List applications whose roles the caller may define")
+  public List<CssRoleManagementApplicationDto> getCssApplicationsForRoleManagement(
+      Requester requester) {
+
+    authorizationService.authorize(requester);
+    return cssIntegrationService.getApplicationsForRoleManagement(requester);
   }
 
   /**
@@ -119,7 +146,7 @@ public class CssIntegrationController {
       @Valid @RequestBody CssRoleCreateRequest request,
       Requester requester) {
 
-    authorizationService.authorizeByFamAdmin(requester);
+    authorizationService.requireRoleManagement(requester, integrationId, environment);
     return cssIntegrationService.createRole(integrationId, environment, request, requester);
   }
 
@@ -131,8 +158,15 @@ public class CssIntegrationController {
    * rather than creating what fits - see
    * {@link CssIntegrationService#createRoleInAllEnvironments}.
    *
-   * <p><b>FAM administrators only</b>, as with creating a role in one
-   * environment.
+   * <p><b>Requires authority over every environment the integration has.</b> This
+   * writes to all of them, so holding DEV alone must not create the role in
+   * PROD. A FAM administrator qualifies everywhere; a DevOps administrator
+   * appointed for each environment qualifies here, and one appointed for some of
+   * them creates the role an environment at a time instead.
+   *
+   * <p>Checked in the service rather than here: the environments are not known
+   * until the integration has been read, and this endpoint deliberately names
+   * none.
    */
   @PostMapping("/{integrationId}/roles")
   @Operation(operationId = "create_css_application_role_all_environments",
@@ -142,7 +176,7 @@ public class CssIntegrationController {
       @Valid @RequestBody CssRoleCreateRequest request,
       Requester requester) {
 
-    authorizationService.authorizeByFamAdmin(requester);
+    authorizationService.authorize(requester);
     return cssIntegrationService.createRoleInAllEnvironments(integrationId, request, requester);
   }
 
@@ -162,7 +196,7 @@ public class CssIntegrationController {
       @PathVariable String roleName,
       Requester requester) {
 
-    authorizationService.authorizeByFamAdmin(requester);
+    authorizationService.requireRoleManagement(requester, integrationId, environment);
     return cssIntegrationService.deleteRole(integrationId, environment, roleName, requester);
   }
 
@@ -185,7 +219,17 @@ public class CssIntegrationController {
       @RequestParam AdminRoleAuthGroup tier,
       Requester requester) {
 
-    authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
+    /*
+        The DevOps roster is a FAM administrator's to read, matching who may
+        change it. The other tiers stay open to application administrators, who
+        appoint into them.
+    */
+    if (tier == AdminRoleAuthGroup.DEVOPS_ADMIN) {
+      authorizationService.requireDevopsAdminManagement(requester);
+    } else {
+      authorizationService.requireDelegatedAdminManagement(
+          requester, integrationId, environment);
+    }
     return cssIntegrationService.getAdministrators(integrationId, environment, tier);
   }
 
@@ -252,6 +296,39 @@ public class CssIntegrationController {
    * <p>Takes the same body as the appointment: a delegation is identified by the
    * role and scope it covers, not by an id, because nothing here has one.
    */
+  /**
+   * Appoint a DevOps administrator of one application.
+   *
+   * <p><b>FAM administrators only</b> - see
+   * {@code AuthorizationService.requireDevopsAdminManagement}. Unlike an
+   * application administrator, this is not a tier a peer may hand out.
+   */
+  @PostMapping("/{integrationId}/{environment}/devops-admins")
+  @Operation(operationId = "create_css_devops_admin",
+      summary = "Appoint a DevOps administrator of a CSS application")
+  public CssUserRoleAssignmentResult createCssDevopsAdmin(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @Valid @RequestBody CssAdministratorAppointRequest request,
+      Requester requester) {
+
+    return cssIntegrationService.appointDevopsAdmin(
+        integrationId, environment, request, requester);
+  }
+
+  /** Remove somebody's DevOps administration of one application. */
+  @DeleteMapping("/{integrationId}/{environment}/devops-admins")
+  @Operation(operationId = "delete_css_devops_admin",
+      summary = "Remove a DevOps administrator from a CSS application")
+  public void deleteCssDevopsAdmin(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @Valid @RequestBody CssAdministratorAppointRequest request,
+      Requester requester) {
+
+    cssIntegrationService.removeDevopsAdmin(integrationId, environment, request, requester);
+  }
+
   @DeleteMapping("/{integrationId}/{environment}/delegated-admins")
   @Operation(operationId = "delete_css_delegated_admin",
       summary = "Withdraw a delegated administrator's delegation for one role")
@@ -272,9 +349,11 @@ public class CssIntegrationController {
    * role. The grant screen's picker reads the listing and should not pay for
    * counts it does not show.
    *
-   * <p>Readable by anyone who may administer the application: it says how many
-   * people hold a role, not who they are, so it reveals nothing the assignment
-   * listing does not already show that caller.
+   * <p>Readable by anyone who may administer the application, or define its
+   * roles: it says how many people hold a role, not who they are, so it reveals
+   * nothing the assignment listing does not already show that caller - and a
+   * DevOps administrator about to delete a role needs to know what it would take
+   * with it.
    */
   @GetMapping("/{integrationId}/{environment}/roles/member-counts")
   @Operation(operationId = "get_css_application_role_member_counts",
@@ -284,7 +363,7 @@ public class CssIntegrationController {
       @PathVariable String environment,
       Requester requester) {
 
-    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+    authorizationService.requireRoleVisibility(requester, integrationId, environment);
     return cssIntegrationService.getRoleMemberCounts(integrationId, environment);
   }
 

@@ -47,9 +47,9 @@ const scopeValues = (group: PermissionGroup, type: string): string[] => {
  * scope the person genuinely holds, and dropping it would quietly revoke it on
  * save.
  *
- * <p>Organisations are the exception. Their names come from the Forest Client
- * API rather than a list FAM holds, so the number is all there is until the
- * picker looks one up.
+ * <p>Whatever a list does not name yet - because it has not arrived, or because
+ * an organisation's name has to be fetched one number at a time - is carried as
+ * its code and named later by {@link withResolvedNames}.
  */
 export const toSelection = (
     group: PermissionGroup,
@@ -76,6 +76,86 @@ export const toSelection = (
             ({ forest_client_number: number }) as FamForestClientDto
     ),
 });
+
+/**
+ * The organisation numbers a group is granted for.
+ *
+ * <p>The page has to know these before it can ask what they are called: the
+ * Forest Client API is searched by number, one number at a time.
+ */
+export const forestClientNumbers = (group: PermissionGroup): string[] =>
+    scopeValues(group, "FOREST_CLIENT");
+
+/** The reference sets a held scope is named from, once they have arrived. */
+export type KnownNames = {
+    districts: Map<string, FamDistrictDto>;
+    regions: Map<string, FamRegionDto>;
+    clients: Map<string, FamForestClientDto>;
+};
+
+/**
+ * The same selection with the names of what it holds filled in.
+ *
+ * <p>A held scope starts as a bare code or number - see {@link toSelection} -
+ * and becomes a name only once the list it is named from arrives, which is after
+ * the selection has been built and possibly after it has been edited.
+ *
+ * <p><b>Patched onto the selection rather than rebuilt from it.</b> Rebuilding
+ * would be simpler, but the lists settle at different moments: a district list
+ * landing after somebody had already removed a region would put that region
+ * back, and the save would silently re-grant it. Naming what is currently
+ * selected cannot do that - a scope that is no longer selected is not
+ * reinstated, and the set of scopes is left exactly as the person left it.
+ *
+ * <p>Returns the array it was given when nothing resolved, so that a caller
+ * setting state with it does not queue a render that changes nothing.
+ */
+export const withResolvedNames = (
+    roles: RoleScopeSelection[],
+    known: KnownNames
+): RoleScopeSelection[] => {
+    let changed = false;
+
+    const next = roles.map((one) => {
+        let touched = false;
+
+        // The reference sets are authoritative, so a held entry is replaced
+        // whenever they name it - which on the second pass is the entry itself,
+        // and settles.
+        const named = <T,>(held: T[], find: (item: T) => T | undefined): T[] =>
+            held.map((item) => {
+                const found = find(item);
+                if (!found || found === item) {
+                    return item;
+                }
+                touched = true;
+                return found;
+            });
+
+        const districts = named(one.districts, (district) =>
+            known.districts.get(district.org_unit_code)
+        );
+        const regions = named(one.regions, (region) =>
+            known.regions.get(region.region_code)
+        );
+        // Organisations differ: one already carrying a name came from the
+        // picker, which answers with the whole record. Looking it up again could
+        // only replace it with the same thing.
+        const forestClients = named(one.forestClients, (client) =>
+            client.client_name
+                ? undefined
+                : known.clients.get(client.forest_client_number)
+        );
+
+        if (!touched) {
+            return one;
+        }
+        changed = true;
+        return { ...one, districts, regions, forestClients };
+    });
+
+    return changed ? next : roles;
+};
 
 /**
  * One granted combination, as a string that can be compared.

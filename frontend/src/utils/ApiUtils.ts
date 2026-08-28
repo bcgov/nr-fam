@@ -24,6 +24,60 @@ export const formatAxiosError = (err: AxiosError): string => {
 };
 
 /**
+ * What went wrong, in the words the backend used.
+ *
+ * <p>The backend answers a refusal with
+ * {@code {"detail": {"code", "description"}}} - the description is the sentence
+ * that names the actual rule: whose permissions, which organisation, which role.
+ * Several callers read {@code data.description} instead, one level too shallow,
+ * so every one of them fell through to Axios's own message and showed
+ * "Request failed with status code 403" where an explanation belonged.
+ *
+ * <p>Handles all three shapes the backend produces - see GlobalExceptionHandler:
+ * a business error, a validation error (an array of {@code msg}), and an
+ * upstream failure ({@code {failureCode, message}}).
+ *
+ * <p>Axios's own message is used only when there is no response at all, where it
+ * says something genuinely useful like "Network Error". A response that came back with a
+ * status FAM chose is described by the fallback instead, which is a sentence
+ * somebody wrote for that screen.
+ */
+export const describeApiError = (error: unknown, fallback: string): string => {
+    const response = (error as { response?: { data?: unknown } })?.response;
+
+    if (!response) {
+        return (error as Error)?.message || fallback;
+    }
+
+    const data = response.data as
+        | { detail?: unknown; message?: string }
+        | undefined;
+
+    const detail = data?.detail;
+
+    if (Array.isArray(detail)) {
+        const messages = detail
+            .map((item) => (item as { msg?: string })?.msg)
+            .filter(Boolean);
+        if (messages.length > 0) {
+            return messages.join(" ");
+        }
+    } else if (detail && typeof detail === "object") {
+        const description = (detail as { description?: string }).description;
+        if (description) {
+            return description;
+        }
+    }
+
+    // The upstream-failure shape, which carries no detail at all.
+    if (data?.message) {
+        return data.message;
+    }
+
+    return fallback;
+};
+
+/**
  * Gets the HTTP status code from an unknown error when it is an Axios error.
  *
  * @param {unknown} error - The error from a mutation/query handler.

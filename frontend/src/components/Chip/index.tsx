@@ -3,8 +3,11 @@ import type { FC } from "react";
 
 type Props = {
     label: string;
-    /** Blue for a role or a scope, green where something reads as an outcome. */
-    color?: "blue" | "green";
+    /**
+     * Blue for a role or a scope, green where something reads as an outcome,
+     * grey where the answer is "nothing to do" - neither a success nor a fault.
+     */
+    color?: "blue" | "green" | "gray";
 };
 
 /**

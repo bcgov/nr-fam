@@ -336,4 +336,53 @@ describe("ManagePermissions grant outcome", () => {
             screen.queryByText(/were not added/i)
         ).not.toBeInTheDocument();
     });
+
+    describe("the DevOps admins tab", () => {
+        it("is offered to a FAM administrator", async () => {
+            renderPage();
+            await waitFor(() => expect(getApplications).toHaveBeenCalled());
+            await choose("FREP (DEV)");
+
+            await waitFor(() =>
+                expect(tabNames().join(" ")).toContain("DevOps admins")
+            );
+        });
+
+        it("is withheld from an application administrator", async () => {
+            /*
+                A DevOps admin decides what roles an application has. That is not
+                authority an application administrator holds, so they cannot hand
+                it out either - letting them would be a way to acquire it by
+                proxy. They keep the other two tabs.
+            */
+            fetchSelfPermissions.mockResolvedValue([
+                {
+                    role: "APP_ADMIN",
+                    css_integration_id: FREP.integration_id,
+                    environment: "dev",
+                },
+            ]);
+
+            renderPage();
+            await waitFor(() => expect(getApplications).toHaveBeenCalled());
+            await choose("FREP (DEV)");
+
+            await waitFor(() =>
+                expect(tabNames().join(" ")).toContain("Application admins")
+            );
+            expect(tabNames().join(" ")).not.toContain("DevOps admins");
+        });
+
+        it("is withheld on FAM's own application", async () => {
+            // FAM's roles are its administrative tiers; they are not defined
+            // from this screen, so there is nobody to list.
+            renderPage();
+            await waitFor(() => expect(getApplications).toHaveBeenCalled());
+            await choose("Forests Access Management (DEV)");
+
+            await waitFor(() =>
+                expect(tabNames().join(" ")).not.toContain("DevOps admins")
+            );
+        });
+    });
 });

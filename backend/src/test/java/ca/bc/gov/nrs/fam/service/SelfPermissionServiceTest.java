@@ -317,4 +317,31 @@ class SelfPermissionServiceTest {
 
     verify(cssApiService, never()).getUserRoles(anyInt(), anyString(), anyString());
   }
+
+  @Test
+  @DisplayName("keeps FAM's administrative roles out of the application roles")
+  void administrativeRolesAreNotApplicationRoles() {
+    /*
+        They live on FAM's own integration, so they were listed as though FAM
+        were an application somebody held roles in - by their raw names,
+        DEVOPS_ADMIN_6538_DEV and the rest, which name a thing rather than
+        describe one.
+
+        Nothing is lost: getSelfPermissions reports every one of them against the
+        application they are about, with a sentence saying what they allow.
+    */
+    when(cssApiService.getIntegrations()).thenReturn(List.of(
+        new CssIntegrationDto(12345, "FAM", null, List.of("dev"), "applied", null, null)));
+    when(cssApiService.getUserRoles(anyInt(), anyString(), anyString())).thenReturn(List.of(
+        role("DEVOPS_ADMIN_6538_DEV"),
+        role("APP_ADMIN_6538_DEV"),
+        role("DELEGATED_ADMIN_6538_DEV"),
+        role("FAM_ADMIN"),
+        role("A_REAL_APPLICATION_ROLE")));
+    when(cssApiService.getRoles(anyInt(), anyString())).thenReturn(List.of());
+
+    assertThat(service.getSelfApplicationRoles(requesterWith("FAM_ADMIN")))
+        .singleElement()
+        .satisfies(row -> assertThat(row.roleName()).isEqualTo("A_REAL_APPLICATION_ROLE"));
+  }
 }

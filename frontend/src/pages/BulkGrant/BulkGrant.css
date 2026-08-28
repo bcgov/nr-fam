@@ -1,5 +1,124 @@
 .bulk-grant-container {
-  padding-bottom: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  /*
+      Claims the page height so the gray canvas below can fill whatever is left
+      under the title.
+
+      4rem, not 7rem: the app header is `position: fixed`, so it takes no room in
+      the flow, and the only offset above this container is the
+      `margin-block-start: $layout-05` that `.cds--content` gets from the
+      sibling-of-header rule in styles/_overrides.scss. Counting the 3rem header
+      as well left exactly that much white below the gray.
+  */
+  min-height: calc(100vh - 4rem);
+}
+
+/*
+    The gray canvas, ported from nr-fsp-new's data submission screen: a band that
+    runs the full width of the content area and down past the last card, with the
+    white cards sitting on it.
+
+    Full bleed by -1.5rem, matching `.cds--content { padding: 0 1.5rem }` in
+    styles/_overrides.scss - the same measure ManagePermissions uses for its tab
+    panel. Overshooting it pushes the page past the content edge and gives the
+    whole window a horizontal scrollbar.
+
+    layer-01 rather than a hex, so the band follows the theme instead of staying
+    light gray when the rest of the page goes dark.
+*/
+.bulk-grant-canvas {
+  margin: 1.5rem -1.5rem 0;
+  background-color: var(--cds-layer-01);
+  /*
+      Fills whatever the title left rather than cutting to white under the last
+      card. Grown from the container above rather than given a height of its own:
+      a calc would have to guess the title's height, and be a strip of white at
+      the bottom of the page whenever it guessed low.
+  */
+  flex: 1;
+}
+
+/* Re-insets the content the full bleed above took out, and then some: the
+   cards sit in from the edge of the band the way FSP's do. */
+.bulk-grant-canvas__inner {
+  padding: 1.5rem 2rem 2.5rem;
+}
+
+/* FSP's section heading: one size down from the page title, regular weight. */
+.bulk-grant-section-heading {
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 1.28572;
+  color: var(--cds-text-primary);
+  margin: 0 0 0.5rem;
+}
+
+.bulk-grant-section-subtitle {
+  font-size: 0.875rem;
+  line-height: 1.42857;
+  letter-spacing: 0.16px;
+  color: var(--cds-text-secondary);
+  margin: 0 0 1.5rem;
+}
+
+/*
+    The white card. Same flat bordered treatment as SectionTile, which is FAM's
+    port of the FSP tile - matched here rather than reused because these cards
+    carry form steps rather than a titled section with its own actions.
+*/
+.bulk-grant-card {
+  background-color: var(--cds-layer-02);
+  border: 1px solid #ececec;
+  border-radius: 0.5rem;
+  padding: 2rem;
+}
+
+.bulk-grant-card + .bulk-grant-card {
+  margin-top: 1.5rem;
+}
+
+/*
+    The template section, on the page above the upload pane rather than in it.
+    Sits on white, between the page title and the gray - which is what marks it
+    as reference material rather than the first step of the upload.
+*/
+.bulk-grant-template {
+  padding-top: 2rem;
+}
+
+/*
+    The "checking..." line, under the drop zone it belongs to rather than beside
+    it: the zone is half-width, and a spinner sitting in that empty right-hand
+    space reads as belonging to the card instead of to the file.
+*/
+.bulk-grant-card .bulk-grant-progress {
+  margin-top: 0.75rem;
+}
+
+/*
+    FSP's drop zone is half the width of its card, which is what stops a file
+    picker from reading as a page-wide dropzone. The chip takes the same measure
+    so the file lines up under the zone it was dropped on rather than running
+    past it.
+*/
+.bulk-grant-card .ddfi__zone,
+.bulk-grant-card .ddfi__chip {
+  max-width: 50%;
+}
+
+/*
+    Whitespace above the confirmation step's heading, on top of the card's own
+    padding.
+
+    padding rather than margin, and on the container rather than the heading, for
+    the same reason `form > .step-container:first-child` does it that way in
+    StepContainer.css: the heading's own margin sits inside the container with
+    nothing between, so a margin here would collapse with it and add almost
+    nothing. That rule does not reach this step - it is on a card, not in a form.
+*/
+.bulk-grant-card > .step-container:first-child {
+  padding-top: 0.5rem;
 }
 
 .bulk-grant-container .step-note {

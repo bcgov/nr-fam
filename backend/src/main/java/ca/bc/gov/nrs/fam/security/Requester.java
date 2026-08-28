@@ -156,6 +156,25 @@ public record Requester(
         .isPresent();
   }
 
+  /**
+   * May define and remove the roles of one application.
+   *
+   * <p>Deliberately not part of {@link #tierFor}. That method answers "how much
+   * authority over access does this caller have here", and its ladder is
+   * consulted by everything that grants and revokes - so returning DEVOPS_ADMIN
+   * from it would hand a DevOps administrator the power to grant access, which is
+   * the one thing this tier is not for. Kept as its own question, asked only by
+   * the role-management endpoints.
+   *
+   * <p>A FAM administrator qualifies, as everywhere else. An application
+   * administrator does not: they may hand out what the application defines
+   * without also being able to invent something new for it to mean, which was
+   * already the rule before this tier existed.
+   */
+  public boolean canManageRoles(int cssIntegrationId, String cssEnvironment) {
+    return isFamAdmin() || holds(FamAdminRole.devopsAdmin(cssIntegrationId, cssEnvironment));
+  }
+
   /** Case-insensitive: CSS role names are free text and casing is easy to get wrong. */
   private boolean holds(String roleName) {
     return accessRoles != null

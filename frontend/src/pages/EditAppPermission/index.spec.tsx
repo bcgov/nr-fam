@@ -19,6 +19,8 @@ const getCssApplicationRoles = vi.fn();
 const createCssUserRoleAssignment = vi.fn();
 const deleteCssUserRoleAssignment = vi.fn();
 const getRegions = vi.fn();
+const getDistricts = vi.fn();
+const autocompleteForestClients = vi.fn();
 
 vi.mock("@/services/ApiServiceFactory", () => ({
     AdminMgmtApiService: {
@@ -39,9 +41,12 @@ vi.mock("@/services/ApiServiceFactory", () => ({
         },
     },
     AppActlApiService: {
-        districtsApi: { getDistricts: () => Promise.resolve({ data: [] }) },
+        districtsApi: { getDistricts: () => getDistricts() },
         regionsApi: { getRegions: () => getRegions() },
-        forestClientsApi: {},
+        forestClientsApi: {
+            autocompleteForestClients: (term: string, environment: string) =>
+                autocompleteForestClients(term, environment),
+        },
     },
 }));
 
@@ -70,8 +75,54 @@ const assignment = (region: string) => ({
     scopes: [{ type: "REGION", value: region, label: region }],
 });
 
+const SUBMITTER = {
+    name: "FREP_SUBMITTER",
+    display_name: "Submitter",
+    role_type_district: false,
+    role_type_region: false,
+    role_type_client: true,
+};
+
+const clientAssignment = (number: string) => ({
+    username: "JSMITH",
+    user_guid: "B2",
+    domain: "IDIR",
+    first_name: "Jane",
+    last_name: "Smith",
+    email: "jane@gov.bc.ca",
+    role_name: "FREP_SUBMITTER",
+    role_display_name: "Submitter",
+    scopes: [{ type: "FOREST_CLIENT", value: number, label: null }],
+});
+
+const EDITOR = {
+    name: "FREP_EDITOR",
+    display_name: "Editor",
+    role_type_district: true,
+    role_type_region: false,
+    role_type_client: false,
+};
+
+const districtAssignment = (code: string) => ({
+    username: "JSMITH",
+    user_guid: "B2",
+    domain: "IDIR",
+    first_name: "Jane",
+    last_name: "Smith",
+    email: "jane@gov.bc.ca",
+    role_name: "FREP_EDITOR",
+    role_display_name: "Editor",
+    scopes: [{ type: "DISTRICT", value: code, label: null }],
+});
+
 const QUERY =
     "?integrationId=6538&environment=dev&userGuid=B2&roleName=FREP_VIEWER&expiresOn=";
+
+const DISTRICT_QUERY =
+    "?integrationId=6538&environment=dev&userGuid=B2&roleName=FREP_EDITOR&expiresOn=";
+
+const CLIENT_QUERY =
+    "?integrationId=6538&environment=dev&userGuid=B2&roleName=FREP_SUBMITTER&expiresOn=";
 
 const renderPage = (query = QUERY) =>
     render(
@@ -117,6 +168,8 @@ describe("EditAppPermission", () => {
         });
         createCssUserRoleAssignment.mockReset().mockResolvedValue({ data: [] });
         deleteCssUserRoleAssignment.mockReset().mockResolvedValue({ data: {} });
+        autocompleteForestClients.mockReset().mockResolvedValue({ data: [] });
+        getDistricts.mockReset().mockResolvedValue({ data: [] });
     });
 
     it("says who is being edited instead of asking", async () => {
@@ -257,5 +310,157 @@ describe("EditAppPermission", () => {
         isNoop in editUtils.spec.ts - so what is untested is the wiring between
         the field and that decision, not the behaviour itself.
     */
+
+    /**
+     * What a held organisation is called.
+     *
+     * <p>Districts and regions arrive as whole lists FAM holds, so a code
+     * becomes a name for free. An organisation's name lives in the Forest
+     * Client API, and the page opened without asking it - so an organisation
+     * already granted showed a number with an empty name and an empty status,
+     * while the same one added through the picker showed both.
+     */
+    describe("organisations already granted", () => {
+        const ACME = {
+            forest_client_number: "00001012",
+            client_name: "ACME FORESTRY LTD",
+            status: { status_code: "A", description: "Active" },
+        };
+
+        beforeEach(() => {
+            getCssUserRoleAssignments.mockResolvedValue({
+                data: [clientAssignment("00001012")],
+            });
+            getCssApplicationRoles.mockResolvedValue({ data: [SUBMITTER] });
+            autocompleteForestClients.mockResolvedValue({ data: [ACME] });
+        });
+
+        it("shows their name and status on opening, not just a number", async () => {
+            renderPage(CLIENT_QUERY);
+
+            expect(
+                await screen.findByText("ACME FORESTRY LTD")
+            ).toBeInTheDocument();
+            expect(await screen.findByText("Active")).toBeInTheDocument();
+            expect(screen.getByText("00001012")).toBeInTheDocument();
+        });
+
+        it("looks each held number up by number", async () => {
+            renderPage(CLIENT_QUERY);
+
+            await screen.findByText("ACME FORESTRY LTD");
+            expect(autocompleteForestClients).toHaveBeenCalledWith(
+                "00001012",
+                "dev"
+            );
+        });
+
+        it("ignores anything the search returns that was not asked for", async () => {
+            // The endpoint matches on containment, so a number can bring back
+            // its neighbours. Only the exact one is this grant's.
+            autocompleteForestClients.mockResolvedValue({
+                data: [
+                    { forest_client_number: "00010121", client_name: "SOMEBODY ELSE" },
+                    ACME,
+                ],
+            });
+
+            renderPage(CLIENT_QUERY);
+
+            expect(
+                await screen.findByText("ACME FORESTRY LTD")
+            ).toBeInTheDocument();
+            expect(screen.queryByText("SOMEBODY ELSE")).not.toBeInTheDocument();
+        });
+
+        it("still shows the number when the lookup fails", async () => {
+            /*
+                Deactivated since it was granted - the search returns only
+                active organisations - or the API is down. Either way the person
+                holds it, and the page has to open on it: dropping it would
+                quietly revoke it on save.
+            */
+            autocompleteForestClients.mockRejectedValue(new Error("upstream"));
+
+            renderPage(CLIENT_QUERY);
+
+            expect(await screen.findByText("00001012")).toBeInTheDocument();
+            expect(
+                screen.queryByText("This permission could not be found")
+            ).not.toBeInTheDocument();
+        });
+    });
+
+    /**
+     * What a held district is called.
+     *
+     * <p>The form is seeded the moment the grant loads, and the district list is
+     * a separate request that can land after it. Seeded from a code and never
+     * revisited, the form read DCC where every other screen reads a name.
+     */
+    describe("districts already granted", () => {
+        const CARIBOO = {
+            org_unit_code: "DCC",
+            org_unit_name: "Cariboo-Chilcotin Natural Resource District",
+            expired: false,
+        };
+
+        beforeEach(() => {
+            getCssUserRoleAssignments.mockResolvedValue({
+                data: [districtAssignment("DCC")],
+            });
+            getCssApplicationRoles.mockResolvedValue({ data: [EDITOR] });
+            getDistricts.mockResolvedValue({ data: [CARIBOO] });
+        });
+
+        it("shows the district by name", async () => {
+            renderPage(DISTRICT_QUERY);
+
+            expect(
+                await screen.findByText(
+                    "Cariboo-Chilcotin Natural Resource District"
+                )
+            ).toBeInTheDocument();
+        });
+
+        it("picks the name up when the list arrives after the form", async () => {
+            // The case the form used to miss: it seeds on the grant, which is
+            // ready first, and the list settles a moment later.
+            getDistricts.mockImplementation(
+                () =>
+                    new Promise((resolve) =>
+                        setTimeout(() => resolve({ data: [CARIBOO] }), 60)
+                    )
+            );
+
+            renderPage(DISTRICT_QUERY);
+
+            // Seeded from the code, because that is all there is yet.
+            await waitFor(() => expect(scopePanel()).not.toBeNull());
+
+            expect(
+                await screen.findByText(
+                    "Cariboo-Chilcotin Natural Resource District"
+                )
+            ).toBeInTheDocument();
+        });
+
+        it("keeps a district the list does not name", async () => {
+            // Retired from the reference set. The person holds it, and dropping
+            // it here would quietly revoke it on save.
+            getCssUserRoleAssignments.mockResolvedValue({
+                data: [districtAssignment("DZZ")],
+            });
+
+            renderPage(DISTRICT_QUERY);
+
+            await waitFor(() => expect(scopePanel()).not.toBeNull());
+            // Twice over: the code column, and the name column falling back to
+            // it because there is no better name to show.
+            expect(
+                within(scopePanel()).getAllByText("DZZ").length
+            ).toBeGreaterThan(0);
+        });
+    });
 });
 

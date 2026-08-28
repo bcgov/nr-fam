@@ -55,6 +55,7 @@ public class PermissionAuditWriteService {
   private final EntityManager entityManager;
   private final ObjectMapper objectMapper;
   private final UserLookupClient userLookupClient;
+  private final CssNameSnapshot cssNameSnapshot;
 
   /**
    * Record a grant made through CSS.
@@ -86,7 +87,7 @@ public class PermissionAuditWriteService {
 
     save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.GRANT,
-        toCssDetails(roleName, assigned));
+        toCssDetails(cssIntegrationId, cssEnvironment, roleName, assigned));
   }
 
   /**
@@ -117,7 +118,7 @@ public class PermissionAuditWriteService {
 
     save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.REVOKE,
-        toCssDetails(roleName, asResults));
+        toCssDetails(cssIntegrationId, cssEnvironment, roleName, asResults));
   }
 
   /**
@@ -213,6 +214,18 @@ public class PermissionAuditWriteService {
     FamPrivilegeChangeAudit audit = new FamPrivilegeChangeAudit();
     audit.setCssIntegrationId(cssIntegrationId);
     audit.setCssEnvironment(cssEnvironment);
+    /*
+        The application's name, written rather than resolved when the history is
+        read. An integration removed from CSS - decommissioned, or moved to
+        another team - would otherwise leave every row about it labelled by a
+        number, which is not an answer a trail should ever give about itself.
+
+        Best effort: null when CSS cannot be reached, and the read path falls
+        back exactly as it did before. A record that failed to write because a
+        label could not be fetched would be the worse outcome by far.
+    */
+    audit.setCssApplicationName(
+        cssNameSnapshot.applicationName(cssIntegrationId, cssEnvironment).orElse(null));
     // Both identities in the <TYPE>\<GUID> form the audit columns use, so one
     // value names the person and the directory they came from. That prefix is
     // why there is no separate target_user_type_code: it would be a second copy
@@ -283,6 +296,7 @@ public class PermissionAuditWriteService {
    * null rather than carrying a value the underlying system will not honour.
    */
   private PrivilegeDetailsDto toCssDetails(
+      Integer cssIntegrationId, String cssEnvironment,
       String roleName, List<CssUserRoleAssignmentResult> assigned) {
 
     // Every scope on every role actually assigned, read back out of the names.
@@ -302,9 +316,26 @@ public class PermissionAuditWriteService {
             null))
         .toList();
 
+    /*
+        What the role is called, written beside the code rather than resolved
+        when the history is read.
+
+        A role's name lives on a sidecar role in CSS, and deleting a role takes
+        its sidecar with it - so a trail that resolved names on read lost them
+        for exactly the roles most worth reading about. The code is what the
+        change was made against and stays authoritative; this is the word beside
+        it.
+
+        Null for a role with no sidecar, which is every role added directly in
+        the CSS console, and null when CSS could not be reached.
+    */
+    String displayName = cssNameSnapshot
+        .roleDisplayName(cssIntegrationId, cssEnvironment, roleName)
+        .orElse(null);
+
     PrivilegeDetailsRoleDto roleDetails = scopes.isEmpty()
-        ? new PrivilegeDetailsRoleDto(roleName, null, null, null)
-        : new PrivilegeDetailsRoleDto(roleName, scopes, null, null);
+        ? new PrivilegeDetailsRoleDto(roleName, null, null, displayName)
+        : new PrivilegeDetailsRoleDto(roleName, scopes, null, displayName);
 
     return new PrivilegeDetailsDto(
         PrivilegeDetailsPermissionType.END_USER, List.of(roleDetails));
@@ -313,9 +344,11 @@ public class PermissionAuditWriteService {
   /**
    * The name a person would recognise for a scope value, or null.
    *
-   * <p>Only regions have one FAM can resolve without asking anybody: districts
-   * come from an upstream list and organisations from the Forest Client API, and
-   * neither is worth a call on the write path of an audit row.
+   * <p>Only regions get one. A district's name could be resolved as cheaply -
+   * both are fixed reference sets held in code - but the trail shows districts
+   * by code, as the permission pills do, so writing the name would record
+   * something nothing reads. An organisation's name comes from the Forest Client
+   * API and is not worth a call on the write path of an audit row.
    */
   private static String readableName(String scopeType, String value) {
     if (!"REGION".equalsIgnoreCase(scopeType)) {

@@ -25,20 +25,6 @@ test.describe("bulk upload", () => {
 
     test.skip(!TARGET_USER, "E2E_TARGET_IDIR is not set - nothing to upload");
 
-    /** The target user's real GUID, which is what the CSV keys on. */
-    const guidOf = async (
-        request: import("@playwright/test").APIRequestContext
-    ): Promise<string | null> => {
-        const lookup = await request.get(
-            `/api/identity-lookup/idir?userId=${encodeURIComponent(TARGET_USER)}`
-        );
-        if (!lookup.ok()) {
-            return null;
-        }
-        const found = await lookup.json();
-        return found?.user_guid ?? found?.userGuid ?? null;
-    };
-
     /** Opens the bulk upload screen for one application. */
     const openBulkUpload = async (
         page: import("@playwright/test").Page,
@@ -62,7 +48,6 @@ test.describe("bulk upload", () => {
 
     test("previews a file, resolving names before anything is granted", async ({ sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULK_${uniqueSuffix()}`;
         const roleName = "E2E bulk role";
@@ -70,19 +55,10 @@ test.describe("bulk upload", () => {
         try {
             await createRole(page, sandboxApp!.description, { code, name: roleName });
 
-            // The CSV keys the user by GUID, so it needs the real one.
-            const lookup = await request.get(
-                `/api/identity-lookup/idir?userId=${encodeURIComponent(TARGET_USER)}`
-            );
-            test.skip(!lookup.ok(), "the directory lookup failed");
-            const found = await lookup.json();
-            const guid = found?.user_guid ?? found?.userGuid;
-            test.skip(!guid, "the directory returned no GUID");
-
             await openApplication(page, sandboxApp!.description);
             await page.getByRole("button", { name: /bulk|upload/i }).first().click();
 
-            await upload(page, `${guid},IDIR,${code}\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code}\n`);
 
             // The preview resolves the person and the role, so the uploader
             // confirms names rather than identifiers - which is the entire
@@ -114,7 +90,7 @@ test.describe("bulk upload", () => {
             await openApplication(page, sandboxApp!.description);
             await page.getByRole("button", { name: /bulk|upload/i }).first().click();
 
-            await upload(page, "NOTAREALGUID,IDIR,NOT_A_REAL_ROLE\n");
+            await upload(page, "NOTAREALUSER,IDIR,NOT_A_REAL_ROLE\n");
 
             // Rows are unrelated people; one bad line must not discard the rest,
             // so the error belongs on the row rather than on the upload.
@@ -129,7 +105,6 @@ test.describe("bulk upload", () => {
     test("resolves a district into a place name before granting", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKD_${uniqueSuffix()}`;
 
@@ -140,11 +115,8 @@ test.describe("bulk upload", () => {
                 district: true,
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
-            await upload(page, `${guid},IDIR,${code},DCC\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code},DCC\n`);
 
             // A district code is not something anybody can check by eye, which
             // is the whole reason the confirmation step exists.
@@ -159,7 +131,6 @@ test.describe("bulk upload", () => {
     test("refuses a district on a role that is not granted per district", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKU_${uniqueSuffix()}`;
 
@@ -169,11 +140,8 @@ test.describe("bulk upload", () => {
                 name: "E2E bulk unscoped role",
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
-            await upload(page, `${guid},IDIR,${code},DCC\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code},DCC\n`);
 
             // The dangerous direction: the value would simply be ignored, and
             // the row would grant wider access than the file asks for.
@@ -188,7 +156,6 @@ test.describe("bulk upload", () => {
     test("refuses a scoped role with its scope column left empty", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKS_${uniqueSuffix()}`;
 
@@ -199,11 +166,8 @@ test.describe("bulk upload", () => {
                 district: true,
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
-            await upload(page, `${guid},IDIR,${code}\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code}\n`);
 
             // Granting the base role would assign something no application
             // authorises on.
@@ -218,7 +182,6 @@ test.describe("bulk upload", () => {
     test("resolves a region into a place name before granting", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKR_${uniqueSuffix()}`;
 
@@ -229,12 +192,9 @@ test.describe("bulk upload", () => {
                 region: true,
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
             // Six columns: the region is the last one, after organization.
-            await upload(page, `${guid},IDIR,${code},,,CARIBOO\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code},,,CARIBOO\n`);
 
             // Same reason the district test exists: a code is not something
             // anybody can check by eye, and the confirmation step is what turns
@@ -250,7 +210,6 @@ test.describe("bulk upload", () => {
     test("keeps the region column clear of the organization column", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKC_${uniqueSuffix()}`;
 
@@ -261,15 +220,12 @@ test.describe("bulk upload", () => {
                 district: true,
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
             // Five columns, written before regions existed. The parser is
             // positional, so this is the case that would break had the region
             // column been slotted in beside district rather than appended -
             // the empty organization column would have been read as a region.
-            await upload(page, `${guid},IDIR,${code},DCC,\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code},DCC,\n`);
 
             await expect(page.getByText("Cariboo-Chilcotin").first()).toBeVisible({
                 timeout: 60_000,
@@ -285,7 +241,6 @@ test.describe("bulk upload", () => {
     test("refuses a region on a role that is not granted per region", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKRU_${uniqueSuffix()}`;
 
@@ -295,11 +250,8 @@ test.describe("bulk upload", () => {
                 name: "E2E bulk unscoped role",
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
-            await upload(page, `${guid},IDIR,${code},,,CARIBOO\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code},,,CARIBOO\n`);
 
             // As with district: the value would otherwise be ignored and the row
             // would grant wider access than the file asks for.
@@ -314,7 +266,6 @@ test.describe("bulk upload", () => {
     test("refuses a region-scoped role with its region column left empty", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKRS_${uniqueSuffix()}`;
 
@@ -325,11 +276,8 @@ test.describe("bulk upload", () => {
                 region: true,
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
-            await upload(page, `${guid},IDIR,${code}\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code}\n`);
 
             await expect(
                 page.getByText(/granted per region/i).first()
@@ -342,7 +290,6 @@ test.describe("bulk upload", () => {
     test("refuses a region code that is not one", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKRX_${uniqueSuffix()}`;
 
@@ -353,11 +300,8 @@ test.describe("bulk upload", () => {
                 region: true,
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
-            await upload(page, `${guid},IDIR,${code},,,NOPE\n`);
+            await upload(page, `${TARGET_USER},IDIR,${code},,,NOPE\n`);
 
             await expect(
                 page.getByText(/not a natural resource region/i).first()
@@ -370,7 +314,6 @@ test.describe("bulk upload", () => {
     test("refuses a user type that is neither IDIR nor BCEID", async ({
         sandboxApp,
         page,
-        request,
     }) => {
         const code = `E2E_BULKT_${uniqueSuffix()}`;
 
@@ -380,13 +323,10 @@ test.describe("bulk upload", () => {
                 name: "E2E bulk type role",
             });
 
-            const guid = await guidOf(request);
-            test.skip(!guid, "the directory returned no GUID");
-
             await openBulkUpload(page, sandboxApp!.description);
             // BCSC is a real identity provider and deliberately not one FAM
             // admits, so it is the value most likely to be typed in error.
-            await upload(page, `${guid},BCSC,${code}\n`);
+            await upload(page, `${TARGET_USER},BCSC,${code}\n`);
 
             await expect(page.getByText(/not a user type/i).first()).toBeVisible({
                 timeout: 60_000,
@@ -410,7 +350,7 @@ test.describe("bulk upload", () => {
         // And the shape of the file is on screen beside it, so nobody has to
         // open the template to learn what the columns are.
         await expect(
-            page.getByText(/user_guid,user_type,role/).first()
+            page.getByText(/username,user_type,role/).first()
         ).toBeVisible();
     });
 });

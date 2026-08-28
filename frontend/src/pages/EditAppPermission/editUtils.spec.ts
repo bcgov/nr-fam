@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { FamDistrictDto, FamForestClientDto, FamRegionDto } from "fam-api";
 import type { PermissionGroup } from "@/components/PermissionsTable/utils";
-import { combinationKey, diffScopes, isNoop, plannedGrants, toSelection } from "./editUtils";
+import type { RoleScopeSelection } from "@/utils/ScopeUtils";
+import type { KnownNames } from "./editUtils";
+import {
+    combinationKey,
+    diffScopes,
+    forestClientNumbers,
+    isNoop,
+    plannedGrants,
+    toSelection,
+    withResolvedNames,
+} from "./editUtils";
 
 /**
  * Reading a grant back into the form that would have made it.
@@ -226,3 +237,176 @@ describe("isNoop", () => {
     });
 });
 
+describe("forestClientNumbers", () => {
+    it("lists the organisations a grant is held for, once each", () => {
+        // A compound role repeats them: granted for two districts against one
+        // organisation, that organisation is in both combinations and would
+        // otherwise be looked up twice.
+        const held = group([
+            [scope("DISTRICT", "DCC"), scope("FOREST_CLIENT", "00001012")],
+            [scope("DISTRICT", "DMH"), scope("FOREST_CLIENT", "00001012")],
+            [scope("DISTRICT", "DMH"), scope("FOREST_CLIENT", "00002045")],
+        ]);
+
+        expect(forestClientNumbers(held)).toEqual(["00001012", "00002045"]);
+    });
+
+    it("is empty for a grant with no organisation in it", () => {
+        expect(forestClientNumbers(group([[scope("REGION", "SKEENA")]]))).toEqual([]);
+    });
+});
+
+/**
+ * Naming what a grant is held for, once the lists it is named from arrive.
+ *
+ * A held scope opens as a bare code or number. The page used to seed the form
+ * the moment the grant itself loaded and never revisit it, so a district list
+ * that arrived a moment later left the form reading DCC where every other screen
+ * reads a name - and an organisation, whose name is fetched a number at a time,
+ * showed a number with an empty name and an empty status while the same one
+ * added through the picker showed both.
+ */
+describe("withResolvedNames", () => {
+    const DCC = { org_unit_code: "DCC", org_unit_name: "Cariboo-Chilcotin" } as FamDistrictDto;
+    const SKEENA = { region_code: "SKEENA", region_name: "Skeena" } as FamRegionDto;
+    const ACME: FamForestClientDto = {
+        forest_client_number: "00001012",
+        client_name: "ACME FORESTRY LTD",
+        status: { status_code: "A", description: "Active" },
+    };
+
+    const known = (over: Partial<KnownNames> = {}): KnownNames => ({
+        districts: new Map(),
+        regions: new Map(),
+        clients: new Map(),
+        ...over,
+    });
+
+    const selection = (over: Partial<RoleScopeSelection> = {}) =>
+        [
+            {
+                role: ROLE,
+                districts: [],
+                regions: [],
+                forestClients: [],
+                ...over,
+            },
+        ] as RoleScopeSelection[];
+
+    it("gives a district its name when the list arrives after the form", () => {
+        /*
+            The list is fetched alongside the grant and can land second. The
+            form seeded from a code has to pick the name up, or it reads DCC for
+            the rest of the session.
+        */
+        const held = selection({
+            districts: [{ org_unit_code: "DCC", org_unit_name: "DCC" } as FamDistrictDto],
+        });
+
+        const named = withResolvedNames(held, known({ districts: new Map([["DCC", DCC]]) }));
+
+        expect(named[0].districts[0]).toBe(DCC);
+    });
+
+    it("gives a region its name the same way", () => {
+        const held = selection({
+            regions: [{ region_code: "SKEENA", region_name: "SKEENA" } as FamRegionDto],
+        });
+
+        const named = withResolvedNames(held, known({ regions: new Map([["SKEENA", SKEENA]]) }));
+
+        expect(named[0].regions[0]).toBe(SKEENA);
+    });
+
+    it("gives a held organisation its name and status", () => {
+        const named = withResolvedNames(
+            selection({
+                forestClients: [{ forest_client_number: "00001012" } as FamForestClientDto],
+            }),
+            known({ clients: new Map([["00001012", ACME]]) })
+        );
+
+        expect(named[0].forestClients[0]).toBe(ACME);
+    });
+
+    it("leaves an organisation that already has a name alone", () => {
+        // It came from the picker, which answers with the whole record. Looking
+        // it up again could only replace it with the same thing.
+        const chosen = selection({ forestClients: [ACME] });
+
+        expect(
+            withResolvedNames(chosen, known({ clients: new Map([["00001012", { ...ACME }]]) }))
+        ).toBe(chosen);
+    });
+
+    it("keeps a scope nothing names", () => {
+        /*
+            A district retired from the reference set, an organisation
+            deactivated since it was granted, or a list that never arrived. It
+            is still a scope the person holds, and dropping it here would
+            quietly revoke it on save.
+        */
+        const held = selection({
+            districts: [{ org_unit_code: "DZZ", org_unit_name: "DZZ" } as FamDistrictDto],
+            forestClients: [{ forest_client_number: "00009999" } as FamForestClientDto],
+        });
+
+        const named = withResolvedNames(
+            held,
+            known({
+                districts: new Map([["DCC", DCC]]),
+                clients: new Map([["00001012", ACME]]),
+            })
+        );
+
+        expect(named[0].districts[0].org_unit_code).toBe("DZZ");
+        expect(named[0].forestClients[0]).toEqual({ forest_client_number: "00009999" });
+    });
+
+    it("does not reinstate a scope that was removed while the list was loading", () => {
+        /*
+            Why this names the current selection rather than rebuilding it from
+            the grant. Rebuilding would put back the region somebody had just
+            taken off, and the save would silently re-grant it.
+        */
+        const afterRemoval = selection({ regions: [] });
+
+        const named = withResolvedNames(
+            afterRemoval,
+            known({ regions: new Map([["SKEENA", SKEENA]]) })
+        );
+
+        expect(named[0].regions).toEqual([]);
+    });
+
+    it("returns what it was given when nothing resolved", () => {
+        /*
+            The page sets state with this on every change to any of the lists. A
+            new array each time would queue a render that changes nothing, and
+            the effect that does it would never settle.
+        */
+        const held = selection({
+            forestClients: [{ forest_client_number: "00009999" } as FamForestClientDto],
+        });
+
+        expect(withResolvedNames(held, known())).toBe(held);
+        expect(withResolvedNames(held, known({ clients: new Map([["00001012", ACME]]) }))).toBe(
+            held
+        );
+    });
+
+    it("settles on a second pass over what it just named", () => {
+        // The reference sets are authoritative, so entries are replaced rather
+        // than merged - which would loop if it never recognised its own work.
+        const named = withResolvedNames(
+            selection({
+                districts: [{ org_unit_code: "DCC", org_unit_name: "DCC" } as FamDistrictDto],
+            }),
+            known({ districts: new Map([["DCC", DCC]]) })
+        );
+
+        expect(withResolvedNames(named, known({ districts: new Map([["DCC", DCC]]) }))).toBe(
+            named
+        );
+    });
+});

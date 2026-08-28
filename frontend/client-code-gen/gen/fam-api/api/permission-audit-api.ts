@@ -24,6 +24,8 @@ import { BASE_PATH, COLLECTION_FORMATS, RequestArgs, BaseAPI, RequiredError, ope
 // @ts-ignore
 import { PermissionAuditHistoryDto } from '../model';
 // @ts-ignore
+import { PermissionAuditUserDto } from '../model';
+// @ts-ignore
 import { UserType } from '../model';
 /**
  * PermissionAuditApi - axios parameter creator
@@ -93,6 +95,54 @@ export const PermissionAuditApiAxiosParamCreator = function (configuration?: Con
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary People with permission audit history in an application
+         * @param {number} cssIntegrationId 
+         * @param {string} cssEnvironment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getPermissionAuditUsersByApplication: async (cssIntegrationId: number, cssEnvironment: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'cssIntegrationId' is not null or undefined
+            assertParamExists('getPermissionAuditUsersByApplication', 'cssIntegrationId', cssIntegrationId)
+            // verify required parameter 'cssEnvironment' is not null or undefined
+            assertParamExists('getPermissionAuditUsersByApplication', 'cssEnvironment', cssEnvironment)
+            const localVarPath = `/permission-audit-history/users`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (cssIntegrationId !== undefined) {
+                localVarQueryParameter['cssIntegrationId'] = cssIntegrationId;
+            }
+
+            if (cssEnvironment !== undefined) {
+                localVarQueryParameter['cssEnvironment'] = cssEnvironment;
+            }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -119,6 +169,20 @@ export const PermissionAuditApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['PermissionAuditApi.getPermissionAuditHistoryByUserAndApplication']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * 
+         * @summary People with permission audit history in an application
+         * @param {number} cssIntegrationId 
+         * @param {string} cssEnvironment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getPermissionAuditUsersByApplication(cssIntegrationId: number, cssEnvironment: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<PermissionAuditUserDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getPermissionAuditUsersByApplication(cssIntegrationId, cssEnvironment, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['PermissionAuditApi.getPermissionAuditUsersByApplication']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -142,6 +206,17 @@ export const PermissionAuditApiFactory = function (configuration?: Configuration
         getPermissionAuditHistoryByUserAndApplication(targetUserGuid: string, targetUserType: UserType, cssIntegrationId: number, cssEnvironment: string, options?: any): AxiosPromise<Array<PermissionAuditHistoryDto>> {
             return localVarFp.getPermissionAuditHistoryByUserAndApplication(targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment, options).then((request) => request(axios, basePath));
         },
+        /**
+         * 
+         * @summary People with permission audit history in an application
+         * @param {number} cssIntegrationId 
+         * @param {string} cssEnvironment 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getPermissionAuditUsersByApplication(cssIntegrationId: number, cssEnvironment: string, options?: any): AxiosPromise<Array<PermissionAuditUserDto>> {
+            return localVarFp.getPermissionAuditUsersByApplication(cssIntegrationId, cssEnvironment, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -163,6 +238,17 @@ export interface PermissionAuditApiInterface {
      * @memberof PermissionAuditApiInterface
      */
     getPermissionAuditHistoryByUserAndApplication(targetUserGuid: string, targetUserType: UserType, cssIntegrationId: number, cssEnvironment: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<PermissionAuditHistoryDto>>;
+
+    /**
+     * 
+     * @summary People with permission audit history in an application
+     * @param {number} cssIntegrationId 
+     * @param {string} cssEnvironment 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof PermissionAuditApiInterface
+     */
+    getPermissionAuditUsersByApplication(cssIntegrationId: number, cssEnvironment: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<PermissionAuditUserDto>>;
 
 }
 
@@ -186,6 +272,19 @@ export class PermissionAuditApi extends BaseAPI implements PermissionAuditApiInt
      */
     public getPermissionAuditHistoryByUserAndApplication(targetUserGuid: string, targetUserType: UserType, cssIntegrationId: number, cssEnvironment: string, options?: RawAxiosRequestConfig) {
         return PermissionAuditApiFp(this.configuration).getPermissionAuditHistoryByUserAndApplication(targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary People with permission audit history in an application
+     * @param {number} cssIntegrationId 
+     * @param {string} cssEnvironment 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof PermissionAuditApi
+     */
+    public getPermissionAuditUsersByApplication(cssIntegrationId: number, cssEnvironment: string, options?: RawAxiosRequestConfig) {
+        return PermissionAuditApiFp(this.configuration).getPermissionAuditUsersByApplication(cssIntegrationId, cssEnvironment, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

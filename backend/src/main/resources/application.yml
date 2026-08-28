@@ -178,6 +178,16 @@ fam:
   # Expired access is removed on a timer, because nothing else can remove it:
   # CSS has no expiry concept, and BC Gov SSO issues the tokens so FAM cannot
   # filter roles out at sign-in the way the legacy application did.
+  # Bulk upload. The cap is a refusal rather than a truncation: silently granting
+  # the first N rows of a longer file is the worst outcome available.
+  #
+  # Directory lookups are made once per distinct person in the file, so rows do
+  # not each cost one. What does not fold up is the granting - CSS takes one call
+  # per assignment and they run in turn - so this number is really a statement
+  # about how long one apply request may take.
+  bulk-grant:
+    max-rows: ${FAM_BULK_MAX_ROWS:1000}
+
   expiry:
     sweep:
       enabled: ${EXPIRY_SWEEP_ENABLED:true}

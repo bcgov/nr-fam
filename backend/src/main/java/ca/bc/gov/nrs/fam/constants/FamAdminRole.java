@@ -16,7 +16,12 @@ import java.util.Optional;
  * FAM_ADMIN                      administers everything
  * APP_ADMIN_&lt;integrationId&gt;_&lt;ENV&gt;        e.g. APP_ADMIN_22264_DEV
  * DELEGATED_ADMIN_&lt;integrationId&gt;_&lt;ENV&gt;  e.g. DELEGATED_ADMIN_22264_DEV
+ * DEVOPS_ADMIN_&lt;integrationId&gt;_&lt;ENV&gt;     e.g. DEVOPS_ADMIN_22264_DEV
  * </pre>
+ *
+ * <p>The first three are degrees of authority over who holds what. The fourth is
+ * a different question entirely - what there is to hold - and grants no access
+ * management at all. See {@link AdminRoleAuthGroup}.
  *
  * <p>The integration id is used rather than the project name because FAM already
  * holds both halves of it - a CSS application <em>is</em> an integration id and
@@ -33,6 +38,7 @@ public final class FamAdminRole {
 
   private static final String APP_ADMIN_PREFIX = "APP_ADMIN_";
   private static final String DELEGATED_ADMIN_PREFIX = "DELEGATED_ADMIN_";
+  private static final String DEVOPS_ADMIN_PREFIX = "DEVOPS_ADMIN_";
 
   private FamAdminRole() {}
 
@@ -44,6 +50,17 @@ public final class FamAdminRole {
   /** {@code DELEGATED_ADMIN_22264_DEV} */
   public static String delegatedAdmin(int cssIntegrationId, String cssEnvironment) {
     return DELEGATED_ADMIN_PREFIX + suffix(cssIntegrationId, cssEnvironment);
+  }
+
+  /**
+   * {@code DEVOPS_ADMIN_22264_DEV}
+   *
+   * <p>May define and remove the roles of this one application, in this one
+   * environment, and nothing else. Per environment for the same reason the others
+   * are: a role invented in DEV is not a role invented in PROD.
+   */
+  public static String devopsAdmin(int cssIntegrationId, String cssEnvironment) {
+    return DEVOPS_ADMIN_PREFIX + suffix(cssIntegrationId, cssEnvironment);
   }
 
   /**
@@ -138,7 +155,35 @@ public final class FamAdminRole {
     if (name.startsWith(APP_ADMIN_PREFIX)) {
       return Optional.of(AdminRoleAuthGroup.APP_ADMIN);
     }
+    if (name.startsWith(DEVOPS_ADMIN_PREFIX)) {
+      return Optional.of(AdminRoleAuthGroup.DEVOPS_ADMIN);
+    }
     return Optional.empty();
+  }
+
+  /**
+   * What a person would call one of FAM's administrative roles.
+   *
+   * <p>These are the one family of roles that carries no label sidecar: they are
+   * created by FAM on its own integration as administrators are appointed, not
+   * defined on the Manage roles screen, so there is nothing in CSS to read a name
+   * from. Everything that shows a role by name would otherwise show
+   * {@code DEVOPS_ADMIN_6538_DEV} - a thing named rather than described.
+   *
+   * <p>Empty for an application's own roles, whose names come from CSS.
+   */
+  public static Optional<String> describe(String roleName) {
+    return tierOf(roleName).map(FamAdminRole::describe);
+  }
+
+  /** The same, for a tier already read out of a role name. */
+  public static String describe(AdminRoleAuthGroup tier) {
+    return switch (tier) {
+      case FAM_ADMIN -> "FAM administrator";
+      case APP_ADMIN -> "Application administrator";
+      case DELEGATED_ADMIN -> "Delegated administrator";
+      case DEVOPS_ADMIN -> "DevOps administrator";
+    };
   }
 
   /** Whether a role name is one of FAM's administrative roles at all. */
@@ -175,6 +220,8 @@ public final class FamAdminRole {
       suffix = name.substring(DELEGATED_ADMIN_PREFIX.length());
     } else if (name.startsWith(APP_ADMIN_PREFIX)) {
       suffix = name.substring(APP_ADMIN_PREFIX.length());
+    } else if (name.startsWith(DEVOPS_ADMIN_PREFIX)) {
+      suffix = name.substring(DEVOPS_ADMIN_PREFIX.length());
     } else {
       return Optional.empty();
     }

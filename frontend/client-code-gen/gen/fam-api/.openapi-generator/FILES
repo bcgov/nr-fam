@@ -26,6 +26,7 @@ model/css-delegated-admin-request.ts
 model/css-role-bulk-create-result-dto.ts
 model/css-role-create-request.ts
 model/css-role-delete-result-dto.ts
+model/css-role-management-application-dto.ts
 model/css-role-member-count-dto.ts
 model/css-role-option-dto.ts
 model/css-scope-selection.ts
@@ -41,6 +42,7 @@ model/fam-forest-client-status-type.ts
 model/fam-region-dto.ts
 model/index.ts
 model/permission-audit-history-dto.ts
+model/permission-audit-user-dto.ts
 model/privilege-change-performer-dto.ts
 model/privilege-change-type.ts
 model/privilege-details-dto.ts

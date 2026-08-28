@@ -19,6 +19,33 @@
 .search-fields-row .field-search-input {
   flex: 1 1 16rem;
   min-width: 12rem;
+  /* Anchors the validation message below - see the rule under this one. */
+  position: relative;
+}
+
+/*
+    The validation message hangs below the field rather than sitting inside it.
+
+    Carbon renders `invalidText` inside the input's wrapper, and this row aligns
+    on `flex-end` - so the moment the field became invalid its wrapper grew by
+    the height of the message and the field itself was pushed that far up, out of
+    line with the two selects and the Search button beside it.
+
+    Taken out of the flow, the wrapper is the height of the field in every state:
+    nothing moves when a message appears, and nothing is out of line while one is
+    showing. The row reserves the space below so the message has somewhere to go
+    that is not on top of the helper text.
+*/
+.search-fields-row .field-search-input .cds--form-requirement {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+}
+
+.search-fields-row:has(.field-search-input .cds--form-requirement) {
+  padding-bottom: 1.25rem;
 }
 
 .search-fields-row .field-search-button {

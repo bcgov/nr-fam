@@ -79,9 +79,11 @@
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--cds-border-subtle);
     border-radius: 2px;
-    // White surface so the uploaded-file chip reads as a card rather than
-    // blending into the modal's grey body.
-    background: #ffffff;
+    // Grey, as FSP's .file-chip is: the chip sits on a white card, so a white
+    // surface left it edge-only and reading as part of the card rather than as
+    // the thing that was picked. (It was white for a modal with a grey body -
+    // a caller this component no longer has.)
+    background: var(--cds-layer-01);
     font-size: 0.875rem;
     color: var(--cds-text-primary);
 

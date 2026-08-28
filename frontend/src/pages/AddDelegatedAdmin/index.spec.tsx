@@ -273,7 +273,7 @@ describe("AddDelegatedAdmin", () => {
         createCssDelegatedAdmin
             .mockResolvedValueOnce({ data: {} })
             .mockRejectedValueOnce({
-                response: { data: { description: "Not yours to delegate" } },
+                response: { data: { detail: { description: "Not yours to delegate" } } },
             });
         renderPage();
         await chooseUser();
@@ -299,7 +299,7 @@ describe("AddDelegatedAdmin", () => {
         // Nothing to confirm, and nowhere better to explain it - the form is
         // still filled in.
         createCssDelegatedAdmin.mockRejectedValue({
-            response: { data: { description: "Not yours to delegate" } },
+            response: { data: { detail: { description: "Not yours to delegate" } } },
         });
         renderPage();
         await chooseUser();

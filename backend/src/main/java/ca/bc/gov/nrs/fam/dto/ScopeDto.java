@@ -29,9 +29,14 @@ public record ScopeDto(
    *
    * <p>Only regions get one. Their names are a constant in FAM - see
    * {@link ca.bc.gov.nrs.fam.constants.Region} - so resolving them costs nothing.
-   * A district's name comes from an upstream list and an organisation's from the
-   * Forest Client API, and neither is worth a call per row: a district code is
-   * short and familiar, and an organisation number is what people search by.
+   *
+   * <p>A district's name is equally free to resolve - see
+   * {@link ca.bc.gov.nrs.fam.constants.District} - but is deliberately not
+   * resolved here: it runs to "Cariboo-Chilcotin Natural Resource District",
+   * which does not fit the pill the screens draw, and the code is short,
+   * familiar and what people quote. An organisation's name is the Forest Client
+   * API's to give and would cost a call per row, and its number is what people
+   * search by in any case.
    */
   public static ScopeDto of(CssRoleNaming.Scope scope) {
     return new ScopeDto(scope.type(), scope.value(), labelFor(scope));

@@ -22,6 +22,7 @@ import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -30,7 +31,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -38,14 +38,22 @@ import org.springframework.stereotype.Service;
  * Granting many users a role at once, from a two-column CSV.
  *
  * <pre>
- * user_guid,role
- * AABBCCDDEEFF00112233445566778899,FSPTS_VIEW_ALL
+ * username,role
+ * JSMITH,FSPTS_VIEW_ALL
  * </pre>
  *
  * <p>Deliberately the smallest file a person can be asked to produce. Everything
  * else the confirmation shows - names, organisations, the role's display name -
  * is resolved here, because those are what an uploader can actually check, and a
- * table of GUIDs and codes confirms nothing.
+ * table of codes confirms nothing.
+ *
+ * <p><b>The file names people by username, not by GUID.</b> A username is what
+ * an administrator has to hand and can check by eye; a GUID is transcribed from
+ * somewhere else and is wrong silently. CSS, however, provisions a user by GUID
+ * - so the directory lookup that every row already made to name the person is
+ * now also what supplies the GUID the grant is made with. A username nobody
+ * answers to is a refused row, where a mistyped GUID used to be one too, but
+ * only after somebody had already got it wrong.
  *
  * <p><b>Two passes, and the second does not trust the first.</b> The preview
  * writes nothing; the apply re-reads and re-validates the same file. A preview
@@ -54,18 +62,26 @@ import org.springframework.stereotype.Service;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class BulkGrantService {
 
   /**
    * Most rows accepted in one upload.
    *
-   * <p>Each row costs a directory lookup, and the directory is SOAP-backed and
-   * slow. A cap keeps one upload from becoming hundreds of upstream calls. It is
-   * a refusal, not a truncation: silently granting the first 200 rows of a longer
-   * file is the worst outcome available.
+   * <p>A refusal, not a truncation: silently granting the first N rows of a
+   * longer file is the worst outcome available.
+   *
+   * <p><b>The cap is about the apply, not the preview.</b> It was 200 because
+   * every row cost its own directory lookup; those are now made once per
+   * distinct person in the file, so a hundred people across five districts each
+   * is a hundred lookups rather than five hundred. What does not fold up is the
+   * granting: CSS takes one call per assignment and they run in turn, so a file
+   * of a thousand is a thousand sequential upstream calls inside one request.
+   * That is the number to weigh when raising this.
+   *
+   * <p>Configurable so an application with more users than this can be moved
+   * without a release - {@code FAM_BULK_MAX_ROWS}.
    */
-  private static final int MAX_ROWS = 200;
+  private final int maxRows;
 
   /**
    * The UTF-8 byte-order mark a spreadsheet writes at the start of a CSV.
@@ -82,6 +98,24 @@ public class BulkGrantService {
   private final ca.bc.gov.nrs.fam.security.TargetOrganizationGuard targetOrganizationGuard;
   private final ForestClientIntegrationService forestClientIntegrationService;
   private final ApiInstanceEnvResolver apiInstanceEnvResolver;
+
+  public BulkGrantService(
+      CssIntegrationService cssIntegrationService,
+      UserLookupClient userLookupClient,
+      AuthorizationService authorizationService,
+      ca.bc.gov.nrs.fam.security.TargetOrganizationGuard targetOrganizationGuard,
+      ForestClientIntegrationService forestClientIntegrationService,
+      ApiInstanceEnvResolver apiInstanceEnvResolver,
+      @org.springframework.beans.factory.annotation.Value("${fam.bulk-grant.max-rows:1000}")
+      int maxRows) {
+    this.cssIntegrationService = cssIntegrationService;
+    this.userLookupClient = userLookupClient;
+    this.authorizationService = authorizationService;
+    this.targetOrganizationGuard = targetOrganizationGuard;
+    this.forestClientIntegrationService = forestClientIntegrationService;
+    this.apiInstanceEnvResolver = apiInstanceEnvResolver;
+    this.maxRows = maxRows;
+  }
 
   /** What the upload would do. Writes nothing. */
   public CssBulkGrantPreviewDto preview(
@@ -191,12 +225,12 @@ public class BulkGrantService {
 
     if (parsed.isEmpty()) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
-          "The file has no rows. Expected two columns: a user GUID and a role.");
+          "The file has no rows. Expected two columns: a username and a role.");
     }
-    if (parsed.size() > MAX_ROWS) {
+    if (parsed.size() > maxRows) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
           "The file has %d rows; the most that can be uploaded at once is %d."
-              .formatted(parsed.size(), MAX_ROWS));
+              .formatted(parsed.size(), maxRows));
     }
 
     // One read of the application's roles for the whole file, rather than per row.
@@ -213,32 +247,60 @@ public class BulkGrantService {
     Set<String> seen = new LinkedHashSet<>();
     List<CssBulkGrantRowDto> rows = new ArrayList<>();
 
+    /*
+        One directory lookup per person, not per row.
+
+        A person granted a role for six districts is six rows and one human
+        being, and the directory is SOAP-backed and slow enough that the
+        difference is the difference between a file that uploads and one that
+        times out. Held for this file only - a map that outlived the request
+        would be a cache of who exists, which is not this service's to keep.
+
+        Keyed by the stated directory as well as the name: a row saying IDIR and
+        a row leaving the column empty are different questions, and the second
+        may resolve to a Business BCeID user the first must never reach.
+    */
+    Map<String, Resolved> resolvedUsers = new HashMap<>();
+
+    /*
+        What each person already holds here, for the same reason and on the same
+        terms: once per person rather than once per row.
+
+        Keyed by GUID, because that is what the roles are held against - two rows
+        naming the same person in different letter case are one lookup.
+    */
+    Map<String, Set<String>> heldRoles = new HashMap<>();
+
     for (ParsedRow row : parsed) {
-      rows.add(validateRow(
-          integrationId, environment, row, roles, clients, seen, requester));
+      rows.add(validateRow(integrationId, environment, row, roles, clients, seen,
+          resolvedUsers, heldRoles, requester));
     }
+
+    log.debug("Validated {} row(s) with {} directory lookup(s).",
+        parsed.size(), resolvedUsers.size());
     return rows;
   }
 
   private CssBulkGrantRowDto validateRow(
       int integrationId, String environment, ParsedRow row,
       Map<String, CssRoleOptionDto> roles, Map<String, ForestClient> clients,
-      Set<String> seen, Requester requester) {
+      Set<String> seen, Map<String, Resolved> resolvedUsers,
+      Map<String, Set<String>> heldRoles, Requester requester) {
 
     String district = row.district().toUpperCase(Locale.ROOT);
     String region = row.region().toUpperCase(Locale.ROOT);
     String clientNumber = padClientNumber(row.forestClient());
 
-    if (row.userGuid().isEmpty() || row.roleCode().isEmpty()) {
+    if (row.userName().isEmpty() || row.roleCode().isEmpty()) {
       return invalid(row, district, region, clientNumber,
-          "Both a user GUID and a role are required.");
+          "Both a username and a role are required.");
     }
 
     // The key includes the scope: the same person may legitimately get the same
     // role for two districts, which is two rows, but not the same district
     // twice - that would grant once and report twice, reading as a silent
     // failure on the second.
-    if (!seen.add(String.join("|", row.userGuid().toUpperCase(Locale.ROOT),
+    if (!seen.add(String.join("|", row.userName().toUpperCase(Locale.ROOT),
         row.roleCode().toUpperCase(Locale.ROOT), district, region, clientNumber))) {
       return invalid(row, district, region, clientNumber,
           "Duplicate of an earlier row in this file.");
@@ -350,10 +412,11 @@ public class BulkGrantService {
       clientName = client.name();
     }
 
-    // Which directory the file says this GUID is in. Optional - blank means
-    // "look in both" - but stating it is worth a column: a GUID is opaque, the
-    // two directories are searched in turn, and a Business BCeID user therefore
-    // costs a failed IDIR lookup on every row before being found.
+    // Which directory the file says this user is in. Optional - blank means
+    // "look in both" - but stating it is worth a column: the two directories are
+    // searched in turn, and a Business BCeID user therefore costs a failed IDIR
+    // lookup on every row before being found. The same username may also exist
+    // in both, and naming the directory is the only way to say which is meant.
     UserType stated;
     try {
       stated = parseUserType(row.userType());
@@ -363,32 +426,81 @@ public class BulkGrantService {
               .formatted(row.userType()));
     }
 
-    // The directory is the only thing that can say whether a GUID is a real
-    // person, and which of the two directories they are in.
-    Resolved resolved = resolve(row.userGuid(), stated);
+    // The directory is the only thing that can say whether a username is a real
+    // person, which of the two directories they are in, and - the part CSS needs
+    // - what their GUID is.
+    /*
+        computeIfAbsent would not do: a name nobody answers to resolves to null,
+        and the map would then look the lookup up again for every row that
+        repeats it - which is exactly the file this is here to make possible.
+    */
+    String lookupKey = row.userName().toUpperCase(Locale.ROOT)
+        + "|" + (stated == null ? "" : stated.name());
+    Resolved resolved;
+    if (resolvedUsers.containsKey(lookupKey)) {
+      resolved = resolvedUsers.get(lookupKey);
+    } else {
+      resolved = resolve(row.userName(), stated);
+      resolvedUsers.put(lookupKey, resolved);
+    }
+
     if (resolved == null) {
       return invalid(row, district, region, clientNumber, stated == null
-          ? "No IDIR or Business BCeID user has this GUID."
+          ? "No IDIR or Business BCeID user is named %s.".formatted(row.userName())
           // Named rather than falling back to the other directory: the file said
           // which one, and quietly granting a different person who happens to
-          // share the GUID is worse than refusing the row.
-          : "No %s user has this GUID.".formatted(stated.getCode()));
+          // share the username is worse than refusing the row.
+          : "No %s user is named %s.".formatted(stated.getCode(), row.userName()));
+    }
+
+    // The directory answered but had no GUID for them. CSS provisions by GUID
+    // and nothing else, so there is nothing to grant against - and a row that
+    // went ahead would be granting to nobody while reporting success.
+    if (resolved.userGuid() == null || resolved.userGuid().isBlank()) {
+      return invalid(row, district, region, clientNumber,
+          "%s has no GUID in the directory and cannot be granted access."
+              .formatted(row.userName()));
     }
 
     CssBulkGrantRowDto candidate = new CssBulkGrantRowDto(
-        row.lineNumber(), row.userGuid(), row.roleCode(),
+        row.lineNumber(), resolved.userGuid(), row.roleCode(),
         resolved.userType(), resolved.userName(), resolved.firstName(), resolved.lastName(),
         resolved.email(), resolved.organization(),
         role.displayName(),
         district.isEmpty() ? null : district, districtName,
         region.isEmpty() ? null : region, regionName,
         clientNumber.isEmpty() ? null : clientNumber, clientName,
-        true, null);
+        true, false, null);
+
+    /*
+        Already held?
+
+        Re-granting is harmless in CSS - the assignment is set membership - but
+        it emails the person again to tell them they have been given something
+        they already had, and writes an audit row for a change that did not
+        happen. A file re-uploaded after a partial run is mostly rows like this,
+        so they are shown and skipped rather than applied.
+
+        Compared on the concrete role name, which is what the grant would create:
+        the same base role for a different district is a different grant and must
+        still go ahead.
+    */
+    String wouldAssign = CssRoleNaming.buildScopedRoleName(role.name(), scopesFor(
+        district, region, clientNumber));
+
+    Set<String> held = heldRoles.computeIfAbsent(
+        resolved.userGuid().toUpperCase(Locale.ROOT),
+        guid -> cssIntegrationService.rolesHeldBy(
+            integrationId, environment, resolved.userGuid(), resolved.userType()));
+
+    if (held.contains(wouldAssign)) {
+      return candidate.asAlreadyGranted();
+    }
 
     // The same per-row rules the single grant path applies, checked now so the
     // confirmation is honest rather than discovered halfway through applying.
     try {
-      authorizationService.forbidSelfGrant(requester, row.userGuid());
+      authorizationService.forbidSelfGrant(requester, resolved.userGuid());
       authorizationService.requireGrantableRoles(
           requester, integrationId, environment, List.of(role.name()));
       // A Business BCeID uploader may only grant within their own organisation.
@@ -396,7 +508,7 @@ public class BulkGrantService {
       // here too is what keeps the confirmation honest, rather than showing a row
       // as grantable and refusing it on submit.
       targetOrganizationGuard.requireSameOrganization(
-          requester, resolved.userType(), row.userGuid());
+          requester, resolved.userType(), resolved.userGuid());
     } catch (FamHttpException e) {
       return withError(candidate, e.getDescription());
     }
@@ -404,10 +516,27 @@ public class BulkGrantService {
     return candidate;
   }
 
+  /** The row's scopes, for building the concrete role name it would assign. */
+  private static List<CssRoleNaming.Scope> scopesFor(
+      String district, String region, String clientNumber) {
+
+    List<CssRoleNaming.Scope> scopes = new ArrayList<>();
+    if (!district.isEmpty()) {
+      scopes.add(new CssRoleNaming.Scope(CssRoleNaming.SCOPE_DISTRICT, district));
+    }
+    if (!region.isEmpty()) {
+      scopes.add(new CssRoleNaming.Scope(CssRoleNaming.SCOPE_REGION, region));
+    }
+    if (!clientNumber.isEmpty()) {
+      scopes.add(new CssRoleNaming.Scope(CssRoleNaming.SCOPE_FOREST_CLIENT, clientNumber));
+    }
+    return scopes;
+  }
+
   private static CssBulkGrantRowDto invalid(
       ParsedRow row, String district, String region, String clientNumber, String error) {
     return CssBulkGrantRowDto.invalid(
-        row.lineNumber(), row.userGuid(), row.roleCode(), district, region, clientNumber, error);
+        row.lineNumber(), row.userName(), row.roleCode(), district, region, clientNumber, error);
   }
 
   /**
@@ -471,38 +600,46 @@ public class BulkGrantService {
   }
 
   /**
-   * Finds the person behind a GUID.
+   * Finds the person behind a username, and with them the GUID CSS needs.
+   *
+   * <p>The GUID is the point as much as the name is. CSS provisions a user by
+   * GUID and nothing else, so a file that names people the way people are named
+   * has to turn each one into a GUID before anything can be granted - and this
+   * lookup, which the row already made in order to show a name on the
+   * confirmation, is where that happens. A row whose GUID comes back blank is
+   * refused by the caller rather than sent on, because a grant made against no
+   * GUID would be a grant made against nobody.
    *
    * <p>When the file named a directory only that one is searched, so a row
-   * saying IDIR can never resolve to a Business BCeID user who happens to share
-   * the GUID. When it did not, both are tried in turn, as they always were -
-   * which costs a Business BCeID user a failed IDIR lookup on every row.
+   * saying IDIR can never resolve to a Business BCeID user of the same name.
+   * When it did not, both are tried in turn - which costs a Business BCeID user
+   * a failed IDIR lookup on every row.
    */
-  private Resolved resolve(String userGuid, UserType stated) {
+  private Resolved resolve(String userName, UserType stated) {
     if (stated == null || stated == UserType.IDIR) {
       try {
-        Optional<UserLookupIdirUserDto> idir = userLookupClient.getIdirDetailByGuid(userGuid);
+        Optional<UserLookupIdirUserDto> idir = userLookupClient.getIdirDetail(userName);
         if (idir.isPresent()) {
           UserLookupIdirUserDto user = idir.get();
-          return new Resolved(UserType.IDIR, user.userId(),
+          return new Resolved(UserType.IDIR, user.guid(), user.userId(),
               user.firstName(), user.lastName(), user.email(), null);
         }
       } catch (RuntimeException e) {
-        log.warn("IDIR lookup failed for {}: {}", userGuid, e.getMessage());
+        log.warn("IDIR lookup failed for {}: {}", userName, e.getMessage());
       }
     }
 
     if (stated == null || stated == UserType.BCEID) {
       try {
         Optional<UserLookupBceidUserDto> bceid = userLookupClient.getBusinessBceid(
-            UserLookupClient.SearchBy.USER_GUID, userGuid);
+            UserLookupClient.SearchBy.USER_ID, userName);
         if (bceid.isPresent()) {
           UserLookupBceidUserDto user = bceid.get();
-          return new Resolved(UserType.BCEID, user.userId(),
+          return new Resolved(UserType.BCEID, user.guid(), user.userId(),
               user.firstName(), user.lastName(), user.email(), user.businessLegalName());
         }
       } catch (RuntimeException e) {
-        log.warn("Business BCeID lookup failed for {}: {}", userGuid, e.getMessage());
+        log.warn("Business BCeID lookup failed for {}: {}", userName, e.getMessage());
       }
     }
 
@@ -541,11 +678,11 @@ public class BulkGrantService {
         row.firstName(), row.lastName(), row.email(), row.organization(),
         row.roleDisplayName(), row.district(), row.districtName(),
         row.region(), row.regionName(),
-        row.forestClientNumber(), row.forestClientName(), false, error);
+        row.forestClientNumber(), row.forestClientName(), false, false, error);
   }
 
   private record Resolved(
-      UserType userType, String userName, String firstName, String lastName,
+      UserType userType, String userGuid, String userName, String firstName, String lastName,
       String email, String organization) {}
 
   // ---------------------------------------------------------------------------
@@ -553,13 +690,13 @@ public class BulkGrantService {
   // ---------------------------------------------------------------------------
 
   private record ParsedRow(
-      int lineNumber, String userGuid, String userType, String roleCode,
+      int lineNumber, String userName, String userType, String roleCode,
       String district, String forestClient, String region) {}
 
   /**
    * Splits the file into rows.
    *
-   * <p>Six columns: user GUID, user type, role, district, organization, region.
+   * <p>Six columns: username, user type, role, district, organization, region.
    * The scope columns are blank for a role that is not scoped that way, and a
    * role scoped several ways carries each - one row is one grant, so a person
    * getting a role for three districts is three rows. That keeps the file
@@ -609,10 +746,16 @@ public class BulkGrantService {
    * <p>Checks the role column in its new position <em>and</em> its old one, so a
    * header written before the user-type column was added is still recognised as
    * one rather than uploaded as a row.
+   *
+   * <p>The old {@code user_guid} headings are still recognised. The column holds
+   * a username now, so such a file will not grant anything - but its header is
+   * better skipped than uploaded as a row, which would report a mysterious
+   * failure on line 1 on top of the real problem.
    */
   private static boolean isHeader(String first, String second, String third) {
     String a = normalise(first);
-    return a.equals("userguid") || a.equals("guid")
+    return a.equals("username") || a.equals("userid") || a.equals("user")
+        || a.equals("userguid") || a.equals("guid")
         || isRoleHeading(normalise(second)) || isRoleHeading(normalise(third));
   }
 

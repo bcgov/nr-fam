@@ -243,6 +243,24 @@ describe("UserSearch", () => {
         ).toHaveAttribute("type", "checkbox");
     });
 
+    it("keeps the row in line while a validation message is showing", async () => {
+        /*
+            Carbon renders invalidText inside the input's wrapper, and this row
+            aligns on flex-end - so the message used to grow the wrapper and push
+            the field a message's height above the two selects and the button
+            beside it. The message hangs below the field instead; the rule is in
+            UserSearch.css and this holds the markup it depends on.
+        */
+        renderSearch({}, "JSMITH");
+        await search("jsmith");
+        await screen.findByText("You cannot grant permissions to yourself.");
+
+        const message = screen.getByText("You cannot grant permissions to yourself.");
+        // Inside the wrapper the rule targets, so it is taken out of the flow.
+        expect(message.closest(".field-search-input")).not.toBeNull();
+        expect(message).toHaveClass("cds--form-requirement");
+    });
+
     it("refuses to search for the signed-in user", async () => {
         // Caught before the request: the person typed their own username, and
         // saying so is clearer than an empty result set.

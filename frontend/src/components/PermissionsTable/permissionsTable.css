@@ -23,25 +23,41 @@
   gap: 0.25rem;
 }
 
-.fam-table .action-button-group .btn-icon {
-  background: none;
-  border: none;
-  padding: 0.25rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
+/*
+    History and Edit, worded rather than left as bare icons - see the comment in
+    CssPermissionsTable. Matched to RemoveButton, which sits beside them: same
+    ghost button, same tightened padding, same refusal to wrap the word away from
+    its icon. Only the colour differs, and only because that one is destructive.
+*/
+.fam-table .action-button-group .row-action.cds--btn--ghost {
+  color: var(--cds-link-primary);
+  white-space: nowrap;
+  padding-inline: 0.5rem;
 }
 
-.fam-table .action-button-group .btn-icon svg {
-  fill: var(--cds-link-primary);
+.fam-table .action-button-group .row-action.cds--btn--ghost .cds--btn__icon {
+  fill: currentColor;
 }
 
-.fam-table .action-button-group .btn-icon:disabled {
-  cursor: not-allowed;
+/*
+    Binds each icon to its own word.
+
+    Carbon spaces the two twice over - a flex `gap` on the button and a
+    `margin-inline-start` on the icon - which came to 16px, wider than the gap
+    between one action and the next. The pairs read as six loose things rather
+    than three. Dropping the duplicated margin and tightening the gap leaves 4px
+    inside a pair against 20px between them, so the grouping is visible before
+    the words are read.
+
+    Scoped to this column rather than fixed in RemoveButton: that button is on
+    six other screens, at widths where Carbon's own spacing is right.
+*/
+.fam-table .action-button-group .cds--btn {
+  gap: 0.25rem;
 }
 
-.fam-table .action-button-group .btn-icon:disabled svg {
-  fill: var(--cds-text-disabled);
+.fam-table .action-button-group .cds--btn .cds--btn__icon {
+  margin-inline-start: 0;
 }
 
 .fam-table .nowrap-cell {
@@ -55,14 +71,19 @@
 /*
     A row a grant just created.
 
-    Carbon's zebra striping sets a background on every other row, and it is more
-    specific than a class on the row itself - hence the !important, without
-    which every second new row was highlighted and the others were not.
+    Marked down its left edge rather than filled. The fill was a saturated blue
+    across the whole row, and it took the Role and Scope pills with it - those
+    are light blue themselves, so the one row where somebody is checking what
+    they just granted was the one row where the pills could not be read. It also
+    put its outline on every cell rather than the row, which drew a box around
+    each one.
+
+    The accent and the "New" tag beside the username carry it between them: the
+    bar catches the eye down a long table, the tag says what it means. Neither
+    repaints anything the row has to show.
 */
-.fam-table .fam-table__row--new,
-.fam-table .fam-table__row--new td {
-  background-color: #c2e0ff !important;
-  box-shadow: inset 0 0 0 0.063rem #85c2ff;
+.fam-table .fam-table__row--new td:first-child {
+  box-shadow: inset 0.1875rem 0 0 var(--cds-interactive, #0f62fe);
 }
 
 /*

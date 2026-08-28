@@ -23,7 +23,8 @@
 export const AdminRoleAuthGroup = {
     FamAdmin: 'FAM_ADMIN',
     AppAdmin: 'APP_ADMIN',
-    DelegatedAdmin: 'DELEGATED_ADMIN'
+    DelegatedAdmin: 'DELEGATED_ADMIN',
+    DevopsAdmin: 'DEVOPS_ADMIN'
 } as const;
 
 export type AdminRoleAuthGroup = typeof AdminRoleAuthGroup[keyof typeof AdminRoleAuthGroup];

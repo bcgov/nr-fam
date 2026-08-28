@@ -18,6 +18,7 @@ import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleDeleteResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleMemberCountDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleManagementApplicationDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssScopeSelection;
 import ca.bc.gov.nrs.fam.dto.ScopeDto;
@@ -41,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -122,6 +124,46 @@ public class CssIntegrationService {
 
     log.debug("Returning {} application option(s) from CSS integrations.", options.size());
     return options;
+  }
+
+  /**
+   * The applications whose roles this caller may define.
+   *
+   * <p>Not the same list as {@link #getApplications}, which the controller
+   * filters by who may manage <em>access</em>. A DevOps administrator manages no
+   * access at all, so that list is empty for them - which is correct for the
+   * permissions screens and useless for this one.
+   *
+   * <p>FAM's own integration is left out: its roles are FAM's administrative
+   * tiers, and they are not defined from that screen - the service refuses it
+   * anyway, so offering it would be offering a dead end.
+   */
+  public List<CssRoleManagementApplicationDto> getApplicationsForRoleManagement(
+      Requester requester) {
+
+    List<CssApplicationOptionDto> all = getApplications();
+
+    // Every environment each integration has, before the caller's own authority
+    // narrows the list - the question "may they do all of them" cannot be asked
+    // of the narrowed one.
+    Map<Integer, List<String>> environmentsByIntegration = all.stream()
+        .collect(Collectors.groupingBy(
+            CssApplicationOptionDto::integrationId,
+            Collectors.mapping(CssApplicationOptionDto::environment, Collectors.toList())));
+
+    return all.stream()
+        .filter(app -> !app.famApplication())
+        .filter(app -> requester.canManageRoles(app.integrationId(), app.environment()))
+        .map(app -> new CssRoleManagementApplicationDto(
+            app.integrationId(),
+            app.environment(),
+            app.description(),
+            environmentsByIntegration
+                .getOrDefault(app.integrationId(), List.of())
+                .stream()
+                .allMatch(environment ->
+                    requester.canManageRoles(app.integrationId(), environment))))
+        .toList();
   }
 
   /**
@@ -498,6 +540,22 @@ public class CssIntegrationService {
     if (environments.isEmpty()) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_OPERATION,
           "Integration %d has no environments to create the role in.".formatted(integrationId));
+    }
+
+    /*
+        Authorised here rather than in the controller, because only here are the
+        environments known - the endpoint names none, which is the point of it.
+
+        Every environment, not any: this writes to all of them, so holding DEV
+        alone must not create the role in PROD. A DevOps administrator appointed
+        for each environment the integration has may do it in one call; one who
+        holds some of them creates the role an environment at a time, which is
+        exactly the authority they were given.
+
+        A FAM administrator passes every check, as everywhere else.
+    */
+    for (String environment : environments) {
+      authorizationService.requireRoleManagement(requester, integrationId, environment);
     }
 
     List<String> taken = environments.stream()
@@ -911,6 +969,7 @@ public class CssIntegrationService {
       Requester requester) {
 
     authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
+    requireIdirAdministrator(request.userType(), "an application administrator");
     authorizationService.forbidSelfGrant(requester, request.userGuid());
     targetOrganizationGuard.requireSameOrganization(
         requester, request.userType(), request.userGuid());
@@ -964,6 +1023,111 @@ public class CssIntegrationService {
         cssUsername(request.userGuid(), request.userType()), roleName);
 
     log.info("Removed application administration of integration {} ({}) from {}.",
+        integrationId, environment, request.userGuid());
+
+    auditWriteService.storeCssRevoked(
+        requester, request.userGuid(), request.userType(),
+        integrationId, environment, roleName, List.of(roleName));
+  }
+
+  /**
+   * These two tiers are held by IDIR users only.
+   *
+   * <p>An application administrator grants every role the application defines and
+   * appoints delegated administrators; a DevOps administrator decides what those
+   * roles are. Both are authority over the application itself rather than over
+   * work done in it, and that belongs to staff.
+   *
+   * <p>A delegated administrator is deliberately not restricted: delegating the
+   * right to grant one role to somebody's own organisation is the case that tier
+   * exists for, and a Business BCeID administrator is already penned in by
+   * {@code TargetOrganizationGuard}.
+   *
+   * <p>Refused as a bad request rather than as a forbidden one: nothing is wrong
+   * with the caller, and the answer would be the same whoever asked.
+   */
+  private static void requireIdirAdministrator(
+      ca.bc.gov.nrs.fam.constants.UserType userType, String tier) {
+
+    if (userType != ca.bc.gov.nrs.fam.constants.UserType.IDIR) {
+      throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
+          "Only an IDIR user can be %s. Business BCeID users may be delegated "
+              .formatted(tier)
+              + "administrators instead, which lets them grant particular roles.");
+    }
+  }
+
+  /**
+   * Appoint somebody a DevOps administrator of one application.
+   *
+   * <p>Assigns {@code DEVOPS_ADMIN_<id>_<ENV>} on FAM's own integration, the same
+   * shape as an application administrator - the application has to be named
+   * inside the role because the role lives on FAM's integration, not the
+   * application's.
+   *
+   * <p><b>FAM administrators only</b>, unlike appointing an application
+   * administrator, which a peer may do. Defining an application's roles is not
+   * authority an application administrator holds, so they cannot hand it out
+   * either; letting them would be a way to acquire it by proxy.
+   */
+  public CssUserRoleAssignmentResult appointDevopsAdmin(
+      int integrationId, String environment, CssAdministratorAppointRequest request,
+      Requester requester) {
+
+    authorizationService.requireDevopsAdminManagement(requester);
+    requireIdirAdministrator(request.userType(), "a DevOps administrator");
+    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    targetOrganizationGuard.requireSameOrganization(
+        requester, request.userType(), request.userGuid());
+
+    Integer ownIntegrationId = ownIntegrationId();
+    String username = cssUsername(request.userGuid(), request.userType());
+    String roleName = FamAdminRole.devopsAdmin(integrationId, environment);
+
+    boolean created = false;
+    try {
+      boolean exists = cssApiService.getRoles(ownIntegrationId, famEnvironment()).stream()
+          .anyMatch(role -> roleName.equals(role.name()));
+      if (!exists) {
+        cssApiService.createRole(ownIntegrationId, famEnvironment(), roleName);
+        created = true;
+      }
+      cssApiService.assignUserRoles(
+          ownIntegrationId, famEnvironment(), username, List.of(roleName));
+    } catch (RuntimeException e) {
+      log.error("Could not appoint {} as a DevOps administrator: {}", username, e.getMessage());
+      return CssUserRoleAssignmentResult.failed(roleName, e.getMessage());
+    }
+
+    log.info("Appointed {} as DevOps administrator of integration {} ({}).",
+        username, integrationId, environment);
+
+    CssUserRoleAssignmentResult result = new CssUserRoleAssignmentResult(
+        roleName, created, true, null, EmailSendingStatus.NOT_REQUIRED);
+
+    auditWriteService.storeCssGranted(
+        requester, request.userGuid(), request.userType(),
+        integrationId, environment, roleName, List.of(result));
+
+    return result;
+  }
+
+  /** Remove somebody's DevOps administrator role. */
+  public void removeDevopsAdmin(
+      int integrationId, String environment, CssAdministratorAppointRequest request,
+      Requester requester) {
+
+    authorizationService.requireDevopsAdminManagement(requester);
+    // Removing yourself is refused for the same reason appointing yourself is:
+    // dropping your own tier mid-session leaves the screen disagreeing with the
+    // token until the next sign-in.
+    authorizationService.forbidSelfGrant(requester, request.userGuid());
+
+    String roleName = FamAdminRole.devopsAdmin(integrationId, environment);
+    cssApiService.removeUserRole(ownIntegrationId(), famEnvironment(),
+        cssUsername(request.userGuid(), request.userType()), roleName);
+
+    log.info("Removed DevOps administration of integration {} ({}) from {}.",
         integrationId, environment, request.userGuid());
 
     auditWriteService.storeCssRevoked(
@@ -1170,6 +1334,35 @@ public class CssIntegrationService {
   }
 
   /**
+   * The concrete role names one person already holds in one application.
+   *
+   * <p>The names, not the base roles: a scoped grant is its own role in CSS, so
+   * {@code CHR_FREP_EDITOR_DISTRICT-DCC} is what tells you whether this exact
+   * grant has already been made rather than merely a similar one.
+   *
+   * <p>Best effort. CSS being unreachable answers "holds nothing", which lets
+   * the caller carry on and at worst re-grant something harmlessly - the
+   * assignment itself is idempotent. Failing here would turn an outage into a
+   * refused grant, which is the worse trade.
+   */
+  public Set<String> rolesHeldBy(
+      int integrationId, String environment,
+      String userGuid, ca.bc.gov.nrs.fam.constants.UserType userType) {
+
+    try {
+      return cssApiService
+          .getUserRoles(integrationId, environment, cssUsername(userGuid, userType))
+          .stream()
+          .map(CssRoleDto::name)
+          .collect(java.util.stream.Collectors.toSet());
+    } catch (RuntimeException e) {
+      log.warn("Could not read what {} already holds on integration {} ({}): {}",
+          userGuid, integrationId, environment, e.getMessage());
+      return Set.of();
+    }
+  }
+
+  /**
    * The people administering one application, at one tier.
    *
    * <p>Backs the Delegated admins and Application admins tabs.
@@ -1214,6 +1407,9 @@ public class CssIntegrationService {
     // application - and each row names the role that person was delegated.
     List<String> roleNames = switch (tier) {
       case APP_ADMIN -> List.of(FamAdminRole.appAdmin(integrationId, environment));
+      // One role, like an application administrator - a DevOps administrator is
+      // delegated nothing; they manage every role this application defines.
+      case DEVOPS_ADMIN -> List.of(FamAdminRole.devopsAdmin(integrationId, environment));
       case DELEGATED_ADMIN -> delegationRolesOn(
           ownIntegrationId, famEnvironment, integrationId, environment);
       case FAM_ADMIN -> throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
@@ -1544,6 +1740,18 @@ public class CssIntegrationService {
     cssApiService.getRoles(integrationId, environment)
         .forEach(role -> existing.add(role.name()));
 
+    /*
+      What this person already holds, read before anything is assigned - after
+      the assignment every role looks newly held.
+
+      Only the notification uses it. The grant itself goes ahead either way:
+      assigning a role somebody has is a no-op in CSS, and re-granting is how an
+      expiry is changed, so refusing here would break a supported operation to
+      prevent nothing.
+    */
+    Set<String> alreadyHeld = rolesHeldBy(
+        integrationId, environment, request.userGuid(), request.userType());
+
     List<CssUserRoleAssignmentResult> results = new ArrayList<>();
     List<String> assignable = new ArrayList<>();
     // Held apart from `assignable` only so the result matching below stays about
@@ -1619,11 +1827,38 @@ public class CssIntegrationService {
 
     log.debug("CSS assignment for {}: {}", username, results);
 
-    // Tell the user what they were given. Upstream sent this from the grant path
-    // too; it reports its own outcome on each result rather than failing the
-    // grant, so a mail relay being down does not look like a failed grant.
-    results = accessGrantedEmailService.notifyGranted(
-        request.targetUserEmail(), applicationLabel(integrationId, environment), results);
+    /*
+      Tell the user what they were given - and only what they were given.
+
+      Upstream sent this from the grant path too; it reports its own outcome on
+      each result rather than failing the grant, so a mail relay being down does
+      not look like a failed grant.
+
+      Roles the person already held are left out of the announcement. Re-granting
+      is how an expiry is changed and how a partly-failed run is retried, and
+      both are routine; emailing "you have been granted access" each time tells
+      somebody about a change that did not happen to them. Nothing is emailed at
+      all when every role in the request was already held.
+
+      The read is best effort - see rolesHeldBy - so an outage means the email is
+      sent as it always was, which is the safe direction to fail in.
+    */
+    Set<String> announceable = new HashSet<>(assignable);
+    announceable.removeAll(alreadyHeld);
+
+    List<CssUserRoleAssignmentResult> announced =
+        accessGrantedEmailService.notifyGranted(
+            request.targetUserEmail(),
+            applicationLabel(integrationId, environment),
+            results.stream()
+                .filter(result -> announceable.contains(result.roleName()))
+                .toList());
+
+    Map<String, CssUserRoleAssignmentResult> withEmailStatus = announced.stream()
+        .collect(java.util.stream.Collectors.toMap(
+            CssUserRoleAssignmentResult::roleName, result -> result, (first, second) -> first));
+    results.replaceAll(result ->
+        withEmailStatus.getOrDefault(result.roleName(), result));
 
     auditWriteService.storeCssGranted(
         requester, request.userGuid(), request.userType(),
