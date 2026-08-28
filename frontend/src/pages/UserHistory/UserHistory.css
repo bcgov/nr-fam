@@ -1,0 +1,60 @@
+.user-history-container {
+  padding-bottom: 2.5rem;
+}
+
+/*
+    Air under a step heading that has no subtitle.
+
+    StepContainer only spaces its content when there is a subtitle to space it
+    from - see `.step-content` in StepContainer.css - so dropping the subtitle
+    here left the picker sitting against the heading. The selector matches only
+    that case: where a subtitle exists it is the subtitle, not the content, that
+    follows the title.
+
+    A rem rather than the 1.5 a subtitle earns: there is less above it to
+    separate from.
+*/
+.user-history-container .step-container__title + div {
+  margin-top: 1rem;
+}
+
+/*
+    Air between the steps.
+
+    StepContainer's own spacing comes from the rule between a step and its rule,
+    and from `form > .step-container:first-child` - neither of which reaches
+    here, because these steps carry no divider and are not in a form. Without it
+    each heading sits directly on the thing above and the three steps read as one
+    long column.
+*/
+.user-history-container .step-container {
+  padding-top: 2rem;
+}
+
+.user-history-container .step-note {
+  margin: 0;
+  max-width: 46rem;
+  color: var(--cds-text-secondary);
+}
+
+/*
+    Narrow, because it holds an application name rather than a sentence. A
+    full-width dropdown over a full-width table reads as part of the table's
+    chrome instead of as the thing that chooses what the table shows.
+*/
+.user-history-container .user-history-application {
+  max-width: 24rem;
+}
+
+/* The rows choose whose history is shown below, so they read as choosable. */
+.user-history-container .fam-table tbody tr {
+  cursor: pointer;
+}
+
+/*
+    Nothing marks the chosen row but its radio.
+
+    It carried a left accent and bold text as well, which is three ways of
+    saying one thing - and the bold moved the row's own text a fraction as it
+    was chosen, which reads as the table twitching rather than as a selection.
+*/
