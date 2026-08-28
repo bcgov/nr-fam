@@ -60,7 +60,8 @@ const performer = (row: PermissionAuditHistoryDto): string => {
 };
 
 /**
- * How one scope reads in the trail.
+ * How one scope reads in the trail - the same way it reads on a permission pill,
+ * see {@code scopeChipLabel}.
  *
  * <p>Prefixed, because the three are not distinguishable from their values
  * alone: a district is a code, a region is a word, an organisation is a number,
@@ -69,17 +70,21 @@ const performer = (row: PermissionAuditHistoryDto): string => {
  * <p>Regions show the name where the row carries one - it is written in at the
  * time of the change, so a region renamed since still reads as it did then - and
  * fall back to the code for rows written before that was recorded.
+ *
+ * <p>Districts and organisations show their code, as they do on a permission
+ * pill: a district's full name is too long for a chip that already says
+ * "District", and an organisation's number is what the grant was made against.
  */
 const scopeLabel = (scope: PrivilegeDetailsScopeDto): string => {
     const value = scope.client_id ?? scope.client_name ?? "";
 
     switch (scope.scope_type) {
         case PrivilegeDetailsScopeType.District:
-            return `DIS: ${value}`;
+            return `District: ${value}`;
         case PrivilegeDetailsScopeType.Region:
-            return `REG: ${scope.client_name ?? value}`;
+            return `Region: ${scope.client_name ?? value}`;
         default:
-            return `ORG: ${value}`;
+            return `Organization: ${value}`;
     }
 };
 

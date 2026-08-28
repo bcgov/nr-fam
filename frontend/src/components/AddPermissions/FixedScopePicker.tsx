@@ -13,6 +13,7 @@ import { SubsectionTitle } from "@/components/SubsectionTitle";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import "./ScopeSelectTable.css";
 import { RemoveButton } from "@/components/RemoveButton";
+import { matchesTypedText } from "@/utils/ComboBoxFilter";
 
 /**
  * Pick values from a fixed list, one at a time, into a table of what is chosen.
@@ -111,6 +112,8 @@ export const FixedScopePicker = <T,>({
                 }
                 items={offered}
                 itemToString={(item: T | null) => (item ? nameOf(item) : "")}
+                // Carbon shows the whole list otherwise - see matchesTypedText.
+                shouldFilterItem={matchesTypedText}
                 selectedItem={null}
                 disabled={options.length === 0}
                 onChange={({ selectedItem }) => add(selectedItem)}

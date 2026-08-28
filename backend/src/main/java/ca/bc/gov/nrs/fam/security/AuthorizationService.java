@@ -179,6 +179,65 @@ public class AuthorizationService {
   }
 
   /**
+   * The caller must be able to define and remove this application's roles.
+   *
+   * <p>A FAM administrator anywhere, or a DevOps administrator of this exact
+   * application and environment. An application administrator is excluded, which
+   * is the rule that was already in force when this was FAM administrators only:
+   * they hand out what the application defines without also being able to invent
+   * something new for it to mean.
+   */
+  public void requireRoleManagement(
+      Requester requester, int cssIntegrationId, String cssEnvironment) {
+
+    if (requester == null || !requester.canManageRoles(cssIntegrationId, cssEnvironment)) {
+      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+          "Only a FAM administrator or a DevOps administrator of this application "
+              + "may manage its roles.");
+    }
+  }
+
+  /**
+   * The caller must be able to <em>look at</em> this application's roles.
+   *
+   * <p>Wider than administering access, because two different jobs need the same
+   * listing: granting a role means choosing from it, and defining one means
+   * seeing what is already there and how many people hold it.
+   *
+   * <p>A DevOps administrator manages no access, so the ordinary check refuses
+   * them - and the Manage roles screen they were given could not draw its own
+   * table. Reading is all this admits: creating and deleting still go through
+   * {@link #requireRoleManagement}, and granting through
+   * {@link #requireApplicationAccess}.
+   */
+  public void requireRoleVisibility(
+      Requester requester, int cssIntegrationId, String cssEnvironment) {
+
+    if (requester != null && requester.canManageRoles(cssIntegrationId, cssEnvironment)) {
+      return;
+    }
+    // Falls through to the ordinary rule, so everybody else is refused in the
+    // same words they were before.
+    requireApplicationAccess(requester, cssIntegrationId, cssEnvironment);
+  }
+
+  /**
+   * The caller must be able to appoint DevOps administrators - FAM administrators
+   * only.
+   *
+   * <p>Stricter than appointing an application administrator, which a peer may
+   * do. A DevOps administrator changes what an application's roles <em>are</em>,
+   * and that is not authority an application administrator holds, so they cannot
+   * hand it out either. Letting them would be a way to acquire it by proxy.
+   */
+  public void requireDevopsAdminManagement(Requester requester) {
+    if (requester == null || !requester.isFamAdmin()) {
+      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+          "Only a FAM administrator may manage DevOps administrators.");
+    }
+  }
+
+  /**
    * A Business BCeID administrator may only read users from their own
    * organisation.
    *
@@ -221,8 +280,17 @@ public class AuthorizationService {
    */
   public void forbidSelfGrant(Requester requester, String targetUserGuid) {
     if (requester.userGuid() != null && requester.userGuid().equalsIgnoreCase(targetUserGuid)) {
+      /*
+          Said plainly, and said for every direction this guard covers: it is
+          reached from granting, revoking, appointing and removing, so it cannot
+          be worded as though the caller were only ever adding something.
+
+          The sentence names the way out as well as the rule. A refusal that
+          only says no leaves somebody clicking the same button again.
+      */
       throw FamHttpException.forbidden(ErrorCode.SELF_GRANT_PROHIBITED,
-          "Altering permission privilege of self is not allowed.");
+          "You cannot change your own permissions. Ask another administrator "
+              + "to do it for you.");
     }
   }
 }

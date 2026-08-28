@@ -47,6 +47,13 @@ class BulkGrantServiceTest {
 
   private static final int INTEGRATION = 54321;
   private static final String ENV = "dev";
+
+  /** The configured cap, small here so the oversized-file test stays quick. */
+  private static final int MAX_ROWS = 200;
+  /** What the file writes: the name a person is known by. */
+  private static final String USERNAME = "JANES";
+
+  /** What the directory answers with, and what CSS is then provisioned against. */
   private static final String GUID = "AABBCCDDEEFF00112233445566778899";
 
   @Mock private CssIntegrationService cssIntegrationService;
@@ -80,7 +87,7 @@ class BulkGrantServiceTest {
   void setUp() {
     service = new BulkGrantService(
         cssIntegrationService, userLookupClient, authorizationService, targetOrganizationGuard,
-        forestClientIntegrationService, apiInstanceEnvResolver);
+        forestClientIntegrationService, apiInstanceEnvResolver, MAX_ROWS);
 
     // Districts come from a compile-time enum, so only the organisations need
     // an upstream. Default to "nothing found" - the tests that use one say so.
@@ -91,7 +98,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("FSPTS_VIEW_ALL", false, false)));
 
-    when(userLookupClient.getIdirDetailByGuid(GUID)).thenReturn(Optional.of(
+    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.of(
         new UserLookupIdirUserDto(true, "JANES", GUID, "Jane", "Smith", "jane@gov.bc.ca")));
   }
 
@@ -106,7 +113,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("resolves the person's name and the role's display name")
   void resolvesNames() {
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -120,16 +127,16 @@ class BulkGrantServiceTest {
   }
 
   @Test
-  @DisplayName("falls back to Business BCeID when the GUID is not an IDIR one")
+  @DisplayName("falls back to Business BCeID when the username is not an IDIR one")
   void resolvesBceid() {
-    when(userLookupClient.getIdirDetailByGuid(GUID)).thenReturn(Optional.empty());
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, GUID))
+    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
-    // The column is empty, so which directory a GUID is in has to be
+    // The column is empty, so which directory the person is in has to be
     // discovered - and shown, so the uploader can see it was the right person.
-    assertThat(preview(GUID + ",,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.userType()).isEqualTo(UserType.BCEID);
@@ -138,12 +145,12 @@ class BulkGrantServiceTest {
   }
 
   @Test
-  @DisplayName("a GUID neither directory knows is an error, not a silent skip")
-  void unknownGuid() {
-    when(userLookupClient.getIdirDetailByGuid(anyString())).thenReturn(Optional.empty());
+  @DisplayName("a username neither directory knows is an error, not a silent skip")
+  void unknownUsername() {
+    when(userLookupClient.getIdirDetail(anyString())).thenReturn(Optional.empty());
     when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(Optional.empty());
 
-    assertThat(preview(GUID + ",,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -158,7 +165,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("refuses a role the application does not define")
   void unknownRole() {
-    assertThat(preview(GUID + ",IDIR,NOT_A_ROLE"))
+    assertThat(preview(USERNAME + ",IDIR,NOT_A_ROLE"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("No role named NOT_A_ROLE"));
   }
@@ -171,7 +178,7 @@ class BulkGrantServiceTest {
     for (String adminRole : List.of("FAM_ADMIN", "APP_ADMIN_54321_DEV",
         "DELEGATED_ADMIN_54321_DEV__FSPTS_VIEW_ALL")) {
 
-      assertThat(preview(GUID + ",IDIR," + adminRole))
+      assertThat(preview(USERNAME + ",IDIR," + adminRole))
           .singleElement()
           .satisfies(row -> {
             assertThat(row.valid()).isFalse();
@@ -187,28 +194,28 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("searches only the directory the file named")
   void searchesOnlyTheStatedDirectory() {
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, GUID))
+    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
-    preview(GUID + ",BCEID,FSPTS_VIEW_ALL");
+    preview(USERNAME + ",BCEID,FSPTS_VIEW_ALL");
 
     // Stating it is what the column buys: without it every Business BCeID row
     // pays for a failed IDIR lookup first.
-    verify(userLookupClient, never()).getIdirDetailByGuid(anyString());
+    verify(userLookupClient, never()).getIdirDetail(anyString());
   }
 
   @Test
-  @DisplayName("refuses a GUID that is not in the directory the file named")
-  void refusesAGuidFromTheOtherDirectory() {
-    // The GUID is a real Business BCeID user, but the row says IDIR. Falling
-    // back would grant a different person who happens to share the GUID.
-    when(userLookupClient.getIdirDetailByGuid(GUID)).thenReturn(Optional.empty());
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, GUID))
+  @DisplayName("refuses a user who is not in the directory the file named")
+  void refusesAUserFromTheOtherDirectory() {
+    // The name is a real Business BCeID user, but the row says IDIR. Falling
+    // back would grant a different person who happens to share the name.
+    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -219,7 +226,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("accepts BCEID as well as the stored BCEID_BUS")
   void acceptsEitherBceidSpelling() {
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, GUID))
+    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
@@ -227,7 +234,7 @@ class BulkGrantServiceTest {
     // anyway, so demanding the longer form would reject files for no reason a
     // person could see.
     for (String spelling : List.of("BCEID", "BCEID_BUS", "bceid")) {
-      assertThat(preview(GUID + "," + spelling + ",FSPTS_VIEW_ALL"))
+      assertThat(preview(USERNAME + "," + spelling + ",FSPTS_VIEW_ALL"))
           .singleElement()
           .satisfies(row -> assertThat(row.userType()).isEqualTo(UserType.BCEID));
     }
@@ -236,7 +243,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("refuses a user type that is neither")
   void refusesAnUnknownUserType() {
-    assertThat(preview(GUID + ",BCSC,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",BCSC,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -249,7 +256,7 @@ class BulkGrantServiceTest {
   void emptyUserTypeSearchesBoth() {
     // The column is optional. A file written without it behaves as it always
     // did rather than failing on a value nobody was asked for.
-    assertThat(preview(GUID + ",,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> assertThat(row.valid()).isTrue());
   }
@@ -271,7 +278,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR,DCC"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -286,7 +293,7 @@ class BulkGrantServiceTest {
   void refusesADistrictOnAnUnscopedRole() {
     // The more dangerous direction: the value would simply be ignored, and the
     // row would grant wider access than the file appears to ask for.
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL,DCC"))
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL,DCC"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -305,7 +312,7 @@ class BulkGrantServiceTest {
     // Region is column six, after organization - appended rather than slotted
     // in beside district, because the parser is positional and a file written
     // before regions existed must keep meaning what it did.
-    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL,,,CARIBOO"))
+    assertThat(preview(USERNAME + ",IDIR,FREP_REGIONAL,,,CARIBOO"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -322,7 +329,7 @@ class BulkGrantServiceTest {
 
     // Five columns, no region. The organization column must still be read as
     // one - appending the new column is what guarantees that.
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR,DCC,"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC,"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -334,7 +341,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("refuses a region on a role that is not granted per region")
   void refusesARegionOnAnUnscopedRole() {
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL,,,CARIBOO"))
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL,,,CARIBOO"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -349,7 +356,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("FREP_REGIONAL", false, true, false)));
 
-    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL"))
+    assertThat(preview(USERNAME + ",IDIR,FREP_REGIONAL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -363,7 +370,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("FREP_REGIONAL", false, true, false)));
 
-    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL,,,NOPE"))
+    assertThat(preview(USERNAME + ",IDIR,FREP_REGIONAL,,,NOPE"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("not a natural resource region"));
   }
@@ -377,8 +384,8 @@ class BulkGrantServiceTest {
     // Same person, same role, two regions is two grants - not a duplicate. The
     // duplicate key has to include the region or the second reads as a repeat
     // and is silently dropped.
-    assertThat(preview(GUID + ",IDIR,FREP_REGIONAL,,,CARIBOO\n"
-            + GUID + ",IDIR,FREP_REGIONAL,,,SKEENA"))
+    assertThat(preview(USERNAME + ",IDIR,FREP_REGIONAL,,,CARIBOO\n"
+            + USERNAME + ",IDIR,FREP_REGIONAL,,,SKEENA"))
         .hasSize(2)
         .allSatisfy(row -> assertThat(row.valid()).isTrue());
   }
@@ -388,7 +395,7 @@ class BulkGrantServiceTest {
   void refusesAClientOnAnUnscopedRole() {
     givenClient("00001012", "ACME LTD.", "ACT");
 
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL,,00001012"))
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL,,00001012"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -404,7 +411,7 @@ class BulkGrantServiceTest {
 
     // Granting the base role instead would assign something no application
     // authorises on: a scoped grant only ever assigns per-scope roles.
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isFalse();
@@ -418,7 +425,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR,NOPE"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,NOPE"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("not a natural resource district"));
   }
@@ -437,7 +444,7 @@ class BulkGrantServiceTest {
 
     // Expired districts are kept out of the picker so none can be granted; the
     // file must not be a way around that.
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR," + expired))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR," + expired))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("expired"));
   }
@@ -449,7 +456,7 @@ class BulkGrantServiceTest {
         .thenReturn(List.of(role("CHR_FREP_VIEWER", false, true)));
     givenClient("00001012", "ACME LTD.", "ACT");
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_VIEWER,,00001012"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_VIEWER,,00001012"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -467,7 +474,7 @@ class BulkGrantServiceTest {
 
     // Excel turns 00001012 into 1012. Without padding, every client-scoped row
     // of a file that has been through a spreadsheet is rejected as unknown.
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_VIEWER,,1012"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_VIEWER,,1012"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -481,7 +488,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("CHR_FREP_VIEWER", false, true)));
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_VIEWER,,00009999"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_VIEWER,,00009999"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("No organization"));
   }
@@ -495,7 +502,7 @@ class BulkGrantServiceTest {
 
     // Findable but refused on selection, so granting one by upload would be a
     // dead end nobody could act on.
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_VIEWER,,00001012"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_VIEWER,,00001012"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("not active"));
   }
@@ -507,11 +514,11 @@ class BulkGrantServiceTest {
         .thenReturn(List.of(role("CHR_FREP_BOTH", true, true)));
     givenClient("00001012", "ACME LTD.", "ACT");
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_BOTH,DCC"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_BOTH,DCC"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("granted per organization"));
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_BOTH,DCC,00001012"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_BOTH,DCC,00001012"))
         .singleElement()
         .satisfies(row -> assertThat(row.valid()).isTrue());
   }
@@ -524,7 +531,7 @@ class BulkGrantServiceTest {
 
     // The duplicate key includes the scope. Without that, the second district
     // would be reported as a repeat of the first and silently dropped.
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR,DCC\n" + GUID + ",IDIR,CHR_FREP_EDITOR,DKA"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC\n" + USERNAME + ",IDIR,CHR_FREP_EDITOR,DKA"))
         .allSatisfy(row -> assertThat(row.valid()).isTrue())
         .hasSize(2);
   }
@@ -535,7 +542,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
 
-    assertThat(preview(GUID + ",IDIR,CHR_FREP_EDITOR,DCC\n" + GUID + ",IDIR,CHR_FREP_EDITOR,DCC"))
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC\n" + USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC"))
         .element(1)
         .satisfies(row -> assertThat(row.error()).contains("Duplicate"));
   }
@@ -547,9 +554,9 @@ class BulkGrantServiceTest {
         .thenReturn(List.of(role("CHR_FREP_VIEWER", false, true)));
     givenClient("00001012", "ACME LTD.", "ACT");
 
-    preview(GUID + ",IDIR,CHR_FREP_VIEWER,,00001012\n"
-        + GUID + ",IDIR,CHR_FREP_VIEWER,,00001013\n"
-        + GUID + ",IDIR,CHR_FREP_VIEWER,,00001014");
+    preview(USERNAME + ",IDIR,CHR_FREP_VIEWER,,00001012\n"
+        + USERNAME + ",IDIR,CHR_FREP_VIEWER,,00001013\n"
+        + USERNAME + ",IDIR,CHR_FREP_VIEWER,,00001014");
 
     // A two-hundred row file would otherwise spend two hundred round trips
     // confirming names nobody disputed.
@@ -566,7 +573,7 @@ class BulkGrantServiceTest {
         .thenReturn(List.of(new CssUserRoleAssignmentResult(
             "CHR_FREP_EDITOR_DISTRICT-DCC", false, true, null, null)));
 
-    service.apply(INTEGRATION, ENV, GUID + ",IDIR,CHR_FREP_EDITOR,DCC", UPLOADER);
+    service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC", UPLOADER);
 
     // Sending no scope would assign the base role - something no application
     // authorises on - while reporting success.
@@ -582,12 +589,14 @@ class BulkGrantServiceTest {
   @DisplayName("applies the same self-grant rule as the single grant path")
   void refusesSelfGrant() {
     org.mockito.Mockito.doThrow(FamHttpException.forbidden("self_grant_prohibited",
-            "Altering permission privilege of self is not allowed."))
+            "You cannot change your own permissions. Ask another administrator to do it for you."))
         .when(authorizationService).forbidSelfGrant(any(), anyString());
 
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL"))
+    // The row carries the reason, not just a refusal: it is the one line the
+    // uploader reads to learn why that person was skipped.
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
         .singleElement()
-        .satisfies(row -> assertThat(row.error()).contains("self"));
+        .satisfies(row -> assertThat(row.error()).contains("your own permissions"));
   }
 
   @Test
@@ -597,7 +606,7 @@ class BulkGrantServiceTest {
             "You have not been delegated FSPTS_VIEW_ALL in this application."))
         .when(authorizationService).requireGrantableRoles(any(), anyInt(), anyString(), any());
 
-    assertThat(preview(GUID + ",IDIR,FSPTS_VIEW_ALL"))
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> assertThat(row.error()).contains("not been delegated"));
   }
@@ -615,8 +624,8 @@ class BulkGrantServiceTest {
     //
     // No header here on purpose: with one, the mark lands on a field that is
     // discarded anyway, so a header row hides the problem rather than exposing
-    // it. The mark has to sit directly on a GUID for this to mean anything.
-    assertThat(preview("\uFEFF" + GUID + ",IDIR,FSPTS_VIEW_ALL"))
+    // it. The mark has to sit directly on a username for this to mean anything.
+    assertThat(preview("\uFEFF" + USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.valid()).isTrue();
@@ -628,7 +637,7 @@ class BulkGrantServiceTest {
   @DisplayName("parses the downloadable template once rows are added")
   void parsesTheTemplate() {
     // The template the screen hands out is exactly this header.
-    assertThat(preview("user_guid,user_type,role\n" + GUID + ",IDIR,FSPTS_VIEW_ALL"))
+    assertThat(preview("username,user_type,role\n" + USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
         .singleElement()
         .satisfies(row -> assertThat(row.valid()).isTrue());
   }
@@ -636,13 +645,13 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("skips a header row and blank lines")
   void skipsHeaderAndBlanks() {
-    assertThat(preview("user_guid,user_type,role\n\n" + GUID + ",IDIR,FSPTS_VIEW_ALL\n\n")).hasSize(1);
+    assertThat(preview("username,user_type,role\n\n" + USERNAME + ",IDIR,FSPTS_VIEW_ALL\n\n")).hasSize(1);
   }
 
   @Test
   @DisplayName("reports the line number the error is on")
   void reportsLineNumbers() {
-    String csv = "user_guid,user_type,role\n" + GUID + ",IDIR,FSPTS_VIEW_ALL\n" + GUID + ",IDIR,NOT_A_ROLE";
+    String csv = "username,user_type,role\n" + USERNAME + ",IDIR,FSPTS_VIEW_ALL\n" + USERNAME + ",IDIR,NOT_A_ROLE";
 
     assertThat(preview(csv))
         .filteredOn(row -> !row.valid())
@@ -654,7 +663,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("refuses the same pair twice rather than granting once and reporting twice")
   void refusesDuplicates() {
-    String csv = GUID + ",IDIR,FSPTS_VIEW_ALL\n" + GUID + ",IDIR,fspts_view_all";
+    String csv = USERNAME + ",IDIR,FSPTS_VIEW_ALL\n" + USERNAME + ",IDIR,fspts_view_all";
 
     assertThat(preview(csv))
         .filteredOn(row -> !row.valid())
@@ -665,7 +674,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("rejects an empty file rather than reporting nothing to do")
   void rejectsEmptyFile() {
-    assertThatThrownBy(() -> service.preview(INTEGRATION, ENV, "user_guid,user_type,role\n", UPLOADER))
+    assertThatThrownBy(() -> service.preview(INTEGRATION, ENV, "username,user_type,role\n", UPLOADER))
         .isInstanceOf(FamHttpException.class)
         .hasMessageContaining("no rows");
   }
@@ -673,7 +682,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("refuses a file above the row cap instead of granting part of it")
   void refusesOversizedFile() {
-    String csv = (GUID + ",IDIR,FSPTS_VIEW_ALL\n").repeat(201);
+    String csv = (USERNAME + ",IDIR,FSPTS_VIEW_ALL\n").repeat(201);
 
     assertThatThrownBy(() -> service.preview(INTEGRATION, ENV, csv, UPLOADER))
         .isInstanceOf(FamHttpException.class)
@@ -687,7 +696,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("preview writes nothing")
   void previewGrantsNothing() {
-    preview(GUID + ",IDIR,FSPTS_VIEW_ALL");
+    preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL");
 
     verify(cssIntegrationService, never())
         .assignUserRoles(anyInt(), anyString(), any(), any());
@@ -700,7 +709,7 @@ class BulkGrantServiceTest {
         .thenReturn(List.of(new CssUserRoleAssignmentResult(
             "FSPTS_VIEW_ALL", false, true, null, EmailSendingStatus.NOT_REQUIRED)));
 
-    assertThat(service.apply(INTEGRATION, ENV, GUID + ",IDIR,FSPTS_VIEW_ALL", UPLOADER))
+    assertThat(service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,FSPTS_VIEW_ALL", UPLOADER))
         .singleElement()
         .satisfies(row -> assertThat(row.valid()).isTrue());
 
@@ -715,11 +724,167 @@ class BulkGrantServiceTest {
   }
 
   @Test
+  @DisplayName("looks a person up once however many rows they appear on")
+  void resolvesEachPersonOnce() {
+    /*
+        The reason a file may be large at all. A person granted a role for six
+        districts is six rows and one human being; the directory is SOAP-backed
+        and slow, and asking it the same question six times is what made a
+        two-hundred row cap necessary in the first place.
+    */
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
+
+    String csv = USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC\n"
+        + USERNAME + ",IDIR,CHR_FREP_EDITOR,DKA\n"
+        + USERNAME + ",IDIR,CHR_FREP_EDITOR,DMH\n";
+
+    assertThat(preview(csv)).hasSize(3).allSatisfy(row ->
+        assertThat(row.valid()).isTrue());
+
+    verify(userLookupClient, org.mockito.Mockito.times(1)).getIdirDetail(USERNAME);
+  }
+
+  @Test
+  @DisplayName("does not keep asking about a name nobody answers to")
+  void remembersThatSomebodyWasNotFound() {
+    // The absence has to be remembered too, or a file repeating one bad name
+    // pays the full lookup on every one of its rows - which is the file most
+    // likely to be large and wrong.
+    when(userLookupClient.getIdirDetail(anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(Optional.empty());
+
+    String csv = ("NOBODY,IDIR,FSPTS_VIEW_ALL\n").repeat(5);
+
+    assertThat(preview(csv)).hasSize(5).allSatisfy(row ->
+        assertThat(row.valid()).isFalse());
+
+    verify(userLookupClient, org.mockito.Mockito.times(1)).getIdirDetail("NOBODY");
+  }
+
+  @Test
+  @DisplayName("flags a row the person already holds instead of granting it again")
+  void skipsAGrantAlreadyMade() {
+    /*
+        Re-granting is harmless in CSS but it emails the person to say they have
+        been given something they already had, and writes an audit row for a
+        change that did not happen. A file re-uploaded after a partly failed run
+        is mostly rows like this.
+    */
+    when(cssIntegrationService.rolesHeldBy(INTEGRATION, ENV, GUID, UserType.IDIR))
+        .thenReturn(java.util.Set.of("FSPTS_VIEW_ALL"));
+
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.alreadyGranted()).isTrue();
+          assertThat(row.valid()).isFalse();
+          // Nothing is wrong with it - it just needs nothing done.
+          assertThat(row.error()).isNull();
+          // And it still reads as a row: the person and the role resolved.
+          assertThat(row.firstName()).isEqualTo("Jane");
+          assertThat(row.roleDisplayName()).isEqualTo("View All");
+        });
+  }
+
+  @Test
+  @DisplayName("compares the scoped role, not the base one")
+  void theSameRoleForAnotherDistrictIsStillAGrant() {
+    // A base role held for one district says nothing about another. Comparing
+    // base names would silently drop half of a multi-district file.
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
+    when(cssIntegrationService.rolesHeldBy(INTEGRATION, ENV, GUID, UserType.IDIR))
+        .thenReturn(java.util.Set.of("CHR_FREP_EDITOR_DISTRICT-DCC"));
+
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC"))
+        .singleElement()
+        .satisfies(row -> assertThat(row.alreadyGranted()).isTrue());
+
+    assertThat(preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DKA"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.alreadyGranted()).isFalse();
+          assertThat(row.valid()).isTrue();
+        });
+  }
+
+  @Test
+  @DisplayName("does not apply a row it flagged as already granted")
+  void appliesNothingForAnAlreadyGrantedRow() {
+    when(cssIntegrationService.rolesHeldBy(INTEGRATION, ENV, GUID, UserType.IDIR))
+        .thenReturn(java.util.Set.of("FSPTS_VIEW_ALL"));
+
+    assertThat(service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,FSPTS_VIEW_ALL", UPLOADER))
+        .singleElement()
+        .satisfies(row -> assertThat(row.alreadyGranted()).isTrue());
+
+    verify(cssIntegrationService, org.mockito.Mockito.never())
+        .assignUserRoles(anyInt(), anyString(), any(), any());
+  }
+
+  @Test
+  @DisplayName("asks once per person what they already hold")
+  void readsHeldRolesOncePerPerson() {
+    // The same economy the directory lookup gets, for the same reason.
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("CHR_FREP_EDITOR", true, false)));
+
+    preview(USERNAME + ",IDIR,CHR_FREP_EDITOR,DCC\n"
+        + USERNAME + ",IDIR,CHR_FREP_EDITOR,DKA\n"
+        + USERNAME + ",IDIR,CHR_FREP_EDITOR,DMH\n");
+
+    verify(cssIntegrationService, org.mockito.Mockito.times(1))
+        .rolesHeldBy(INTEGRATION, ENV, GUID, UserType.IDIR);
+  }
+
+  @Test
+  @DisplayName("provisions CSS with the GUID the username resolved to")
+  void provisionsWithTheResolvedGuid() {
+    /*
+        The whole point of naming people by username. The file carries no GUID,
+        CSS accepts nothing else, and the directory lookup that names the person
+        for the confirmation is what bridges the two.
+    */
+    when(cssIntegrationService.assignUserRoles(anyInt(), anyString(), any(), any()))
+        .thenReturn(List.of(new CssUserRoleAssignmentResult(
+            "FSPTS_VIEW_ALL", false, true, null, EmailSendingStatus.NOT_REQUIRED)));
+
+    service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,FSPTS_VIEW_ALL", UPLOADER);
+
+    org.mockito.ArgumentCaptor<CssUserRoleAssignmentRequest> captor =
+        org.mockito.ArgumentCaptor.forClass(CssUserRoleAssignmentRequest.class);
+    verify(cssIntegrationService)
+        .assignUserRoles(anyInt(), anyString(), captor.capture(), any());
+
+    assertThat(captor.getValue().userGuid()).isEqualTo(GUID);
+    assertThat(captor.getValue().userGuid()).isNotEqualTo(USERNAME);
+  }
+
+  @Test
+  @DisplayName("refuses a user the directory can name but has no GUID for")
+  void refusesAUserWithNoGuid() {
+    // Nothing to provision against. Granting anyway would report success over a
+    // grant made to nobody.
+    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.of(
+        new UserLookupIdirUserDto(true, USERNAME, null, "Jane", "Smith", "jane@gov.bc.ca")));
+
+    assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.valid()).isFalse();
+          assertThat(row.error()).contains("no GUID");
+          // Still named, so the line can be found in the spreadsheet.
+          assertThat(row.userName()).isEqualTo(USERNAME);
+        });
+  }
+
+  @Test
   @DisplayName("one failing row does not stop the others")
   void oneFailureDoesNotStopTheRest() {
-    String other = "BBBBCCCCDDDDEEEEFFFF000011112222";
-    when(userLookupClient.getIdirDetailByGuid(other)).thenReturn(Optional.of(
-        new UserLookupIdirUserDto(true, "BOBJ", other, "Bob", "Jones", "bob@gov.bc.ca")));
+    String other = "BOBJ";
+    when(userLookupClient.getIdirDetail(other)).thenReturn(Optional.of(new UserLookupIdirUserDto(
+        true, other, "BBBBCCCCDDDDEEEEFFFF000011112222", "Bob", "Jones", "bob@gov.bc.ca")));
 
     when(cssIntegrationService.assignUserRoles(anyInt(), anyString(), any(), any()))
         .thenThrow(new RuntimeException("CSS is down"))
@@ -729,7 +894,7 @@ class BulkGrantServiceTest {
     // Unrelated people: the second must still be granted, and the first must say
     // why it was not.
     assertThat(service.apply(INTEGRATION, ENV,
-        GUID + ",IDIR,FSPTS_VIEW_ALL\n" + other + ",IDIR,FSPTS_VIEW_ALL", UPLOADER))
+        USERNAME + ",IDIR,FSPTS_VIEW_ALL\n" + other + ",IDIR,FSPTS_VIEW_ALL", UPLOADER))
         .satisfiesExactly(
             first -> {
               assertThat(first.valid()).isFalse();
@@ -741,7 +906,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("an invalid row is never attempted")
   void invalidRowsAreNotAttempted() {
-    service.apply(INTEGRATION, ENV, GUID + ",IDIR,NOT_A_ROLE", UPLOADER);
+    service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,NOT_A_ROLE", UPLOADER);
 
     verify(cssIntegrationService, never())
         .assignUserRoles(anyInt(), anyString(), any(), any());
@@ -750,12 +915,12 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("applying re-validates rather than trusting a previewed payload")
   void applyRevalidates() {
-    service.apply(INTEGRATION, ENV, GUID + ",IDIR,FSPTS_VIEW_ALL", UPLOADER);
+    service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,FSPTS_VIEW_ALL", UPLOADER);
 
     // The roles and the directory are read again on apply; a payload edited
     // between the two steps cannot smuggle a row past the checks.
     verify(cssIntegrationService, org.mockito.Mockito.atLeastOnce())
         .getRoles(INTEGRATION, ENV);
-    verify(userLookupClient, org.mockito.Mockito.atLeastOnce()).getIdirDetailByGuid(GUID);
+    verify(userLookupClient, org.mockito.Mockito.atLeastOnce()).getIdirDetail(USERNAME);
   }
 }

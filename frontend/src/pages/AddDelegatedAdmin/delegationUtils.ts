@@ -17,6 +17,7 @@ import {
     type FamForestClientDto,
 } from "fam-api/model";
 import { array, mixed, object, string } from "yup";
+import { describeApiError } from "@/utils/ApiUtils";
 
 /**
  * One role this person may hand out, with what they may hand it out for.
@@ -133,11 +134,5 @@ export const validateDelegatedAdminForm = () =>
  * It names the actual problem - appointing yourself, a BCeID administrator
  * reaching outside their organisation - which a generic line would hide.
  */
-export const describeAppointmentError = (error: unknown): string => {
-    const response = (error as any)?.response?.data;
-    return (
-        response?.description ??
-        (error as any)?.message ??
-        "The delegated administrator could not be appointed."
-    );
-};
+export const describeAppointmentError = (error: unknown): string =>
+    describeApiError(error, "The delegated administrator could not be appointed.");

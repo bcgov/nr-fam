@@ -66,6 +66,22 @@ public class FamPrivilegeChangeAudit extends AuditedEntity {
   @Column(name = "css_environment", length = 10)
   private String cssEnvironment;
 
+  /**
+   * What the application was called when the change was made, e.g.
+   * {@code FREP (DEV)}.
+   *
+   * <p>A snapshot rather than a reference, for the same reason the performer and
+   * target user details are: {@link #cssIntegrationId} names an integration that
+   * may since have been removed from CSS, and a trail that can only label its own
+   * rows while the thing they describe still exists is not a trail.
+   *
+   * <p>Null on rows written before the column existed, and on a change made while
+   * CSS could not be reached. The name is best effort and never blocks recording
+   * the change itself.
+   */
+  @Column(name = "css_application_name", length = 100)
+  private String cssApplicationName;
+
   /** When the privilege change happened, which may predate this row. */
   @Column(name = "change_date", nullable = false)
   private LocalDateTime changeDate;

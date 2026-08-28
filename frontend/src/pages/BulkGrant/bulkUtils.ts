@@ -1,24 +1,25 @@
 import type { CssBulkGrantRowDto } from "fam-api";
+import { describeApiError } from "@/utils/ApiUtils";
 
 /** Shown on the screen so the expected shape needs no separate documentation. */
-export const EXAMPLE_CSV = `user_guid,user_type,role,district,organization,region
-AABBCCDDEEFF00112233445566778899,IDIR,FSPTS_VIEW_ALL,,,
-BBBBCCCCDDDDEEEEFFFF000011112222,IDIR,CHR_FREP_EDITOR,DCC,,
-BBBBCCCCDDDDEEEEFFFF000011112222,IDIR,CHR_FREP_EDITOR,DKA,,
-CCCCDDDDEEEEFFFF00001111222233,BCEID,FOM_SUBMITTER,,00001012,
-DDDDEEEEFFFF000011112222333344,IDIR,FREP_REGIONAL_LEAD,,,CARIBOO`;
+export const EXAMPLE_CSV = `username,user_type,role,district,organization,region
+JSMITH,IDIR,FSPTS_VIEW_ALL,,,
+BLEE,IDIR,CHR_FREP_EDITOR,DCC,,
+BLEE,IDIR,CHR_FREP_EDITOR,DKA,,
+ACMEFORESTRY,BCEID,FOM_SUBMITTER,,00001012,
+RSINGH,IDIR,FREP_REGIONAL_LEAD,,,CARIBOO`;
 
 /**
  * The downloadable template: the header row and nothing else.
  *
- * No example row on purpose. A placeholder GUID would be uploaded as-is often
- * enough to matter, and it can only ever come back as "no user has this GUID" -
- * an error the person did not cause and cannot act on. The shape is on screen
- * beside the download for anyone who wants to see a filled-in row.
+ * No example row on purpose. A placeholder username would be uploaded as-is
+ * often enough to matter, and it can only ever come back as "no user is named
+ * that" - an error the person did not cause and cannot act on. The shape is on
+ * screen beside the download for anyone who wants to see a filled-in row.
  *
  * `user_type` is IDIR or BCEID. It may be left empty, in which case both
- * directories are searched - but stating it halves the lookups and stops a GUID
- * resolving to whichever directory happens to answer first.
+ * directories are searched - but stating it halves the lookups and stops a
+ * username resolving to whichever directory happens to answer first.
  *
  * The scope columns are left empty for a role that is not scoped that way, and
  * filled for one that is. One row is one grant, so a person getting a role for
@@ -30,7 +31,7 @@ DDDDEEEEFFFF000011112222333344,IDIR,FREP_REGIONAL_LEAD,,,CARIBOO`;
  * written before it - organisation numbers would arrive as regions.
  */
 export const TEMPLATE_CSV =
-    "user_guid,user_type,role,district,organization,region\n";
+    "username,user_type,role,district,organization,region\n";
 
 /**
  * Hand the template to the browser as a download.
@@ -55,10 +56,10 @@ export const downloadTemplateCsv = (): void => {
 };
 
 /**
- * The person's name, or empty when the GUID resolved to nobody.
+ * The person's name, or empty when the username resolved to nobody.
  *
- * The caller falls back to showing the raw GUID in that case: a blank cell would
- * make an unresolvable row look like an unremarkable one.
+ * The caller falls back to showing the username from the file in that case: a
+ * blank cell would make an unresolvable row look like an unremarkable one.
  */
 export const fullName = (row: CssBulkGrantRowDto): string =>
     [row.first_name, row.last_name].filter(Boolean).join(" ");
@@ -69,11 +70,5 @@ export const fullName = (row: CssBulkGrantRowDto): string =>
  * A whole-file refusal - empty, too many rows - is reported here rather than
  * per row, so the generic fallback should almost never be seen.
  */
-export const describeUploadError = (error: unknown): string => {
-    const response = (error as any)?.response?.data;
-    return (
-        response?.description ??
-        (error as any)?.message ??
-        "The file could not be read."
-    );
-};
+export const describeUploadError = (error: unknown): string =>
+    describeApiError(error, "The file could not be read.");

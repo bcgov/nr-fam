@@ -51,6 +51,7 @@ class PermissionAuditWriteServiceTest {
   @Mock private FamPrivilegeChangeAuditRepository auditRepository;
   @Mock private EntityManager entityManager;
   @Mock private UserLookupClient userLookupClient;
+  @Mock private CssNameSnapshot cssNameSnapshot;
   /**
    * Configured the way the application configures it
    * ({@code spring.jackson.property-naming-strategy: SNAKE_CASE}). A default
@@ -224,6 +225,50 @@ class PermissionAuditWriteServiceTest {
     FamPrivilegeChangeAudit saved = captureSaved();
     assertThat(saved.getPrivilegeDetails()).contains("DCC");
     assertThat(saved.getCssIntegrationId()).isEqualTo(54321);
+  }
+
+  @Test
+  @DisplayName("records what the application and the role were called at the time")
+  void recordsTheNamesAsASnapshot() {
+    /*
+        The trail has to outlive what it describes. An integration removed from
+        CSS, or a role deleted along with the sidecar that named it, would
+        otherwise leave rows labelled by a number and a code - and those are
+        precisely the rows somebody is digging for.
+    */
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+    when(cssNameSnapshot.applicationName(54321, "dev"))
+        .thenReturn(java.util.Optional.of("FREP (DEV)"));
+    when(cssNameSnapshot.roleDisplayName(54321, "dev", "CHR_FREP_EDITOR"))
+        .thenReturn(java.util.Optional.of("Editor"));
+
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "CHR_FREP_EDITOR", List.of(assigned("CHR_FREP_EDITOR_DISTRICT-DCC")));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getCssApplicationName()).isEqualTo("FREP (DEV)");
+    assertThat(saved.getPrivilegeDetails()).contains("Editor");
+    // The code stays authoritative; the name is the word beside it.
+    assertThat(saved.getPrivilegeDetails()).contains("CHR_FREP_EDITOR");
+  }
+
+  @Test
+  @DisplayName("still records the change when CSS cannot name anything")
+  void namesAreBestEffort() {
+    // A record that failed to write because a label could not be fetched would
+    // be the worst outcome available.
+    when(entityManager.getReference(any(), any())).thenReturn(new FamPrivilegeChangeType());
+    when(cssNameSnapshot.applicationName(any(), any())).thenReturn(java.util.Optional.empty());
+    when(cssNameSnapshot.roleDisplayName(any(), any(), any()))
+        .thenReturn(java.util.Optional.empty());
+
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "CHR_FREP_EDITOR", List.of(assigned("CHR_FREP_EDITOR")));
+
+    FamPrivilegeChangeAudit saved = captureSaved();
+    assertThat(saved.getCssApplicationName()).isNull();
+    assertThat(saved.getCssIntegrationId()).isEqualTo(54321);
+    assertThat(saved.getPrivilegeDetails()).contains("CHR_FREP_EDITOR");
   }
 
   @Test

@@ -173,11 +173,24 @@ public class SelfPermissionService {
       return List.of();
     }
 
-    // Markers and sidecars are FAM's own bookkeeping, not something a person is
-    // meaningfully "granted" - and a sidecar is granted to nobody in any case.
+    /*
+        Markers and sidecars are FAM's own bookkeeping, not something a person is
+        meaningfully "granted" - and a sidecar is granted to nobody in any case.
+
+        FAM's administrative roles are left out for a related reason: they are
+        not application roles. They live on FAM's own integration, so they were
+        listed here as though FAM were an application somebody held roles in -
+        by their raw names, DEVOPS_ADMIN_6538_DEV and the rest, which name a
+        thing rather than describe one.
+
+        Nothing is lost by dropping them: the administrative permissions section
+        of the same screen reports every one of them, against the application
+        they are about and with a sentence saying what they let somebody do.
+    */
     List<CssRoleDto> visible = held.stream()
         .filter(role -> !CssRoleNaming.isSidecarRole(role.name()))
         .filter(role -> !CssRoleNaming.MARKERS.contains(role.name()))
+        .filter(role -> !FamAdminRole.isAdminRole(role.name()))
         .toList();
 
     if (visible.isEmpty()) {
@@ -260,11 +273,8 @@ public class SelfPermissionService {
     return names;
   }
 
+  /** One home for these names - the history trail shows the same words. */
   private static String describe(AdminRoleAuthGroup tier) {
-    return switch (tier) {
-      case FAM_ADMIN -> "FAM administrator";
-      case APP_ADMIN -> "Application administrator";
-      case DELEGATED_ADMIN -> "Delegated administrator";
-    };
+    return FamAdminRole.describe(tier);
   }
 }

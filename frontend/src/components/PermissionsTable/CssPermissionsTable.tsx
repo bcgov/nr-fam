@@ -32,6 +32,7 @@ import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { ROUTES } from "@/routes/routePaths";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
+import { describeApiError } from "@/utils/ApiUtils";
 import { NewUserTag } from "./NewUserTag";
 import { sortedByRole } from "@/utils/RoleSort";
 import {
@@ -134,9 +135,7 @@ const rowId = (row: CssUserRoleRowDto, index: number) =>
  * <p>Where a role is scoped two ways at once, each pairing gets its own line and
  * the values in it are joined. That is not decoration: a submitter for a
  * district <em>and</em> an organisation holds that role for the pair, and a flat
- * list of four codes would read as four grants when it is two. The kind is
- * prefixed there too, because a column mixing district codes with organisation
- * numbers says nothing about which is which.
+ * list of four values would read as four grants when it is two.
  */
 const ScopeCell: FC<{ group: PermissionGroup }> = ({ group }) => {
     if (group.combinations.length === 0) {
@@ -151,7 +150,7 @@ const ScopeCell: FC<{ group: PermissionGroup }> = ({ group }) => {
                 {group.combinations.flat().map((scope) => (
                     <Chip
                         key={`${scope.type}-${scope.value}`}
-                        label={scopeChipLabel(scope, false)}
+                        label={scopeChipLabel(scope)}
                     />
                 ))}
             </span>
@@ -175,7 +174,7 @@ const ScopeCell: FC<{ group: PermissionGroup }> = ({ group }) => {
                                     +
                                 </span>
                             ) : null}
-                            <Chip label={scopeChipLabel(scope, true)} />
+                            <Chip label={scopeChipLabel(scope)} />
                         </Fragment>
                     ))}
                 </span>
@@ -578,29 +577,58 @@ export const CssPermissionsTable: FC<Props> = ({
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="action-col">
+                                                    {/*
+                                                        Worded, like the remove
+                                                        button beside them. An
+                                                        icon alone is guessed
+                                                        at, and a clock and a
+                                                        pencil are a poor pair
+                                                        to guess between - see
+                                                        RemoveButton, which
+                                                        settled this for the
+                                                        third control in this
+                                                        group.
+
+                                                        The accessible names
+                                                        stay row-specific for
+                                                        the same reason they are
+                                                        there: a page of rows
+                                                        named only "History" is
+                                                        a page of controls a
+                                                        screen reader cannot
+                                                        tell apart.
+                                                    */}
                                                     <div className="nowrap-cell action-button-group">
-                                                        <button
-                                                            title="User permission history"
-                                                            aria-label="User permission history"
-                                                            className="btn btn-icon"
-                                                            type="button"
+                                                        <Button
+                                                            kind="ghost"
+                                                            size="sm"
+                                                            className="row-action"
+                                                            renderIcon={
+                                                                RecentlyViewed
+                                                            }
+                                                            iconDescription={`Permission history for ${data.username}`}
+                                                            aria-label={`Permission history for ${data.username}`}
+                                                            title={`Permission history for ${data.username}`}
                                                             onClick={() =>
                                                                 goToHistory(data)
                                                             }
                                                         >
-                                                            <RecentlyViewed />
-                                                        </button>
-                                                        <button
-                                                            title={`Edit ${data.role_label} for ${data.username}`}
+                                                            History
+                                                        </Button>
+                                                        <Button
+                                                            kind="ghost"
+                                                            size="sm"
+                                                            className="row-action"
+                                                            renderIcon={Edit}
+                                                            iconDescription={`Edit ${data.role_label} for ${data.username}`}
                                                             aria-label={`Edit ${data.role_label} for ${data.username}`}
-                                                            className="btn btn-icon"
-                                                            type="button"
+                                                            title={`Edit ${data.role_label} for ${data.username}`}
                                                             onClick={() =>
                                                                 goToEdit(data)
                                                             }
                                                         >
-                                                            <Edit />
-                                                        </button>
+                                                            Edit
+                                                        </Button>
                                                         <RemoveButton
                                                             accessible={`Remove ${data.role_label} from ${data.username}`}
                                                             disabled={
@@ -672,12 +700,7 @@ export const CssPermissionsTable: FC<Props> = ({
                                             .map((combination) =>
                                                 combination
                                                     .map((scope) =>
-                                                        scopeChipLabel(
-                                                            scope,
-                                                            needsScopeDetail(
-                                                                pendingRevoke.group
-                                                            )
-                                                        )
+                                                        scopeChipLabel(scope)
                                                     )
                                                     .join(" + ")
                                             )
@@ -698,12 +721,13 @@ export const CssPermissionsTable: FC<Props> = ({
     );
 };
 
-/** The backend's own reason where there is one, its status where there is not. */
-export const describeError = (error: unknown, fallback: string): string => {
-    const response = (
-        error as { response?: { data?: { description?: string } }; message?: string }
-    )?.response;
-    return response?.data?.description ?? (error as Error)?.message ?? fallback;
-};
+/**
+ * The backend's own reason where there is one.
+ *
+ * <p>Kept as a named export because half the screens import it from here; the
+ * reading itself lives in ApiUtils, where the response shapes are described.
+ */
+export const describeError = (error: unknown, fallback: string): string =>
+    describeApiError(error, fallback);
 
 export default CssPermissionsTable;

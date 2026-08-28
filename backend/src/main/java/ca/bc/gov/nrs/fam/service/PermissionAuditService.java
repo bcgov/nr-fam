@@ -1,14 +1,19 @@
 package ca.bc.gov.nrs.fam.service;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
+import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.PrivilegeChangeType;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.PermissionAuditHistoryDto;
+import ca.bc.gov.nrs.fam.dto.PermissionAuditUserDto;
 import ca.bc.gov.nrs.fam.security.AuditUser;
 import ca.bc.gov.nrs.fam.dto.PrivilegeChangePerformerDto;
+import ca.bc.gov.nrs.fam.dto.PrivilegeChangeTargetDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsRoleDto;
@@ -39,6 +44,107 @@ public class PermissionAuditService {
   private final FamPrivilegeChangeAuditRepository auditRepository;
   private final ObjectMapper objectMapper;
   private final CssApiService cssApiService;
+
+  /**
+   * Everyone with audit history in one application, most recently changed first.
+   *
+   * <p>What the history screen offers once an application is chosen. Read from
+   * the trail rather than from CSS, and the difference matters: this is the list
+   * of people something has <em>happened to</em> here, so it includes those whose
+   * access was since removed - who are exactly the people somebody looking at a
+   * history screen is often after - and leaves out anyone granted their access
+   * before FAM recorded anything.
+   *
+   * <p>One row per person, carrying the newest snapshot the trail holds of them.
+   * A person renamed or removed since still reads as they did at the time, which
+   * is the point of recording it rather than resolving it now.
+   */
+  @Transactional(readOnly = true)
+  public List<PermissionAuditUserDto> getUsersWithHistory(
+      Integer cssIntegrationId, String cssEnvironment) {
+
+    List<Object[]> rows =
+        auditRepository.findTargetUsersForApplication(cssIntegrationId, cssEnvironment);
+
+    /*
+        Newest first out of the query, so the first row seen for a person is
+        their most recent - a LinkedHashMap keeps both facts: one entry each, and
+        the order the list is shown in.
+    */
+    Map<String, PermissionAuditUserDto> newestPerUser = new LinkedHashMap<>();
+
+    for (Object[] row : rows) {
+      String targetUser = (String) row[0];
+      if (targetUser == null || newestPerUser.containsKey(targetUser.toUpperCase(Locale.ROOT))) {
+        continue;
+      }
+
+      UserType userType = userTypeOf(targetUser);
+      if (userType == null) {
+        // A row written against 'system' or a key this version cannot read. It
+        // names no person, so there is nobody to offer.
+        continue;
+      }
+
+      PrivilegeChangeTargetDto target = readTargetDetails(row[2]);
+
+      newestPerUser.put(targetUser.toUpperCase(Locale.ROOT), new PermissionAuditUserDto(
+          guidOf(targetUser),
+          userType,
+          target == null ? null : target.username(),
+          target == null ? null : target.firstName(),
+          target == null ? null : target.lastName(),
+          target == null ? null : target.email(),
+          row[1] == null ? null : row[1].toString()));
+    }
+
+    log.debug("Returning {} user(s) with history in integration {} ({}).",
+        newestPerUser.size(), cssIntegrationId, cssEnvironment);
+    return List.copyOf(newestPerUser.values());
+  }
+
+  /**
+   * The directory half of a {@code <TYPE>\<GUID>} key, or null.
+   *
+   * <p>Null for {@code system} and for anything else that does not carry one:
+   * those rows name no person, and guessing a directory would offer a history
+   * lookup that matches nothing.
+   */
+  private static UserType userTypeOf(String targetUser) {
+    int separator = targetUser.indexOf(AuditUser.SEPARATOR);
+    if (separator <= 0) {
+      return null;
+    }
+    try {
+      return UserType.valueOf(targetUser.substring(0, separator).toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  private static String guidOf(String targetUser) {
+    int separator = targetUser.indexOf(AuditUser.SEPARATOR);
+    return separator <= 0 ? targetUser : targetUser.substring(separator + 1);
+  }
+
+  /**
+   * The snapshot of who a change was made to, where the row carries one.
+   *
+   * <p>Null rather than throwing for a row whose JSON will not read: one
+   * unreadable snapshot should cost that person their name in the list, not
+   * empty the list for everybody.
+   */
+  private PrivilegeChangeTargetDto readTargetDetails(Object json) {
+    if (json == null) {
+      return null;
+    }
+    try {
+      return objectMapper.readValue(json.toString(), PrivilegeChangeTargetDto.class);
+    } catch (JsonProcessingException e) {
+      log.warn("Unreadable change_target_user_details on an audit row: {}", e.getMessage());
+      return null;
+    }
+  }
 
   /**
    * Most recent change first.
@@ -90,7 +196,18 @@ public class PermissionAuditService {
     }
   }
 
-  /** Fills in the name beside each code, where one is known. */
+  /**
+   * Fills in the name beside each code, where the row does not already carry one.
+   *
+   * <p><b>The row's own name wins.</b> It was written when the change was made,
+   * which is the whole point of recording it: a role's name lives on a sidecar
+   * role in CSS and deleting the role takes the sidecar with it, so resolving
+   * names on read loses them for exactly the roles most worth reading about. It
+   * is also what the role was called <em>then</em>, which is what a trail is for.
+   *
+   * <p>The live lookup remains as a fallback, for rows written before the name
+   * was recorded. Those read exactly as they did before.
+   */
   private PrivilegeDetailsDto withDisplayNames(
       PrivilegeDetailsDto details, Map<String, String> displayNames) {
 
@@ -104,8 +221,35 @@ public class PermissionAuditService {
                 role.role(),
                 role.scopes(),
                 role.roleAssignmentExpiryDate(),
-                displayNames.get(role.role())))
+                nameFor(role, displayNames)))
             .toList());
+  }
+
+  /**
+   * What a role reads as, in order of what is most true.
+   *
+   * <p>The row's own name first - written when the change was made, so it
+   * survives the role being deleted and says what it was called then. Then the
+   * application's sidecars, for rows written before FAM recorded it. Then, for
+   * FAM's own administrative roles, what they are: those live on FAM's
+   * integration and carry no sidecar, so nothing above can name them and the
+   * trail was showing {@code DEVOPS_ADMIN_6538_DEV} where an appointment
+   * belonged.
+   *
+   * <p>The code last, which is the honest answer for a role nothing can name -
+   * one added directly in the CSS console, with no sidecar of its own.
+   */
+  private static String nameFor(
+      PrivilegeDetailsRoleDto role, Map<String, String> displayNames) {
+
+    if (role.roleDisplayName() != null && !role.roleDisplayName().isBlank()) {
+      return role.roleDisplayName();
+    }
+    String fromSidecar = displayNames.get(role.role());
+    if (fromSidecar != null) {
+      return fromSidecar;
+    }
+    return FamAdminRole.describe(role.role()).orElse(null);
   }
 
   private PermissionAuditHistoryDto toDto(

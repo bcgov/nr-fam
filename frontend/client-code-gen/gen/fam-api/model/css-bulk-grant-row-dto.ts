@@ -34,7 +34,7 @@ export interface CssBulkGrantRowDto {
      * @type {string}
      * @memberof CssBulkGrantRowDto
      */
-    'user_guid': string;
+    'user_guid'?: string;
     /**
      * 
      * @type {string}
@@ -52,7 +52,7 @@ export interface CssBulkGrantRowDto {
      * @type {string}
      * @memberof CssBulkGrantRowDto
      */
-    'user_name'?: string;
+    'user_name': string;
     /**
      * 
      * @type {string}
@@ -125,6 +125,12 @@ export interface CssBulkGrantRowDto {
      * @memberof CssBulkGrantRowDto
      */
     'valid': boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CssBulkGrantRowDto
+     */
+    'already_granted': boolean;
     /**
      * 
      * @type {string}

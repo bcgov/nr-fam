@@ -18,6 +18,7 @@ import {
     type FamForestClientDto,
 } from "fam-api/model";
 import { array, mixed, object, string } from "yup";
+import { describeApiError } from "@/utils/ApiUtils";
 
 // Query-cache keys the grant screen leaves its outcome under, for Manage
 // permissions to pick up after the redirect and then clear.
@@ -54,15 +55,8 @@ export type UserGrantOutcome = {
  * another organisation, a role that does not exist - which is worth far more
  * than "Request failed with status code 403".
  */
-export const describeGrantError = (error: unknown): string => {
-    const response = (error as { response?: { data?: { description?: string } } })
-        ?.response;
-    return (
-        response?.data?.description ??
-        (error as Error)?.message ??
-        "the grant could not be completed"
-    );
-};
+export const describeGrantError = (error: unknown): string =>
+    describeApiError(error, "the grant could not be completed");
 
 export type AppPermissionGrantSummary = {
     applicationName: string;

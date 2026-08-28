@@ -50,25 +50,42 @@ class CssIntegrationControllerTest {
   }
 
   @Test
-  @DisplayName("creating a role requires FAM_ADMIN")
-  void creatingARoleRequiresFamAdmin() {
+  @DisplayName("creating a role requires authority over this application's roles")
+  void creatingARoleRequiresRoleManagement() {
+    // FAM administrators, or a DevOps administrator of this exact application
+    // and environment - see AuthorizationService.requireRoleManagement.
     controller.createCssApplicationRole(INTEGRATION, ENV, createRequest(), requester);
 
-    verify(authorizationService).authorizeByFamAdmin(requester);
+    verify(authorizationService).requireRoleManagement(requester, INTEGRATION, ENV);
   }
 
   @Test
-  @DisplayName("does not create the role when the caller is not a FAM administrator")
+  @DisplayName("does not create the role when the caller may not manage them")
   void refusedCallerCreatesNothing() {
     // The guard has to run before the service, not alongside it.
     doThrow(FamHttpException.forbidden("permission_required", "no"))
-        .when(authorizationService).authorizeByFamAdmin(any());
+        .when(authorizationService).requireRoleManagement(any(), anyInt(), anyString());
 
     assertThatThrownBy(() ->
         controller.createCssApplicationRole(INTEGRATION, ENV, createRequest(), requester))
         .isInstanceOf(FamHttpException.class);
 
     verify(cssIntegrationService, never()).createRole(anyInt(), anyString(), any(), any());
+  }
+
+  @Test
+  @DisplayName("defining a role in every environment leaves the check to the service")
+  void allEnvironmentsChecksInTheService() {
+    /*
+        The environments are not known until the integration has been read, and
+        this endpoint deliberately names none - so the controller only requires a
+        caller, and the service requires authority over each environment it is
+        about to write to.
+    */
+    controller.createCssApplicationRoleInAllEnvironments(INTEGRATION, createRequest(), requester);
+
+    verify(authorizationService).authorize(requester);
+    verify(authorizationService, never()).authorizeByFamAdmin(requester);
   }
 
   @Test
@@ -113,11 +130,54 @@ class CssIntegrationControllerTest {
   @Test
   @DisplayName("listing roles is per-application, not FAM_ADMIN only")
   void listingRolesIsPerApplication() {
-    // Read access belongs to any tier for that application; only creation is
-    // reserved.
+    /*
+        Read access belongs to any tier for that application, and to a DevOps
+        administrator who administers none of it but defines its roles - two
+        different jobs needing the same listing. Only creating and deleting are
+        reserved.
+    */
     controller.getCssApplicationRoles(INTEGRATION, ENV, requester);
 
-    verify(authorizationService).requireApplicationAccess(requester, INTEGRATION, ENV);
+    verify(authorizationService).requireRoleVisibility(requester, INTEGRATION, ENV);
     verify(authorizationService, never()).authorizeByFamAdmin(any());
+  }
+
+  @Test
+  @DisplayName("counting who holds each role reads on the same rule")
+  void memberCountsReadOnTheSameRule() {
+    // A DevOps administrator about to delete a role needs to know what it would
+    // take with it.
+    controller.getCssApplicationRoleMemberCounts(INTEGRATION, ENV, requester);
+
+    verify(authorizationService).requireRoleVisibility(requester, INTEGRATION, ENV);
+  }
+
+  // ---------------------------------------------------------------------------
+  // DevOps administrators
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("reading the DevOps roster is a FAM administrator's to do")
+  void readingDevopsRosterNeedsFamAdmin() {
+    // It matches who may change it. The other tiers stay open to application
+    // administrators, who appoint into them.
+    controller.getCssApplicationAdministrators(
+        INTEGRATION, ENV, ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup.DEVOPS_ADMIN,
+        requester);
+
+    verify(authorizationService).requireDevopsAdminManagement(requester);
+    verify(authorizationService, never())
+        .requireDelegatedAdminManagement(any(), anyInt(), anyString());
+  }
+
+  @Test
+  @DisplayName("reading the other rosters is not narrowed to FAM administrators")
+  void readingOtherRostersIsUnchanged() {
+    controller.getCssApplicationAdministrators(
+        INTEGRATION, ENV, ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup.APP_ADMIN,
+        requester);
+
+    verify(authorizationService).requireDelegatedAdminManagement(requester, INTEGRATION, ENV);
+    verify(authorizationService, never()).requireDevopsAdminManagement(any());
   }
 }

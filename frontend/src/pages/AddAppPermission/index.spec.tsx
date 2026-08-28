@@ -549,7 +549,7 @@ describe("AddAppPermission", () => {
         createCssUserRoleAssignment
             .mockResolvedValueOnce({ data: [{ assigned: true }] })
             .mockRejectedValueOnce({
-                response: { data: { description: "Not yours to grant" } },
+                response: { data: { detail: { description: "Not yours to grant" } } },
             });
         renderPage();
         await chooseUser();

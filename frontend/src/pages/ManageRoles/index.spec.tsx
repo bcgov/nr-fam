@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Both are what the tests are about.
  */
 
-const getCssApplications = vi.fn();
+const getCssApplicationsForRoleManagement = vi.fn();
 const getCssApplicationRoles = vi.fn();
 const getCssApplicationRoleMemberCounts = vi.fn();
 const createCssApplicationRole = vi.fn();
@@ -21,7 +21,8 @@ const deleteCssApplicationRole = vi.fn();
 vi.mock("@/services/ApiServiceFactory", () => ({
     AdminMgmtApiService: {
         cssIntegrationsApi: {
-            getCssApplications: () => getCssApplications(),
+            getCssApplicationsForRoleManagement: () =>
+                getCssApplicationsForRoleManagement(),
             getCssApplicationRoles: () => getCssApplicationRoles(),
             getCssApplicationRoleMemberCounts: () =>
                 getCssApplicationRoleMemberCounts(),
@@ -45,25 +46,22 @@ vi.mock("@/services/ApiServiceFactory", () => ({
     AppActlApiService: {},
 }));
 
+
 const { ManageRoles } = await import("./index");
 const { NotificationProvider } = await import(
     "@/context/notification/NotificationProvider"
 );
 
+/*
+    As get_css_applications_for_role_management returns them: already narrowed to
+    what the caller may define roles for, with every_environment answering
+    whether they hold all of the integration's environments.
+*/
 const FREP = {
     integration_id: 6538,
     environment: "dev",
-    name: "FREP",
     description: "FREP (DEV)",
-    fam_application: false,
-};
-
-const FAM = {
-    integration_id: 12345,
-    environment: "dev",
-    name: "FAM",
-    description: "Forests Access Management (DEV)",
-    fam_application: true,
+    every_environment: true,
 };
 
 const EDITOR = {
@@ -116,7 +114,11 @@ const fillForm = async (code: string, name: string, description = "") => {
 
 describe("ManageRoles", () => {
     beforeEach(() => {
-        getCssApplications.mockReset().mockResolvedValue({ data: [FREP, FAM] });
+        // Already filtered and FAM-excluded by the backend, which is what this
+        // screen's own list does - see get_css_applications_for_role_management.
+        getCssApplicationsForRoleManagement
+            .mockReset()
+            .mockResolvedValue({ data: [FREP] });
         getCssApplicationRoles.mockReset().mockResolvedValue({ data: [EDITOR] });
         getCssApplicationRoleMemberCounts
             .mockReset()
@@ -134,21 +136,6 @@ describe("ManageRoles", () => {
         deleteCssApplicationRole
             .mockReset()
             .mockResolvedValue({ data: { role_name: "FREP_EDITOR" } });
-    });
-
-    it("does not offer FAM's own integration", async () => {
-        // Its roles are FAM_ADMIN and the generated APP_ADMIN_<id>_<ENV> ones.
-        // Deleting APP_ADMIN_22264_PROD here would strip every administrator of
-        // that application at once, and nothing would say so.
-        renderPage();
-        await userEvent.click(
-            await screen.findByRole("combobox", { name: /application/i })
-        );
-
-        expect(screen.getByText("FREP (DEV)")).toBeInTheDocument();
-        expect(
-            screen.queryByText("Forests Access Management (DEV)")
-        ).not.toBeInTheDocument();
     });
 
     it("shows nothing but the picker until an application is chosen", async () => {
@@ -342,7 +329,7 @@ describe("ManageRoles", () => {
 
     it("reports the backend's reason when a code is taken", async () => {
         createCssApplicationRole.mockRejectedValue({
-            response: { data: { description: "FREP_NEW already exists in dev." } },
+            response: { data: { detail: { description: "FREP_NEW already exists in dev." } } },
         });
         renderPage();
         await chooseApplication();
@@ -469,5 +456,84 @@ describe("ManageRoles", () => {
         await userEvent.click(screen.getByRole("button", { name: "Create role" }));
 
         expect(await screen.findByText("Role created")).toBeInTheDocument();
+    });
+
+    describe("who the picker offers", () => {
+        /*
+            The screen shows what the endpoint returns. That list is narrowed
+            server-side to the applications this caller may define roles for -
+            the ordinary application list is filtered by who may manage access,
+            which is empty for a DevOps administrator, and this picker was
+            therefore empty for exactly the people the screen was opened up to.
+        */
+        it("shows what its own endpoint returned, unfiltered", async () => {
+            getCssApplicationsForRoleManagement.mockResolvedValue({
+                data: [FREP, { ...FREP, environment: "test", description: "FREP (TEST)" }],
+            });
+
+            renderPage();
+            await waitFor(() =>
+                expect(getCssApplicationsForRoleManagement).toHaveBeenCalled()
+            );
+
+            await userEvent.click(
+                screen.getByRole("combobox", { name: /application/i })
+            );
+            expect(await screen.findByText("FREP (DEV)")).toBeInTheDocument();
+            expect(screen.getByText("FREP (TEST)")).toBeInTheDocument();
+        });
+
+        it("asks the role-management list, not the access one", async () => {
+            // The access list is empty for a DevOps administrator; asking it is
+            // what left this picker blank.
+            renderPage();
+
+            await waitFor(() =>
+                expect(getCssApplicationsForRoleManagement).toHaveBeenCalled()
+            );
+        });
+
+        it("offers the all-environments button only when the row says so", async () => {
+            /*
+                That call writes to every environment, so it takes authority over
+                every one. Only the backend can answer it: this list carries only
+                the environments the caller may manage, so holding DEV alone
+                would otherwise look like holding the whole integration.
+            */
+            getCssApplicationsForRoleManagement.mockResolvedValue({
+                data: [{ ...FREP, every_environment: false }],
+            });
+
+            renderPage();
+            await waitFor(() =>
+                expect(getCssApplicationsForRoleManagement).toHaveBeenCalled()
+            );
+            await userEvent.click(
+                screen.getByRole("combobox", { name: /application/i })
+            );
+            await userEvent.click(await screen.findByText("FREP (DEV)"));
+
+            expect(
+                await screen.findByRole("button", { name: "Create role" })
+            ).toBeInTheDocument();
+            expect(
+                screen.queryByRole("button", { name: /all environments/i })
+            ).not.toBeInTheDocument();
+        });
+
+        it("offers it when the row says they hold every environment", async () => {
+            renderPage();
+            await waitFor(() =>
+                expect(getCssApplicationsForRoleManagement).toHaveBeenCalled()
+            );
+            await userEvent.click(
+                screen.getByRole("combobox", { name: /application/i })
+            );
+            await userEvent.click(await screen.findByText("FREP (DEV)"));
+
+            expect(
+                await screen.findByRole("button", { name: /all environments/i })
+            ).toBeInTheDocument();
+        });
     });
 });

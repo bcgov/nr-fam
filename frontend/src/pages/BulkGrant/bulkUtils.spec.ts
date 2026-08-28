@@ -6,7 +6,7 @@ describe("bulk grant template", () => {
         // The backend recognises this as a header and skips it; a mismatch here
         // would turn the first line into a data row that always errors.
         expect(TEMPLATE_CSV.trim()).toBe(
-            "user_guid,user_type,role,district,organization,region"
+            "username,user_type,role,district,organization,region"
         );
     });
 

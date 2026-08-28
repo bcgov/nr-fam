@@ -55,12 +55,7 @@ export const roleLabel = (row: CssUserRoleRowDto): string =>
     row.role_display_name || row.role_name;
 import type { AppPermissionGrantSummary } from "@/pages/AddAppPermission/grantUtils";
 import { wasGranted } from "@/pages/ManagePermissions/utils";
-
-/** The row shading legacy used to mark a just-added permission. */
-export const NEW_ACCESS_STYLE_IN_TABLE = {
-    "background-color": "#C2E0FF",
-    "box-shadow": "inset 0 0 0 0.063rem #85C2FF",
-};
+import { PLACE_HOLDER } from "@/constants/constants";
 
 /**
  * {@code <guid>@azureidir -> GUID}, or null for a username that is not in that
@@ -205,13 +200,18 @@ export const downloadPermissionsCsv = (
  * date, because a date alone leaves the reader doing the arithmetic to work out
  * whether the access is still live.
  *
+ * <p>No expiry reads as the placeholder every other column uses for an absent
+ * value, rather than as a sentence. Most grants have no expiry, so a column of
+ * "Never expires" was the loudest thing in the table and said the least - the
+ * dates are what somebody is scanning for.
+ *
  * <p>Access lasts to the end of the day named, so a grant expiring today is not
  * expired. Comparing the strings works because both are YYYY-MM-DD, which sorts
  * the same way it reads.
  */
 export const formatExpiry = (expiresOn: string | null | undefined): string => {
     if (!expiresOn) {
-        return "Never expires";
+        return PLACE_HOLDER;
     }
     const now = new Date();
     const today = [
@@ -301,23 +301,38 @@ export const needsScopeDetail = (group: PermissionGroup): boolean => {
     return types.size > 1 || group.combinations.some((one) => one.length > 1);
 };
 
-/** The prefix the history page uses, so one scope reads the same in both. */
-export const scopeTypeAbbreviation = (type: string): string => {
+/** The prefix the history page uses too, so one scope reads the same in both. */
+export const scopeTypeLabel = (type: string): string => {
     switch (type.toUpperCase()) {
         case "DISTRICT":
-            return "DIS";
+            return "District";
         case "REGION":
-            return "REG";
+            return "Region";
         default:
-            return "ORG";
+            return "Organization";
     }
 };
 
-/** One scope, named or coded, prefixed when the column carries more than one kind. */
-export const scopeChipLabel = (scope: ScopeDto, withType: boolean): string =>
-    withType
-        ? `${scopeTypeAbbreviation(scope.type)}: ${scope.label || scope.value}`
-        : scope.label || scope.value;
+/**
+ * One scope as it reads on a pill: {@code District: DCC}, {@code Region:
+ * Cariboo}, {@code Organization: 00001012}.
+ *
+ * <p>Always prefixed. The three are not distinguishable from their values alone,
+ * and a pill that says what kind of thing it is stays readable when it is lifted
+ * out of its column - into a revoke confirmation, or read aloud.
+ *
+ * <p>Only regions read as a name. A district's full name runs to
+ * {@code Cariboo-Chilcotin Natural Resource District}, which is too long for a
+ * pill that already says "District" - and the code is short, familiar, and what
+ * people quote. An organisation reads as its number for the same kind of reason:
+ * it is what the grant was made against and what the picker searches by.
+ */
+export const scopeChipLabel = (scope: ScopeDto): string =>
+    `${scopeTypeLabel(scope.type)}: ${
+        scope.type.toUpperCase() === "REGION"
+            ? scope.label || scope.value
+            : scope.value
+    }`;
 
 /**
  * Everything in a group as one searchable, sortable string.

@@ -13,7 +13,7 @@ import {
 } from "@carbon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-    CssApplicationOptionDto,
+    CssRoleManagementApplicationDto,
     CssRoleBulkCreateResultDto,
     CssRoleOptionDto,
 } from "fam-api";
@@ -46,6 +46,7 @@ import {
 } from "./validation";
 import "./ManageRoles.css";
 import { RemoveButton } from "@/components/RemoveButton";
+import { matchesTypedTextBeside } from "@/utils/ComboBoxFilter";
 
 /**
  * Define the roles an application offers.
@@ -74,7 +75,7 @@ export const ManageRoles: FC = () => {
     const permissionToast = usePermissionToast();
 
     const [selectedApp, setSelectedApp] =
-        useState<CssApplicationOptionDto | null>(null);
+        useState<CssRoleManagementApplicationDto | null>(null);
     const [form, setForm] = useState(getDefaultFormData());
     /*
         Empty until an action is taken, not the result of validating a blank
@@ -115,36 +116,45 @@ export const ManageRoles: FC = () => {
      * leave a sentence reading "deleted from undefined".
      */
     const applicationName =
-        selectedApp?.description ?? selectedApp?.name ?? "this application";
+        selectedApp?.description ?? "this application";
 
+    /*
+        Its own list, not the one the permissions screens use.
+
+        That one is filtered by who may manage access, and a DevOps administrator
+        manages none - so this picker was empty for exactly the people the screen
+        was opened up to. This asks the question this screen is about: whose roles
+        may you define. It also answers, per row, whether the caller holds every
+        environment the integration has, which only the backend can know: the list
+        carries only the environments they may manage.
+    */
     const applicationsQuery = useQuery({
-        queryKey: ["css-applications"],
+        queryKey: ["css-applications-role-management"],
         queryFn: () =>
             AdminMgmtApiService.cssIntegrationsApi
-                .getCssApplications()
+                .getCssApplicationsForRoleManagement()
                 .then((res) => res.data),
         refetchOnMount: true,
     });
 
-    /**
-     * Every application whose roles can be managed here - which is every one but
-     * FAM.
-     *
-     * FAM's own integration holds `FAM_ADMIN` plus the `APP_ADMIN_<id>_<ENV>`
-     * and `DELEGATED_ADMIN_...` roles FAM generates as administrators are
-     * appointed. None of them is an application role: deleting
-     * `APP_ADMIN_22264_PROD` from this screen would strip every administrator of
-     * that application at once, and nothing here would say so. They are created
-     * and removed by appointing and removing administrators instead.
-     *
-     * All three environments go, because they are all the same integration. The
-     * backend refuses the operation as well - this only stops it being offered.
-     */
-    const applicationOptions = useMemo(
-        () =>
-            (applicationsQuery.data ?? []).filter((app) => !app.fam_application),
-        [applicationsQuery.data]
-    );
+    /*
+        Already the right list: the endpoint above returns only the applications
+        this caller may define roles for, and leaves out FAM's own - its roles
+        are the administrative tiers, created by appointing administrators rather
+        than from this screen.
+    */
+    const applicationOptions = applicationsQuery.data ?? [];
+
+    /*
+        Whether to offer "create in all environments".
+
+        That call writes to every environment the integration has, so it takes
+        authority over every one. The backend answers it per row, because only it
+        can: this list carries only the environments the caller may manage, so a
+        DevOps administrator holding DEV alone would otherwise see one
+        environment and conclude they held the integration.
+    */
+    const canCreateInAllEnvironments = selectedApp?.every_environment ?? false;
 
     /**
      * The roles the chosen application already has.
@@ -374,9 +384,18 @@ export const ManageRoles: FC = () => {
                         titleText="Application:"
                         placeholder="Choose an application to add a role to"
                         items={applicationOptions}
-                        itemToString={(item: CssApplicationOptionDto | null) =>
-                            item?.description ?? item?.name ?? ""
+                        itemToString={(item: CssRoleManagementApplicationDto | null) =>
+                            item?.description ?? ""
                         }
+                        /*
+                            Carbon shows the whole list otherwise. Beside the
+                            selection, because Carbon leaves the chosen
+                            application's name in the box and a plain filter
+                            would narrow the list to it on reopening.
+                        */
+                        shouldFilterItem={matchesTypedTextBeside(
+                            selectedApp?.description
+                        )}
                         selectedItem={selectedApp}
                         onChange={({ selectedItem }) => {
                             setSelectedApp(selectedItem ?? null);
@@ -525,26 +544,30 @@ export const ManageRoles: FC = () => {
                             >
                                 Create role
                             </Button>
-                            {/*
+            {/*
                                 Secondary: creating in the selected environment
                                 is the ordinary action, and this one writes to
-                                environments the screen is not showing.
+                                environments the screen is not showing - which is
+                                also why it is offered only to somebody who
+                                administers all of them.
                             */}
-                            <Button
-                                kind="secondary"
-                                renderIcon={
-                                    createAllMutation.isPending
-                                        ? InlineSpinner
-                                        : undefined
-                                }
-                                disabled={isBusy}
-                                onClick={() =>
-                                    validateAndClear() &&
-                                    createAllMutation.mutate()
-                                }
-                            >
-                                Create in all environments
-                            </Button>
+                            {canCreateInAllEnvironments ? (
+                                <Button
+                                    kind="secondary"
+                                    renderIcon={
+                                        createAllMutation.isPending
+                                            ? InlineSpinner
+                                            : undefined
+                                    }
+                                    disabled={isBusy}
+                                    onClick={() =>
+                                        validateAndClear() &&
+                                        createAllMutation.mutate()
+                                    }
+                                >
+                                    Create in all environments
+                                </Button>
+                            ) : null}
                         </div>
 
                         {created ? (

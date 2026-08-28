@@ -43,6 +43,7 @@ import ca.bc.gov.nrs.fam.security.Requester;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -703,6 +704,66 @@ class CssIntegrationServiceTest {
   }
 
   @Test
+  @DisplayName("does not announce a role the person already held")
+  void staysQuietOnARegrant() {
+    /*
+        Re-granting is how an expiry is changed and how a partly failed run is
+        retried - both routine. Emailing "you have been granted access" each time
+        tells somebody about a change that did not happen to them.
+    */
+    givenRoles(role("CHR_FREP_EDITOR", false));
+    when(cssApiService.getUserRoles(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssRoleDto("CHR_FREP_EDITOR", false)));
+
+    List<CssUserRoleAssignmentResult> results =
+        service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
+
+    // The grant itself still goes ahead: it is how the expiry beside it moves.
+    assertThat(results).singleElement()
+        .satisfies(r -> assertThat(r.assigned()).isTrue());
+    verify(cssApiService).assignUserRoles(anyInt(), anyString(), anyString(), any());
+
+    org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
+        org.mockito.ArgumentCaptor.forClass(List.class);
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
+    assertThat(captor.getValue()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("announces only the roles that were new to the person")
+  void announcesOnlyWhatIsNew() {
+    givenRoles(role("CHR_FREP_EDITOR", true));
+    when(cssApiService.getUserRoles(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssRoleDto("CHR_FREP_EDITOR_DISTRICT-DCC", false)));
+
+    service.assignUserRoles(
+        INTEGRATION, ENV, request("DISTRICT", List.of("DCC", "DQU")), GRANTER);
+
+    org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
+        org.mockito.ArgumentCaptor.forClass(List.class);
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
+    assertThat(captor.getValue()).singleElement().satisfies(result ->
+        assertThat(result.roleName()).isEqualTo("CHR_FREP_EDITOR_DISTRICT-DQU"));
+  }
+
+  @Test
+  @DisplayName("still announces when CSS cannot say what the person held")
+  void announcesWhenTheReadFails() {
+    // Best effort: an outage means the email goes as it always did, which is the
+    // safe direction to fail in.
+    givenRoles(role("CHR_FREP_EDITOR", false));
+    when(cssApiService.getUserRoles(anyInt(), anyString(), anyString()))
+        .thenThrow(new RuntimeException("CSS is down"));
+
+    service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
+
+    org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
+        org.mockito.ArgumentCaptor.forClass(List.class);
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
+    assertThat(captor.getValue()).hasSize(1);
+  }
+
+  @Test
   @DisplayName("creates one role per scope value and assigns those instead of the base role")
   void createsOneRolePerScopeValue() {
     givenRoles(role("CHR_FREP_EDITOR", false));
@@ -1236,6 +1297,117 @@ class CssIntegrationServiceTest {
       verify(cssApiService).createRole(
           INTEGRATION, env, "FAM:LABEL:FREP_ADMINISTRATOR:FREP Administrator");
     }
+  }
+
+  @Test
+  @DisplayName("the role-management list is not empty for a DevOps admin")
+  void roleManagementListServesADevopsAdmin() {
+    /*
+        The bug this list exists to fix. The ordinary application list is
+        filtered by who may manage access, and a DevOps administrator manages
+        none - so the Manage roles picker had nothing in it for exactly the
+        people the screen was opened up to.
+    */
+    givenIntegration("dev", "test");
+
+    Requester devops = Requester.builder()
+        .userName("DEVOPS").userGuid("DDDD1111")
+        .accessRoles(List.of(FamAdminRole.devopsAdmin(INTEGRATION, "DEV")))
+        .build();
+
+    assertThat(service.getApplicationsForRoleManagement(devops))
+        .singleElement()
+        .satisfies(app -> {
+          assertThat(app.integrationId()).isEqualTo(INTEGRATION);
+          assertThat(app.environment()).isEqualTo("dev");
+          // TEST is a separate appointment they do not hold.
+          assertThat(app.everyEnvironment()).isFalse();
+        });
+  }
+
+  @Test
+  @DisplayName("says so when the caller holds every environment the integration has")
+  void roleManagementListFlagsEveryEnvironment() {
+    // Only the backend can answer this: the list carries only the environments
+    // this caller may manage, so the frontend cannot tell what it is missing.
+    givenIntegration("dev", "test");
+
+    Requester devops = Requester.builder()
+        .userName("DEVOPS").userGuid("DDDD1111")
+        .accessRoles(List.of(
+            FamAdminRole.devopsAdmin(INTEGRATION, "DEV"),
+            FamAdminRole.devopsAdmin(INTEGRATION, "TEST")))
+        .build();
+
+    assertThat(service.getApplicationsForRoleManagement(devops))
+        .hasSize(2)
+        .allSatisfy(app -> assertThat(app.everyEnvironment()).isTrue());
+  }
+
+  @Test
+  @DisplayName("offers a FAM administrator every application but FAM's own")
+  void roleManagementListForFamAdmin() {
+    givenIntegration("dev", "test");
+
+    assertThat(service.getApplicationsForRoleManagement(DEFINER))
+        .isNotEmpty()
+        .allSatisfy(app -> {
+          assertThat(app.integrationId()).isNotEqualTo(FAM_OWN_INTEGRATION);
+          assertThat(app.everyEnvironment()).isTrue();
+        });
+  }
+
+  @Test
+  @DisplayName("a DevOps admin appointed for every environment may define a role in all of them")
+  void devopsAdminWithEveryEnvironmentMayDefineInAll() {
+    // Holding each environment separately adds up to holding the integration
+    // for this purpose - which is what the one-call form writes to.
+    givenIntegration("dev", "test", "prod");
+    for (String env : List.of("dev", "test", "prod")) {
+      givenRolesIn(env);
+    }
+
+    Requester devops = Requester.builder()
+        .userName("DEVOPS").userGuid("DDDD1111")
+        .accessRoles(List.of(
+            FamAdminRole.devopsAdmin(INTEGRATION, "DEV"),
+            FamAdminRole.devopsAdmin(INTEGRATION, "TEST"),
+            FamAdminRole.devopsAdmin(INTEGRATION, "PROD")))
+        .build();
+
+    assertThat(service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        devops).environments())
+        .containsExactly("dev", "test", "prod");
+  }
+
+  @Test
+  @DisplayName("one missing environment refuses the whole call and creates nothing")
+  void devopsAdminMissingOneEnvironmentIsRefused() {
+    /*
+        Every environment, not any: this writes to all of them, so holding DEV
+        and TEST must not create the role in PROD. Refused outright rather than
+        creating what fits - a partial result would be a role that exists in two
+        environments and not the third, silently.
+    */
+    givenIntegration("dev", "test", "prod");
+    for (String env : List.of("dev", "test", "prod")) {
+      givenRolesIn(env);
+    }
+
+    Requester devops = Requester.builder()
+        .userName("DEVOPS").userGuid("DDDD1111")
+        .accessRoles(List.of(
+            FamAdminRole.devopsAdmin(INTEGRATION, "DEV"),
+            FamAdminRole.devopsAdmin(INTEGRATION, "TEST")))
+        .build();
+
+    assertThatThrownBy(() -> service.createRoleInAllEnvironments(
+        INTEGRATION, createRequest("FREP_ADMINISTRATOR", "FREP Administrator", false, false),
+        devops))
+        .isInstanceOf(FamHttpException.class);
+
+    verify(cssApiService, never()).createRole(eq(INTEGRATION), anyString(), anyString());
   }
 
   @Test
@@ -2429,5 +2601,153 @@ class CssIntegrationServiceTest {
         delegatedFor("CHR_FREP_EDITOR")))
         .singleElement()
         .satisfies(option -> assertThat(option.grantableDistricts()).isEmpty());
+  }
+
+  // ---------------------------------------------------------------------------
+  // DevOps administrators
+  // ---------------------------------------------------------------------------
+
+  @Nested
+  @DisplayName("DevOps administrators")
+  class DevopsAdmins {
+
+    private final CssAdministratorAppointRequest appoint =
+        new CssAdministratorAppointRequest("TARGETGUID", UserType.IDIR);
+
+    /** GRANTER is an application administrator, which is deliberately not enough. */
+    private final Requester famAdmin = Requester.builder()
+        .userName("FAMADMIN").userGuid("FFFF0000")
+        .accessRoles(List.of(FamAdminRole.FAM_ADMIN))
+        .build();
+
+    @Test
+    @DisplayName("assigns the role on FAM's own integration, naming the application")
+    void appointsOnFamsOwnIntegration() {
+      /*
+          A token carries client_roles for the client it was issued to, so a role
+          sitting on the administered application's integration would never reach
+          FAM. That is why the application is named inside the role.
+      */
+      when(cssApiService.getRoles(anyInt(), anyString())).thenReturn(List.of());
+
+      CssUserRoleAssignmentResult result =
+          service.appointDevopsAdmin(INTEGRATION, ENV, appoint, famAdmin);
+
+      assertThat(result.roleName()).isEqualTo("DEVOPS_ADMIN_" + INTEGRATION + "_DEV");
+      assertThat(result.assigned()).isTrue();
+      verify(cssApiService).assignUserRoles(
+          eq(FAM_OWN_INTEGRATION), anyString(), anyString(),
+          eq(List.of("DEVOPS_ADMIN_" + INTEGRATION + "_DEV")));
+    }
+
+    @Test
+    @DisplayName("is a FAM administrator's appointment to make, not an application admin's")
+    void onlyFamAdminsMayAppoint() {
+      /*
+          Defining an application's roles is not authority an application
+          administrator holds, so they cannot hand it out either - letting them
+          would be a way to acquire it by proxy. GRANTER administers this
+          application and is still refused.
+      */
+      assertThatThrownBy(() ->
+          service.appointDevopsAdmin(INTEGRATION, ENV, appoint, GRANTER))
+          .isInstanceOf(FamHttpException.class)
+          .hasMessageContaining("Only a FAM administrator");
+
+      verify(cssApiService, never()).assignUserRoles(
+          anyInt(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("a FAM administrator may appoint one")
+    void famAdminsMay() {
+      service.appointDevopsAdmin(INTEGRATION, ENV, appoint, famAdmin);
+
+      verify(authorizationService).requireDevopsAdminManagement(famAdmin);
+    }
+
+    @Test
+    @DisplayName("refuses to appoint the caller themselves")
+    void refusesSelfAppointment() {
+      service.appointDevopsAdmin(INTEGRATION, ENV, appoint, famAdmin);
+
+      verify(authorizationService).forbidSelfGrant(famAdmin, "TARGETGUID");
+    }
+
+    @Test
+    @DisplayName("refuses a Business BCeID user")
+    void refusesABceidTarget() {
+      /*
+          A DevOps administrator decides what an application's roles are. That is
+          authority over the application itself rather than over work done in it,
+          and it belongs to staff.
+      */
+      assertThatThrownBy(() -> service.appointDevopsAdmin(INTEGRATION, ENV,
+          new CssAdministratorAppointRequest("TARGETGUID", UserType.BCEID), famAdmin))
+          .isInstanceOf(FamHttpException.class)
+          .hasMessageContaining("Only an IDIR user");
+
+      verify(cssApiService, never()).assignUserRoles(
+          anyInt(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("removal takes the role away and records it")
+    void removesTheRole() {
+      service.removeDevopsAdmin(INTEGRATION, ENV, appoint, famAdmin);
+
+      verify(cssApiService).removeUserRole(
+          eq(FAM_OWN_INTEGRATION), anyString(), anyString(),
+          eq("DEVOPS_ADMIN_" + INTEGRATION + "_DEV"));
+      verify(auditWriteService).storeCssRevoked(
+          any(), anyString(), any(), anyInt(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("lists the holders of this application's DevOps role")
+    void listsHolders() {
+      service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.DEVOPS_ADMIN);
+
+      verify(cssApiService).getUsersWithRole(
+          eq(FAM_OWN_INTEGRATION), anyString(), eq("DEVOPS_ADMIN_" + INTEGRATION + "_DEV"));
+    }
+  }
+
+  @Test
+  @DisplayName("an application administrator must be an IDIR user")
+  void appAdminMustBeIdir() {
+    // They grant every role the application defines and appoint delegated
+    // administrators - authority over the application itself.
+    Requester famAdmin = Requester.builder()
+        .userName("FAMADMIN").userGuid("FFFF0000")
+        .accessRoles(List.of(FamAdminRole.FAM_ADMIN))
+        .build();
+
+    assertThatThrownBy(() -> service.appointApplicationAdmin(INTEGRATION, ENV,
+        new CssAdministratorAppointRequest("TARGETGUID", UserType.BCEID), famAdmin))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("Only an IDIR user");
+
+    verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
+  }
+
+  @Test
+  @DisplayName("a delegated administrator may still be a Business BCeID user")
+  void delegatedAdminMayBeBceid() {
+    /*
+        Deliberately unrestricted: delegating the right to grant one role to
+        somebody's own organisation is the case that tier exists for, and a
+        Business BCeID administrator is already penned in by
+        TargetOrganizationGuard.
+    */
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    service.appointDelegatedAdmin(INTEGRATION, ENV,
+        new CssDelegatedAdminRequest("AABBCCDDEEFF00112233445566778899", UserType.BCEID,
+            "CHR_FREP_EDITOR", selections(null, List.of())),
+        GRANTER);
+
+    // Reached the assignment rather than being refused on the way in.
+    verify(cssApiService).assignUserRoles(anyInt(), anyString(), anyString(), any());
   }
 }

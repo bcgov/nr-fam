@@ -32,4 +32,30 @@ public interface FamPrivilegeChangeAuditRepository
       @Param("targetUser") String targetUser,
       @Param("cssIntegrationId") Integer cssIntegrationId,
       @Param("cssEnvironment") String cssEnvironment);
+
+  /**
+   * Every change made in one application, newest first, as the columns the user
+   * list needs.
+   *
+   * <p>A projection rather than the entities: the caller wants one row per person
+   * and takes the newest of each, so loading whole audit records - two JSONB
+   * documents apiece - to discard most of them would be the expensive way to ask.
+   *
+   * <p>Not grouped in SQL either. The newest row's snapshot of the person is what
+   * the list shows, and an aggregate cannot pick "the details belonging to the
+   * max date" - {@code max()} over a JSON string sorts it lexicographically and
+   * returns somebody else's name.
+   */
+  @Query("""
+      select a.targetUser, a.changeDate, a.changeTargetUserDetails
+      from FamPrivilegeChangeAudit a
+      where a.cssIntegrationId = :cssIntegrationId
+        and a.cssEnvironment = :cssEnvironment
+        and a.targetUser is not null
+      order by a.changeDate desc
+      """)
+  List<Object[]> findTargetUsersForApplication(
+      @Param("cssIntegrationId") Integer cssIntegrationId,
+      @Param("cssEnvironment") String cssEnvironment);
+
 }

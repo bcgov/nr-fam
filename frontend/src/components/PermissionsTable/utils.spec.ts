@@ -39,7 +39,7 @@ describe("toCsv", () => {
         expect(lines).toHaveLength(2);
         expect(lines[1]).toBe(
             '"JSMITH","IDIR","Jane Smith","jane@gov.bc.ca","","FREP_ADMINISTRATOR",'
-                + '"Never expires"'
+                + '"—"'
         );
     });
 
@@ -334,10 +334,13 @@ describe("formatExpiry", () => {
         ].join("-");
     };
 
-    it("says so plainly when there is no end date", () => {
-        expect(formatExpiry(null)).toBe("Never expires");
-        expect(formatExpiry(undefined)).toBe("Never expires");
-        expect(formatExpiry("")).toBe("Never expires");
+    it("dashes when there is no end date", () => {
+        // The placeholder every other column uses for an absent value. Most
+        // grants have no expiry, so a column of "Never expires" was the loudest
+        // thing in the table and said the least.
+        expect(formatExpiry(null)).toBe("—");
+        expect(formatExpiry(undefined)).toBe("—");
+        expect(formatExpiry("")).toBe("—");
     });
 
     it("shows the date while the access is still live", () => {
@@ -490,22 +493,58 @@ describe("needsScopeDetail", () => {
 });
 
 describe("scopeChipLabel", () => {
-    it("prefers the name over the code", () => {
+    it("names the kind, always", () => {
+        /*
+            The three are not distinguishable from their values alone, and a
+            pill has to stay readable when it is lifted out of its column - into
+            a revoke confirmation, or read aloud.
+        */
         expect(
-            scopeChipLabel(
-                { type: "REGION", value: "KOOTENAY_BOUNDARY", label: "Kootenay-Boundary" },
-                false
-            )
-        ).toBe("Kootenay-Boundary");
+            scopeChipLabel({
+                type: "REGION",
+                value: "KOOTENAY_BOUNDARY",
+                label: "Kootenay-Boundary",
+            })
+        ).toBe("Region: Kootenay-Boundary");
+        expect(scopeChipLabel({ type: "DISTRICT", value: "DCC" })).toBe(
+            "District: DCC"
+        );
+        expect(scopeChipLabel({ type: "FOREST_CLIENT", value: "00001012" })).toBe(
+            "Organization: 00001012"
+        );
     });
 
-    it("prefixes the kind when the column carries more than one", () => {
+    it("reads a district as its code even when a name is to hand", () => {
+        // "District: Cariboo-Chilcotin Natural Resource District" is too long
+        // for a pill, and says "district" twice. The code is short, familiar,
+        // and what people quote.
         expect(
-            scopeChipLabel({ type: "DISTRICT", value: "DCC" }, true)
-        ).toBe("DIS: DCC");
+            scopeChipLabel({
+                type: "DISTRICT",
+                value: "DQU",
+                label: "Quesnel Natural Resource District",
+            })
+        ).toBe("District: DQU");
+    });
+
+    it("reads an organisation as its number, not its name", () => {
+        // It is what the grant was made against, what the picker searches by,
+        // and what somebody arrives with from a ticket.
         expect(
-            scopeChipLabel({ type: "FOREST_CLIENT", value: "00001012" }, true)
-        ).toBe("ORG: 00001012");
+            scopeChipLabel({
+                type: "FOREST_CLIENT",
+                value: "00001012",
+                label: "ACME FORESTRY LTD",
+            })
+        ).toBe("Organization: 00001012");
+    });
+
+    it("falls back to the code for a region nothing named", () => {
+        // Retired from the reference set. The code is what it is called then,
+        // and an empty pill would be worse.
+        expect(scopeChipLabel({ type: "REGION", value: "NO_SUCH_REGION" })).toBe(
+            "Region: NO_SUCH_REGION"
+        );
     });
 });
 

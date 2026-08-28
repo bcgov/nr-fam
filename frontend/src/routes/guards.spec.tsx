@@ -4,7 +4,12 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { AuthContext, type AuthContextValue } from "@/context/auth/AuthContext";
 import type { AuthState } from "@/types/AuthTypes";
-import { RedirectIfSignedIn, RequireAuth, RequireFamAdmin } from "./guards";
+import {
+    RedirectIfSignedIn,
+    RequireAuth,
+    RequireFamAdmin,
+    RequireRoleManager,
+} from "./guards";
 import { ROUTES } from "./routePaths";
 
 /**
@@ -149,3 +154,43 @@ describe("RedirectIfSignedIn", () => {
         expect(screen.getByText("manage permissions page")).toBeInTheDocument();
     });
 });
+
+describe("RequireRoleManager", () => {
+    it("lets a DevOps administrator through", () => {
+        // They manage the roles of the applications they were appointed for, so
+        // the screen has to open - the picker on it offers only those.
+        renderGuarded({
+                isAuthenticated: true,
+                accessRoles: ["DEVOPS_ADMIN_6538_DEV"],
+            }, (
+            <RequireRoleManager>
+                <p>manage roles</p>
+            </RequireRoleManager>
+        ));
+
+        expect(screen.getByText("manage roles")).toBeInTheDocument();
+    });
+
+    it("lets a FAM administrator through", () => {
+        renderGuarded({ isAuthenticated: true, accessRoles: ["FAM_ADMIN"] }, (
+            <RequireRoleManager>
+                <p>manage roles</p>
+            </RequireRoleManager>
+        ));
+
+        expect(screen.getByText("manage roles")).toBeInTheDocument();
+    });
+
+    it("turns away an application administrator", () => {
+        // Handing out what an application defines is not the same as deciding
+        // what it defines.
+        renderGuarded({ isAuthenticated: true, accessRoles: ["APP_ADMIN_6538_DEV"] }, (
+            <RequireRoleManager>
+                <p>manage roles</p>
+            </RequireRoleManager>
+        ));
+
+        expect(screen.queryByText("manage roles")).not.toBeInTheDocument();
+    });
+});
+
