@@ -55,8 +55,15 @@ public class SecurityConfiguration {
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     return http
         .cors(Customizer.withDefaults())
-        // No cookies or server-side session: every request carries a bearer
-        // token, so there is no CSRF surface to protect.
+        // Deliberately disabled, and reported by CodeQL as
+        // java/spring-disabled-csrf-protection. CSRF defends a browser
+        // credential the browser attaches by itself; this service has none.
+        // It issues no cookie and creates no session (see the STATELESS policy
+        // below), and the only credential it accepts is a bearer token the SPA
+        // reads out of the OIDC client's storage and sets on each request. A
+        // cross-site form post carries no such header, so it arrives
+        // unauthenticated. Enabling CSRF here would hand tokens to a client
+        // that has nowhere to keep them and no cookie to pair them with.
         .csrf(csrf -> csrf.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
@@ -76,7 +83,11 @@ public class SecurityConfiguration {
     config.setAllowedOrigins(famProperties.cors().allowedOrigins());
     config.setAllowedMethods(List.of("*"));
     config.setAllowedHeaders(List.of("*"));
-    config.setAllowCredentials(true);
+    // Left off on purpose: the SPA authenticates with an Authorization header,
+    // never a cookie, so nothing needs to ride along credentialed. Allowing
+    // credentials would let an allowed origin make cookie-bearing calls - the
+    // one thing that would give this API a CSRF surface.
+    config.setAllowCredentials(false);
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", config);

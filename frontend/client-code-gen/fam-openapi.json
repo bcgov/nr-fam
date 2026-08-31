@@ -805,6 +805,13 @@
             "maximum" : 500,
             "minimum" : 10
           }
+        }, {
+          "name" : "environment",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -835,6 +842,13 @@
             "maxLength" : 20,
             "minLength" : 0
           }
+        }, {
+          "name" : "environment",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -864,6 +878,13 @@
             "type" : "string",
             "maxLength" : 20,
             "minLength" : 0
+          }
+        }, {
+          "name" : "environment",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
           }
         } ],
         "responses" : {

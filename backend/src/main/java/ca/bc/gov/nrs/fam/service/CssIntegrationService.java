@@ -808,7 +808,7 @@ public class CssIntegrationService {
 
     for (String delegation : delegations) {
       try {
-        cssApiService.deleteRole(ownIntegrationId(), famEnvironment(), delegation);
+        cssApiService.deleteRole(ownIntegrationId(), environment, delegation);
         removedDelegations.add(delegation);
       } catch (RuntimeException e) {
         log.error("Could not withdraw delegation {} while removing role {}: {}",
@@ -890,7 +890,8 @@ public class CssIntegrationService {
     // A Business BCeID administrator may only appoint within their own
     // organisation, the same rule the grant path applies.
     targetOrganizationGuard.requireSameOrganization(
-        requester, request.userType(), request.userGuid());
+        requester, apiInstanceEnvResolver.resolveDirectory(environment),
+        request.userType(), request.userGuid());
 
     Integer ownIntegrationId = ownIntegrationId();
     String username = cssUsername(request.userGuid(), request.userType());
@@ -898,7 +899,7 @@ public class CssIntegrationService {
     List<String> delegations = delegationRoleNames(integrationId, environment, request);
 
     Set<String> existing = new HashSet<>();
-    cssApiService.getRoles(ownIntegrationId, famEnvironment())
+    cssApiService.getRoles(ownIntegrationId, environment)
         .forEach(role -> existing.add(role.name()));
 
     List<CssUserRoleAssignmentResult> results = new ArrayList<>();
@@ -908,7 +909,7 @@ public class CssIntegrationService {
       try {
         boolean created = false;
         if (!existing.contains(delegation)) {
-          cssApiService.createRole(ownIntegrationId, famEnvironment(), delegation);
+          cssApiService.createRole(ownIntegrationId, environment, delegation);
           created = true;
         }
         assignable.add(delegation);
@@ -925,7 +926,7 @@ public class CssIntegrationService {
     }
 
     try {
-      cssApiService.assignUserRoles(ownIntegrationId, famEnvironment(), username, assignable);
+      cssApiService.assignUserRoles(ownIntegrationId, environment, username, assignable);
       results.replaceAll(result -> assignable.contains(result.roleName())
           ? new CssUserRoleAssignmentResult(result.roleName(), result.roleCreated(), true, null,
               EmailSendingStatus.NOT_REQUIRED)
@@ -972,7 +973,8 @@ public class CssIntegrationService {
     requireIdirAdministrator(request.userType(), "an application administrator");
     authorizationService.forbidSelfGrant(requester, request.userGuid());
     targetOrganizationGuard.requireSameOrganization(
-        requester, request.userType(), request.userGuid());
+        requester, apiInstanceEnvResolver.resolveDirectory(environment),
+        request.userType(), request.userGuid());
 
     Integer ownIntegrationId = ownIntegrationId();
     String username = cssUsername(request.userGuid(), request.userType());
@@ -980,14 +982,14 @@ public class CssIntegrationService {
 
     boolean created = false;
     try {
-      boolean exists = cssApiService.getRoles(ownIntegrationId, famEnvironment()).stream()
+      boolean exists = cssApiService.getRoles(ownIntegrationId, environment).stream()
           .anyMatch(role -> roleName.equals(role.name()));
       if (!exists) {
-        cssApiService.createRole(ownIntegrationId, famEnvironment(), roleName);
+        cssApiService.createRole(ownIntegrationId, environment, roleName);
         created = true;
       }
       cssApiService.assignUserRoles(
-          ownIntegrationId, famEnvironment(), username, List.of(roleName));
+          ownIntegrationId, environment, username, List.of(roleName));
     } catch (RuntimeException e) {
       log.error("Could not appoint {} as an application administrator: {}",
           username, e.getMessage());
@@ -1019,7 +1021,7 @@ public class CssIntegrationService {
     authorizationService.forbidSelfGrant(requester, request.userGuid());
 
     String roleName = FamAdminRole.appAdmin(integrationId, environment);
-    cssApiService.removeUserRole(ownIntegrationId(), famEnvironment(),
+    cssApiService.removeUserRole(ownIntegrationId(), environment,
         cssUsername(request.userGuid(), request.userType()), roleName);
 
     log.info("Removed application administration of integration {} ({}) from {}.",
@@ -1078,7 +1080,8 @@ public class CssIntegrationService {
     requireIdirAdministrator(request.userType(), "a DevOps administrator");
     authorizationService.forbidSelfGrant(requester, request.userGuid());
     targetOrganizationGuard.requireSameOrganization(
-        requester, request.userType(), request.userGuid());
+        requester, apiInstanceEnvResolver.resolveDirectory(environment),
+        request.userType(), request.userGuid());
 
     Integer ownIntegrationId = ownIntegrationId();
     String username = cssUsername(request.userGuid(), request.userType());
@@ -1086,14 +1089,14 @@ public class CssIntegrationService {
 
     boolean created = false;
     try {
-      boolean exists = cssApiService.getRoles(ownIntegrationId, famEnvironment()).stream()
+      boolean exists = cssApiService.getRoles(ownIntegrationId, environment).stream()
           .anyMatch(role -> roleName.equals(role.name()));
       if (!exists) {
-        cssApiService.createRole(ownIntegrationId, famEnvironment(), roleName);
+        cssApiService.createRole(ownIntegrationId, environment, roleName);
         created = true;
       }
       cssApiService.assignUserRoles(
-          ownIntegrationId, famEnvironment(), username, List.of(roleName));
+          ownIntegrationId, environment, username, List.of(roleName));
     } catch (RuntimeException e) {
       log.error("Could not appoint {} as a DevOps administrator: {}", username, e.getMessage());
       return CssUserRoleAssignmentResult.failed(roleName, e.getMessage());
@@ -1124,7 +1127,7 @@ public class CssIntegrationService {
     authorizationService.forbidSelfGrant(requester, request.userGuid());
 
     String roleName = FamAdminRole.devopsAdmin(integrationId, environment);
-    cssApiService.removeUserRole(ownIntegrationId(), famEnvironment(),
+    cssApiService.removeUserRole(ownIntegrationId(), environment,
         cssUsername(request.userGuid(), request.userType()), roleName);
 
     log.info("Removed DevOps administration of integration {} ({}) from {}.",
@@ -1149,14 +1152,15 @@ public class CssIntegrationService {
     authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
     authorizationService.forbidSelfGrant(requester, request.userGuid());
     targetOrganizationGuard.requireSameOrganization(
-        requester, request.userType(), request.userGuid());
+        requester, apiInstanceEnvResolver.resolveDirectory(environment),
+        request.userType(), request.userGuid());
 
     String username = cssUsername(request.userGuid(), request.userType());
     List<String> delegations = delegationRoleNames(integrationId, environment, request);
 
     for (String delegation : delegations) {
       cssApiService.removeUserRole(
-          ownIntegrationId(), famEnvironment(), username, delegation);
+          ownIntegrationId(), environment, username, delegation);
     }
 
     log.info("Removed delegated administration of {} from {} on integration {} ({}).",
@@ -1318,11 +1322,6 @@ public class CssIntegrationService {
     return ownIntegrationId;
   }
 
-  /** The environment of FAM's own integration, which is FAM's deployment one. */
-  private String famEnvironment() {
-    return famProperties.deploymentEnvironment();
-  }
-
   private String cssUsername(String userGuid, ca.bc.gov.nrs.fam.constants.UserType userType) {
     try {
       FamProperties.Integration.Css css = famProperties.integration().css();
@@ -1375,11 +1374,13 @@ public class CssIntegrationService {
    * administrators never appear in the application's own user list, and why these
    * tabs are a second read rather than a filter over the first.
    *
-   * <p>The environment read is FAM's own deployment environment, not the
-   * application's: the role sits on the FAM client the caller signed in to, while
-   * the environment inside the role name is the one being administered. A FAM
-   * production deployment therefore reads its own prod environment to find who
-   * administers a dev application.
+   * <p><b>The environment is the application's</b>, not the one FAM happens to be
+   * deployed in. Administering a test application is an act against test, so the
+   * role authorising it lives in FAM's own integration under {@code test} -
+   * whichever deployment the appointment was made from. This read has to agree
+   * with the appointment paths exactly: a write and a read that disagree about
+   * the environment is an appointment that lands where the table does not look,
+   * reporting success and showing nothing.
    *
    * @throws FamHttpException when FAM's own integration id is not configured -
    *     without it there is nowhere to look, and guessing would list the wrong
@@ -1399,8 +1400,6 @@ public class CssIntegrationService {
               + "cannot be read. Set CSS_OWN_INTEGRATION_ID.");
     }
 
-    String famEnvironment = famProperties.deploymentEnvironment();
-
     // The two tiers are shaped differently. An application administrator holds
     // one role; a delegated administrator holds one role PER DELEGATION, so the
     // roster is the union of everyone holding any delegation for this
@@ -1410,8 +1409,7 @@ public class CssIntegrationService {
       // One role, like an application administrator - a DevOps administrator is
       // delegated nothing; they manage every role this application defines.
       case DEVOPS_ADMIN -> List.of(FamAdminRole.devopsAdmin(integrationId, environment));
-      case DELEGATED_ADMIN -> delegationRolesOn(
-          ownIntegrationId, famEnvironment, integrationId, environment);
+      case DELEGATED_ADMIN -> delegationRolesOn(ownIntegrationId, integrationId, environment);
       case FAM_ADMIN -> throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
           "FAM administrators are not specific to an application.");
     };
@@ -1437,7 +1435,7 @@ public class CssIntegrationService {
           .orElse(null);
 
       for (CssApiService.CssUserDto user
-          : holdersOf(ownIntegrationId, famEnvironment, roleName)) {
+          : holdersOf(ownIntegrationId, environment, roleName)) {
 
         rows.add(new CssAdministratorRowDto(
             user.displayUsername(),
@@ -1470,11 +1468,11 @@ public class CssIntegrationService {
    * appointed before delegations existed still appears.
    */
   private List<String> delegationRolesOn(
-      int ownIntegrationId, String famEnvironment, int integrationId, String environment) {
+      int ownIntegrationId, int integrationId, String environment) {
 
     String tierRole = FamAdminRole.delegatedAdmin(integrationId, environment);
 
-    return cssApiService.getRoles(ownIntegrationId, famEnvironment).stream()
+    return cssApiService.getRoles(ownIntegrationId, environment).stream()
         .map(CssRoleDto::name)
         .filter(name -> name.equalsIgnoreCase(tierRole)
             || name.toUpperCase(java.util.Locale.ROOT)
@@ -1490,10 +1488,10 @@ public class CssIntegrationService {
    * status is a real problem and is rethrown.
    */
   private List<CssApiService.CssUserDto> holdersOf(
-      int ownIntegrationId, String famEnvironment, String roleName) {
+      int ownIntegrationId, String environment, String roleName) {
 
     try {
-      return cssApiService.getUsersWithRole(ownIntegrationId, famEnvironment, roleName);
+      return cssApiService.getUsersWithRole(ownIntegrationId, environment, roleName);
     } catch (UpstreamException e) {
       if (e.getStatus() != HttpStatus.NOT_FOUND) {
         throw e;
@@ -1564,7 +1562,7 @@ public class CssIntegrationService {
       return List.of();
     }
 
-    return cssApiService.getRoles(ownIntegrationId, famEnvironment()).stream()
+    return cssApiService.getRoles(ownIntegrationId, environment).stream()
         .map(CssRoleDto::name)
         .filter(name -> FamAdminRole.delegatedRoleOf(name)
             .map(delegated -> roleName.equals(delegated)
@@ -1715,7 +1713,8 @@ public class CssIntegrationService {
     // reason as the self-grant rule: it is a check on who the request names, and
     // at the grant itself no other caller can reach CSS around it.
     targetOrganizationGuard.requireSameOrganization(
-        requester, request.userType(), request.userGuid());
+        requester, apiInstanceEnvResolver.resolveDirectory(environment),
+        request.userType(), request.userGuid());
 
     String username;
     try {
@@ -1888,7 +1887,8 @@ public class CssIntegrationService {
 
     authorizationService.forbidSelfGrant(requester, request.userGuid());
     targetOrganizationGuard.requireSameOrganization(
-        requester, request.userType(), request.userGuid());
+        requester, apiInstanceEnvResolver.resolveDirectory(environment),
+        request.userType(), request.userGuid());
 
     String username;
     try {
@@ -2094,6 +2094,7 @@ public class CssIntegrationService {
     // Two things happen here, both requester-dependent: a Business BCeID
     // administrator sees only their own organisation's BCeID users, and rows CSS
     // could not name are resolved against the directory.
-    return assignmentVisibilityService.visibleTo(requester, rows);
+    return assignmentVisibilityService.visibleTo(
+        requester, apiInstanceEnvResolver.resolveDirectory(environment), rows);
   }
 }

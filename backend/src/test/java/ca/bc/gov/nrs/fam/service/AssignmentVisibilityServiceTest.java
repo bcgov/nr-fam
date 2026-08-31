@@ -9,6 +9,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
@@ -69,7 +70,7 @@ class AssignmentVisibilityServiceTest {
   }
 
   private void directoryReports(String guid, String organization) {
-    when(userLookupClient.getBusinessBceid(any(), org.mockito.ArgumentMatchers.eq(guid)))
+    when(userLookupClient.getBusinessBceid(any(), any(), org.mockito.ArgumentMatchers.eq(guid)))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(
             true, "TARGET" + guid, guid, organization, "Example Forestry Ltd",
             "Jane", "Smith", "jane@example.com")));
@@ -80,7 +81,7 @@ class AssignmentVisibilityServiceTest {
   void showsOwnOrganization() {
     directoryReports("AAA1", OWN_ORG);
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R"))))
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R"))))
         .singleElement()
         .satisfies(row -> assertThat(row.username()).isEqualTo("TARGETAAA1"));
   }
@@ -94,7 +95,7 @@ class AssignmentVisibilityServiceTest {
     directoryReports("BBB2", OTHER_ORG);
 
     assertThat(service.visibleTo(
-        bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R"), bceidRow("BBB2", "R"))))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R"), bceidRow("BBB2", "R"))))
         .hasSize(1)
         .allSatisfy(row -> assertThat(row.username()).isEqualTo("TARGETAAA1"));
   }
@@ -104,9 +105,9 @@ class AssignmentVisibilityServiceTest {
   void hidesIdirUsers() {
     // An IDIR user belongs to no business, so none can match - and dropping them
     // before resolving anything is what keeps the cost proportionate.
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(idirRow()))).isEmpty();
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(idirRow()))).isEmpty();
 
-    verify(userLookupClient, never()).getBusinessBceid(any(), anyString());
+    verify(userLookupClient, never()).getBusinessBceid(any(), any(), anyString());
   }
 
   @Test
@@ -116,7 +117,7 @@ class AssignmentVisibilityServiceTest {
     // are named here rather than by a second pass.
     directoryReports("AAA1", OWN_ORG);
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R"))))
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R"))))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.firstName()).isEqualTo("Jane");
@@ -134,7 +135,7 @@ class AssignmentVisibilityServiceTest {
         "aaa1@bceidbusiness", "AAA1", "BCEID", null, null, null,
         "FOM_SUBMITTER", "Submitter", List.of(), null);
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(described)))
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(described)))
         .singleElement()
         .satisfies(row -> assertThat(row.roleDisplayName()).isEqualTo("Submitter"));
   }
@@ -144,11 +145,11 @@ class AssignmentVisibilityServiceTest {
   void resolvesEachUserOnce() {
     directoryReports("AAA1", OWN_ORG);
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG),
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST,
         List.of(bceidRow("AAA1", "R1"), bceidRow("AAA1", "R2"), bceidRow("AAA1", "R3"))))
         .hasSize(3);
 
-    verify(userLookupClient, times(1)).getBusinessBceid(any(), anyString());
+    verify(userLookupClient, times(1)).getBusinessBceid(any(), any(), anyString());
   }
 
   @Test
@@ -156,7 +157,7 @@ class AssignmentVisibilityServiceTest {
   void comparesCaseInsensitively() {
     directoryReports("AAA1", OWN_ORG.toLowerCase());
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R"))))
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R"))))
         .hasSize(1);
   }
 
@@ -166,15 +167,15 @@ class AssignmentVisibilityServiceTest {
     // An unknown organisation is not a matching one.
     directoryReports("AAA1", null);
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R")))).isEmpty();
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R")))).isEmpty();
   }
 
   @Test
   @DisplayName("hides a user the directory does not recognise")
   void hidesUnknownUser() {
-    when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(Optional.empty());
 
-    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R")))).isEmpty();
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R")))).isEmpty();
   }
 
   @Test
@@ -182,12 +183,12 @@ class AssignmentVisibilityServiceTest {
   void directoryFailureIsRaised() {
     // A BCeID administrator shown a silently shortened list would conclude those
     // users have no access, and act on it.
-    when(userLookupClient.getBusinessBceid(any(), anyString()))
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString()))
         .thenThrow(new UpstreamException(HttpStatus.GATEWAY_TIMEOUT, "upstream_timeout",
             "timed out", "user-lookup-api"));
 
     assertThatThrownBy(() ->
-        service.visibleTo(bceidAdmin(OWN_ORG), List.of(bceidRow("AAA1", "R"))))
+        service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R"))))
         .isInstanceOf(UpstreamException.class);
   }
 
@@ -197,7 +198,7 @@ class AssignmentVisibilityServiceTest {
     // Answering with an empty table would read as "nobody has access", which is
     // a different and misleading statement.
     assertThatThrownBy(() ->
-        service.visibleTo(bceidAdmin(null), List.of(bceidRow("AAA1", "R"))))
+        service.visibleTo(bceidAdmin(null), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R"))))
         .isInstanceOf(FamHttpException.class);
   }
 
@@ -205,18 +206,18 @@ class AssignmentVisibilityServiceTest {
   @DisplayName("leaves an IDIR administrator's listing whole")
   void idirAdministratorSeesEverything() {
     List<CssUserRoleRowDto> rows = List.of(idirRow(), bceidRow("AAA1", "R"));
-    when(enrichmentService.withResolvedNames(rows)).thenReturn(rows);
+    when(enrichmentService.withResolvedNames(DirectoryEnv.TEST, rows)).thenReturn(rows);
 
-    assertThat(service.visibleTo(idirAdmin(), rows)).hasSize(2);
-    verify(userLookupClient, never()).getBusinessBceid(any(), anyString());
+    assertThat(service.visibleTo(idirAdmin(), DirectoryEnv.TEST, rows)).hasSize(2);
+    verify(userLookupClient, never()).getBusinessBceid(any(), any(), anyString());
   }
 
   @Test
   @DisplayName("names an IDIR administrator's rows through the enrichment pass")
   void idirAdministratorStillGetsNames() {
     List<CssUserRoleRowDto> rows = List.of(idirRow());
-    service.visibleTo(idirAdmin(), rows);
+    service.visibleTo(idirAdmin(), DirectoryEnv.TEST, rows);
 
-    verify(enrichmentService).withResolvedNames(rows);
+    verify(enrichmentService).withResolvedNames(DirectoryEnv.TEST, rows);
   }
 }

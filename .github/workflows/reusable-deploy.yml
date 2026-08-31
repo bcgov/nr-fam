@@ -49,17 +49,41 @@ on:
       css_api_client_secret:
         description: CSS API service account client secret
         required: false
-      keycloak_sa_client_id:
-        description: >-
-          Keycloak admin client used to provision FAM's user-lookup service
-          account. Absent on PR previews, which then have no user-lookup
-          credentials.
+      # One set per environment. nr-user-lookup-api is deployed three times and
+      # each instance is behind its own Keycloak, so provisioning the service
+      # account needs an admin client in each realm. Every deployment takes all
+      # three: the instance used follows the application being administered, so a
+      # PROD FAM reads TEST when it administers a TEST application.
+      #
+      # All optional. Absent on PR previews, and absent for any environment not
+      # yet provisioned - the backend then refuses lookups for that environment
+      # by name rather than falling back to another instance.
+      keycloak_sa_client_id_dev:
+        description: DEV Keycloak admin client used to provision FAM's user-lookup service account
         required: false
-      keycloak_sa_client_secret:
-        description: Secret for the Keycloak admin client above
+      keycloak_sa_client_secret_dev:
+        description: Secret for the DEV Keycloak admin client above
         required: false
-      user_lookup_base_url:
-        description: Base URL of nr-user-lookup-api
+      user_lookup_base_url_dev:
+        description: Base URL of the DEV nr-user-lookup-api
+        required: false
+      keycloak_sa_client_id_test:
+        description: TEST Keycloak admin client used to provision FAM's user-lookup service account
+        required: false
+      keycloak_sa_client_secret_test:
+        description: Secret for the TEST Keycloak admin client above
+        required: false
+      user_lookup_base_url_test:
+        description: Base URL of the TEST nr-user-lookup-api
+        required: false
+      keycloak_sa_client_id_prod:
+        description: PROD Keycloak admin client used to provision FAM's user-lookup service account
+        required: false
+      keycloak_sa_client_secret_prod:
+        description: Secret for the PROD Keycloak admin client above
+        required: false
+      user_lookup_base_url_prod:
+        description: Base URL of the PROD nr-user-lookup-api
         required: false
       fc_api_token_test:
         description: >-
@@ -88,64 +112,214 @@ jobs:
       triggered: ${{ steps.deploy.outputs.triggered }}
     runs-on: ubuntu-24.04
     env:
-      # Job-level so the step `if:` below can read it - a step's own `env` is not
-      # available to that step's own `if`.
-      KC_SA_CLIENT_ID: ${{ secrets.keycloak_sa_client_id }}
+      # Job-level so each step's `if:` below can read it - a step's own `env` is
+      # not available to that step's own `if`.
+      #
+      # One admin client per realm, because the service account this provisions
+      # has to exist in each of the three Keycloaks nr-user-lookup-api's
+      # instances sit behind. An environment left unset simply is not
+      # provisioned, and the backend then refuses lookups for that environment by
+      # name rather than falling back to another instance.
+      KC_SA_CLIENT_ID_DEV: ${{ secrets.keycloak_sa_client_id_dev }}
+      KC_SA_CLIENT_ID_TEST: ${{ secrets.keycloak_sa_client_id_test }}
+      KC_SA_CLIENT_ID_PROD: ${{ secrets.keycloak_sa_client_id_prod }}
     steps:
       # The deployer action checks out internally, but the Keycloak script runs
       # before it, so check out here to make ./.github/scripts available.
       - uses: actions/checkout@v6
 
-      # Idempotently create FAM's user-lookup service-account client and assign
-      # the scopes nr-user-lookup-api enforces. Skipped when the admin
-      # credentials are absent (PR previews): the backend then has no user-lookup
-      # credentials and identity lookups fail loudly at call time.
-      - name: Ensure Keycloak service account
-        id: keycloak_sa
-        if: ${{ env.KC_SA_CLIENT_ID != '' }}
+      # Idempotently create FAM's user-lookup service-account client in each
+      # realm and assign the scopes nr-user-lookup-api enforces.
+      #
+      # Three steps rather than one, and not a matrix: a matrix is a separate job
+      # per entry, and step outputs do not cross jobs - the deploy below needs
+      # all three client ids and secrets in one place. Each is skipped when its
+      # admin credentials are absent, which is a PR preview and any environment
+      # not yet provisioned; the backend then refuses lookups for that
+      # environment by name.
+
+      - name: Ensure Keycloak service account (DEV)
+        id: keycloak_sa_dev
+        if: ${{ env.KC_SA_CLIENT_ID_DEV != '' }}
         env:
           # Deliberately NOT keycloak_issuer_uri. The service account is created
           # in the realm nr-user-lookup-api validates against, not the realm
           # users sign in to - see the script header.
-          USER_LOOKUP_ISSUER_URI: ${{ vars.user_lookup_issuer_uri }}
-          KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret }}
+          USER_LOOKUP_ISSUER_URI: ${{ vars.user_lookup_issuer_uri_dev }}
+          KC_SA_CLIENT_ID: ${{ env.KC_SA_CLIENT_ID_DEV }}
+          KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret_dev }}
         run: ./.github/scripts/ensure-keycloak-service-account.sh
+
+      - name: Ensure Keycloak service account (TEST)
+        id: keycloak_sa_test
+        if: ${{ env.KC_SA_CLIENT_ID_TEST != '' }}
+        env:
+          # Deliberately NOT keycloak_issuer_uri. The service account is created
+          # in the realm nr-user-lookup-api validates against, not the realm
+          # users sign in to - see the script header.
+          USER_LOOKUP_ISSUER_URI: ${{ vars.user_lookup_issuer_uri_test }}
+          KC_SA_CLIENT_ID: ${{ env.KC_SA_CLIENT_ID_TEST }}
+          KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret_test }}
+        run: ./.github/scripts/ensure-keycloak-service-account.sh
+
+      - name: Ensure Keycloak service account (PROD)
+        id: keycloak_sa_prod
+        if: ${{ env.KC_SA_CLIENT_ID_PROD != '' }}
+        env:
+          # Deliberately NOT keycloak_issuer_uri. The service account is created
+          # in the realm nr-user-lookup-api validates against, not the realm
+          # users sign in to - see the script header.
+          USER_LOOKUP_ISSUER_URI: ${{ vars.user_lookup_issuer_uri_prod }}
+          KC_SA_CLIENT_ID: ${{ env.KC_SA_CLIENT_ID_PROD }}
+          KC_SA_CLIENT_SECRET: ${{ secrets.keycloak_sa_client_secret_prod }}
+        run: ./.github/scripts/ensure-keycloak-service-account.sh
+
+      # Installs oc and logs in, so the step below can talk to the cluster. No
+      # commands of its own - the secrets must reach the shell through the
+      # environment, and a plain `run:` is the only place that is guaranteed.
+      - name: OpenShift login
+        uses: bcgov/action-oc-runner@111868d1fc50db0a40417ba321d865ef5c931bbd # v1.7.0
+        with:
+          oc_namespace: ${{ secrets.oc_namespace }}
+          oc_token: ${{ secrets.oc_token }}
+          oc_server: ${{ vars.oc_server }}
+
+      # Every credential the deployment needs, created here rather than in
+      # common/openshift.init.yml.
+      #
+      # The template route ran each value through `oc process`, which renders one
+      # JSON string the deployer can echo when debug is on - and GitHub's masking
+      # only redacts values that still match the registered literal, which a
+      # JSON-escaped secret no longer does. Here the values never enter a
+      # template: they arrive as environment variables and go straight to `oc`,
+      # which reads them as argument values rather than as anything to render.
+      #
+      # `--dry-run=client -o yaml | oc apply -f -` rather than `oc create`, so a
+      # rerun updates rather than failing on an existing Secret.
+      #
+      # The app label is what PR cleanup deletes by (`cleanup: label` in
+      # pr-close.yml). Without it a preview namespace would keep its secrets
+      # after the pull request closed.
+      - name: Create credential secrets
+        env:
+          APP: ${{ github.event.repository.name }}-${{ inputs.target }}
+          # On-prem PostgreSQL. This repo deploys no database; these say how to
+          # reach one.
+          DB_HOST: ${{ secrets.db_host }}
+          DB_PORT: ${{ secrets.db_port || '5432' }}
+          DB_NAME: ${{ secrets.db_name }}
+          DB_USER: ${{ secrets.db_user }}
+          DB_PASSWORD: ${{ secrets.db_password }}
+          # CSS API account. Confidential: backend-only, and never in the
+          # frontend ConfigMap the browser fetches.
+          CSS_API_CLIENT_ID: ${{ secrets.css_api_client_id }}
+          CSS_API_CLIENT_SECRET: ${{ secrets.css_api_client_secret }}
+          # nr-user-lookup-api, one instance per environment. Hosts come from
+          # secrets, token URLs are derived from each realm's issuer, and the
+          # client ids and secrets are whatever the three provisioning steps
+          # above minted - blank for any environment not provisioned, which the
+          # backend then refuses lookups for by name.
+          UL_BASE_URL_DEV: ${{ secrets.user_lookup_base_url_dev }}
+          UL_TOKEN_URL_DEV: ${{ vars.user_lookup_issuer_uri_dev != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri_dev) || '' }}
+          UL_CLIENT_ID_DEV: ${{ steps.keycloak_sa_dev.outputs.client_id }}
+          UL_CLIENT_SECRET_DEV: ${{ steps.keycloak_sa_dev.outputs.client_secret }}
+          UL_BASE_URL_TEST: ${{ secrets.user_lookup_base_url_test }}
+          UL_TOKEN_URL_TEST: ${{ vars.user_lookup_issuer_uri_test != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri_test) || '' }}
+          UL_CLIENT_ID_TEST: ${{ steps.keycloak_sa_test.outputs.client_id }}
+          UL_CLIENT_SECRET_TEST: ${{ steps.keycloak_sa_test.outputs.client_secret }}
+          UL_BASE_URL_PROD: ${{ secrets.user_lookup_base_url_prod }}
+          UL_TOKEN_URL_PROD: ${{ vars.user_lookup_issuer_uri_prod != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri_prod) || '' }}
+          UL_CLIENT_ID_PROD: ${{ steps.keycloak_sa_prod.outputs.client_id }}
+          UL_CLIENT_SECRET_PROD: ${{ steps.keycloak_sa_prod.outputs.client_secret }}
+          # Forest Client API keys. The PROD key belongs only to the PROD
+          # deployment; blank elsewhere is the intended configuration.
+          FC_API_TOKEN_TEST: ${{ secrets.fc_api_token_test }}
+          FC_API_TOKEN_PROD: ${{ secrets.fc_api_token_prod }}
+        run: |
+          set -euo pipefail
+
+          # No `set -x` anywhere in this step, deliberately: it would print the
+          # --from-literal arguments, which is the leak this step exists to close.
+
+          if ! oc whoami >/dev/null 2>&1; then
+            echo "::error::Not logged in to OpenShift; the login step above did not take effect."
+            exit 1
+          fi
+
+          apply_secret() {
+            local name="$1"; shift
+            oc create secret generic "${name}" "$@" \
+              --dry-run=client -o yaml | oc apply -f - >/dev/null
+            oc label secret "${name}" "app=${APP}" --overwrite >/dev/null
+            echo "  ${name}"
+          }
+
+          echo "Applying credential secrets:"
+
+          apply_secret "${APP}-database" \
+            --from-literal=database-host="${DB_HOST}" \
+            --from-literal=database-port="${DB_PORT}" \
+            --from-literal=database-name="${DB_NAME}" \
+            --from-literal=database-user="${DB_USER}" \
+            --from-literal=database-password="${DB_PASSWORD}"
+
+          apply_secret "${APP}-css" \
+            --from-literal=css-api-client-id="${CSS_API_CLIENT_ID}" \
+            --from-literal=css-api-client-secret="${CSS_API_CLIENT_SECRET}"
+
+          apply_secret "${APP}-user-lookup" \
+            --from-literal=user-lookup-base-url-dev="${UL_BASE_URL_DEV}" \
+            --from-literal=user-lookup-token-url-dev="${UL_TOKEN_URL_DEV}" \
+            --from-literal=user-lookup-client-id-dev="${UL_CLIENT_ID_DEV}" \
+            --from-literal=user-lookup-client-secret-dev="${UL_CLIENT_SECRET_DEV}" \
+            --from-literal=user-lookup-base-url-test="${UL_BASE_URL_TEST}" \
+            --from-literal=user-lookup-token-url-test="${UL_TOKEN_URL_TEST}" \
+            --from-literal=user-lookup-client-id-test="${UL_CLIENT_ID_TEST}" \
+            --from-literal=user-lookup-client-secret-test="${UL_CLIENT_SECRET_TEST}" \
+            --from-literal=user-lookup-base-url-prod="${UL_BASE_URL_PROD}" \
+            --from-literal=user-lookup-token-url-prod="${UL_TOKEN_URL_PROD}" \
+            --from-literal=user-lookup-client-id-prod="${UL_CLIENT_ID_PROD}" \
+            --from-literal=user-lookup-client-secret-prod="${UL_CLIENT_SECRET_PROD}"
+
+          apply_secret "${APP}-forest-client" \
+            --from-literal=fc-api-token-test="${FC_API_TOKEN_TEST}" \
+            --from-literal=fc-api-token-prod="${FC_API_TOKEN_PROD}"
 
       - uses: bcgov/action-deployer-openshift@27a85b7b157bfc9c3c9bf0aca53bcd288d4d2506 # v4.2.1
         id: deploy
-        env:
-          # A step output, so it cannot sit in the job-level env. Referenced as
-          # "$USER_LOOKUP_CLIENT_SECRET" below for a single bash expansion.
-          USER_LOOKUP_CLIENT_SECRET: ${{ steps.keycloak_sa.outputs.client_secret }}
         with:
           file: common/openshift.init.yml
           oc_namespace: ${{ secrets.oc_namespace }}
           oc_server: ${{ vars.oc_server }}
           oc_token: ${{ secrets.oc_token }}
           overwrite: true
-          parameters: -p DB_HOST="${{ secrets.db_host }}"
-            -p DB_PORT="${{ secrets.db_port || '5432' }}"
-            -p DB_NAME="${{ secrets.db_name }}"
-            -p DB_USER="${{ secrets.db_user }}"
-            -p DB_PASSWORD="${{ secrets.db_password }}"
-            -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
+          parameters: -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
             -p KEYCLOAK_CLIENT_ID="${{ vars.keycloak_client_id }}"
-            -p CSS_API_CLIENT_ID="${{ secrets.css_api_client_id }}"
-            -p CSS_API_CLIENT_SECRET="${{ secrets.css_api_client_secret }}"
-            -p USER_LOOKUP_BASE_URL="${{ secrets.user_lookup_base_url }}"
-            -p USER_LOOKUP_TOKEN_URL="${{ vars.user_lookup_issuer_uri != '' && format('{0}/protocol/openid-connect/token', vars.user_lookup_issuer_uri) || '' }}"
-            -p USER_LOOKUP_CLIENT_ID="${{ steps.keycloak_sa.outputs.client_id }}"
-            -p USER_LOOKUP_CLIENT_SECRET="$USER_LOOKUP_CLIENT_SECRET"
-            -p FC_API_TOKEN_TEST="${{ secrets.fc_api_token_test }}"
-            -p FC_API_TOKEN_PROD="${{ secrets.fc_api_token_prod }}"
             -p TARGET_ENV="${{ inputs.environment || 'dev' }}"
             -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"
           triggers: ${{ inputs.triggers }}
-          # debug is deliberately OFF. This template carries Secret stringData
-          # (database, CSS and user-lookup credentials); with debug on the
-          # deployer logs the processed template, and GitHub's secret masking
-          # misses values that contain JSON-special characters once re-encoded.
+          # ---------------------------------------------------------------
+          # debug MUST stay false here, and there is no input to turn it on.
+          #
+          # This template is the one that carries Secret stringData - database,
+          # CSS, and the three user-lookup service accounts. The deployer builds
+          # the template with `oc process`, which substitutes every -p value, so
+          # the string it holds contains those credentials in clear. With debug
+          # true it echoes that string (twice, around the lite-mode edits), and
+          # GitHub's masking only redacts values that still match the registered
+          # literal - a secret containing a quote or a backslash is JSON-escaped
+          # by `oc process` and no longer matches.
+          #
+          # The echo is inside the lite-mode branch, so today it fires on PR
+          # previews rather than on environment deploys. That is a detail of the
+          # action, not a guarantee: it is pinned by SHA, and a later version is
+          # free to log the template anywhere.
+          #
+          # If you need diagnostics here, blank the credential-bearing
+          # parameters first. The deployment still applies; the backend just
+          # refuses lookups at call time.
+          # ---------------------------------------------------------------
           debug: false
 
   deploy:
@@ -184,7 +358,12 @@ jobs:
           oc_namespace: ${{ secrets.oc_namespace }}
           oc_server: ${{ vars.oc_server }}
           oc_token: ${{ secrets.oc_token }}
-          debug: true
+          # Off here too, though these templates reference their credentials
+          # through secretKeyRef and so carry no values of their own. It was on,
+          # and it was safe only for as long as that stayed true - one -p
+          # carrying a secret into this matrix would have started logging it
+          # with nothing to catch the change.
+          debug: false
           parameters: -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"
             -p MIN_REPLICAS="${{ inputs.environment == 'prod' && '3' || '2' }}"

@@ -42,7 +42,7 @@ export interface PrivilegeDetailsRoleDto {
      */
     'role_assignment_expiry_date'?: string;
     /**
-     * What the role is called, resolved when the history is read. Null when the role has been deleted or never had a label.
+     * 
      * @type {string}
      * @memberof PrivilegeDetailsRoleDto
      */

@@ -18,7 +18,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CssApplicationOptionDto } from "fam-api";
 import { useEffect, useMemo, useState, type FC } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState/EmptyState";
 import { PageTitle } from "@/components/PageTitle";
 import { SectionTile } from "@/components/SectionTile";
@@ -37,7 +37,14 @@ import {
     type AppPermissionGrantSummary,
 } from "@/pages/AddAppPermission/grantUtils";
 import { GrantFailureList } from "./GrantFailureList";
-import { toGrantBanners, type PermissionBanner } from "./utils";
+import {
+    isPermissionsTab,
+    tabIndexOf,
+    toGrantBanners,
+    visibleTabs,
+    type PermissionBanner,
+    type PermissionsTab,
+} from "./utils";
 import "./ManagePermissions.css";
 
 /**
@@ -55,24 +62,23 @@ import "./ManagePermissions.css";
  * rather than a filter over the first.
  */
 
-const USERS_TAB = 0;
-
-/**
- * The DevOps tab's index when it is shown.
- *
- * <p>Last, and only ever present alongside the other two: it is offered to FAM
- * administrators, who see those as well - so the three admin tabs are always all
- * there or all absent, and this index is stable.
- */
-const DEVOPS_TAB = 3;
-
 export const ManagePermissions: FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const queryClient = useQueryClient();
     const { selectedApp, setSelectedApp } = useSelectedApp();
     const { display } = useNotification();
 
-    const [activeTab, setActiveTab] = useState(USERS_TAB);
+    /*
+        Which tab, by name. Restored from the query string so that appointing an
+        administrator returns to the tab it was started from: the add screens are
+        separate routes, so coming back is a remount, and an index in state would
+        start again at Users every time.
+    */
+    const [activeTabName, setActiveTabName] = useState<PermissionsTab>(() => {
+        const requested = searchParams.get("tab");
+        return isPermissionsTab(requested) ? requested : "users";
+    });
 
     /**
      * The outcome of a grant made just before landing here.
@@ -211,24 +217,22 @@ export const ManagePermissions: FC = () => {
         );
     }, [selectedApp, selfPermissionsQuery.data]);
 
-    // Whenever the admin tabs go away, so does any selection of one. An
-    // uncontrolled Tabs keeps its index when the tab it names disappears -
-    // switching from FREP's Delegated admins tab to FAM left the strip showing
-    // Users while the panel below rendered nothing at all.
-    useEffect(() => {
-        if (!canSeeAdminTabs) {
-            setActiveTab(USERS_TAB);
-        }
-    }, [canSeeAdminTabs]);
+    /*
+        The strip as this caller sees it, and where the chosen tab sits in it.
 
-    // The DevOps tab comes and goes on its own rule, so it needs its own reset:
-    // it is the last tab, and an uncontrolled index left pointing past the end
-    // renders a strip with nothing under it.
-    useEffect(() => {
-        if (!canSeeDevopsTab) {
-            setActiveTab((current) => (current === DEVOPS_TAB ? USERS_TAB : current));
-        }
-    }, [canSeeDevopsTab]);
+        Derived rather than corrected after the fact. Two effects used to reset a
+        stored index whenever the tab it named disappeared - switching from
+        FREP's Delegated admins tab to FAM otherwise left the strip on Users with
+        nothing rendered under it. Deriving the index from the name means the
+        selection can never point past the end of the strip in the first place,
+        and it survives the moment before `self-permissions` answers, when the
+        tab restored from the URL is not yet one this caller has.
+    */
+    const tabs = useMemo(
+        () => visibleTabs(canSeeAdminTabs, canSeeDevopsTab),
+        [canSeeAdminTabs, canSeeDevopsTab]
+    );
+    const activeTab = tabIndexOf(activeTabName, tabs);
 
     const handleApplicationChange = (app: CssApplicationOptionDto | null) => {
         setSelectedApp(app ?? undefined);
@@ -247,6 +251,9 @@ export const ManagePermissions: FC = () => {
         const params = new URLSearchParams({
             integrationId: String(selectedApp.integration_id),
             environment: selectedApp.environment,
+            // So the screen can send them back to the tab they left, rather than
+            // to the top of the strip.
+            tab: activeTabName,
         });
         navigate(`${path}?${params.toString()}`);
     };
@@ -315,7 +322,7 @@ export const ManagePermissions: FC = () => {
                         <Tabs
                             selectedIndex={activeTab}
                             onChange={({ selectedIndex }) =>
-                                setActiveTab(selectedIndex)
+                                setActiveTabName(tabs[selectedIndex] ?? "users")
                             }
                         >
                             <TabList aria-label="Permissions" contained>

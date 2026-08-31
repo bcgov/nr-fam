@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.annotation.PostConstruct;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -274,11 +275,25 @@ public class CssApiService {
   public void assignUserRoles(
       int integrationId, String environment, String username, List<String> roleNames) {
 
-    log.debug("CssApiService.assignUserRoles({} -> {})", username, roleNames);
-
     ResponseEntity<byte[]> response = call(() -> apiClient.post()
-        .uri("/integrations/{id}/{env}/users/{username}/roles-new",
-            integrationId, environment, username)
+        /*
+            Built through the client's own URI builder and logged from inside it,
+            rather than logged from a second copy of the template alongside the
+            call. The two would be free to drift, and the encoding of the
+            username - a GUID, an "@" and an alias - is exactly the part worth
+            seeing and exactly the part a hand-written copy would get wrong.
+
+            At info: an assignment is a rare, deliberate act, and a refusal from
+            this endpoint is answered by CSS rather than explained by it, so the
+            address it was refused at is the first thing anybody asks for.
+        */
+        .uri(uriBuilder -> {
+          URI uri = uriBuilder
+              .path("/integrations/{id}/{env}/users/{username}/roles-new")
+              .build(integrationId, environment, username);
+          log.info("Assigning {} to {} via POST {}", roleNames, username, uri);
+          return uri;
+        })
         .header("Authorization", "Bearer " + accessToken())
         .contentType(MediaType.APPLICATION_JSON)
         .body(roleNames.stream().map(name -> Map.of("name", name)).toList())

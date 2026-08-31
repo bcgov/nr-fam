@@ -1,6 +1,9 @@
 package ca.bc.gov.nrs.fam.integration;
 
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
+import java.util.EnumMap;
+import java.util.Map;
 import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirSearchResult;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
@@ -59,31 +62,68 @@ public class UserLookupClient {
   private final RestClientFactory restClientFactory;
   private final UpstreamErrorTranslator errorTranslator;
 
-  private RestClient http;
-  private ClientCredentialsTokenSource tokenSource;
+  /** One client per environment, holding whichever instances are configured. */
+  private final Map<DirectoryEnv, Endpoint> endpoints = new EnumMap<>(DirectoryEnv.class);
+
+  /** One instance of the directory, ready to call. */
+  private record Endpoint(
+      RestClient http, ClientCredentialsTokenSource tokenSource, String baseUrl) {}
 
   @PostConstruct
   void init() {
     FamProperties.Integration.UserLookup config = config();
-    if (config == null || config.baseUrl() == null || config.baseUrl().isBlank()) {
+    if (config == null) {
       log.info("nr-user-lookup-api is not configured; identity lookups will fail at call time.");
       return;
     }
 
-    http = restClientFactory.create(config.baseUrl(),
+    build(DirectoryEnv.DEV, config.dev(), config);
+    build(DirectoryEnv.TEST, config.test(), config);
+    build(DirectoryEnv.PROD, config.prod(), config);
+
+    if (endpoints.isEmpty()) {
+      log.info("nr-user-lookup-api is not configured; identity lookups will fail at call time.");
+    }
+  }
+
+  /**
+   * Prepares one instance, if it has a host.
+   *
+   * <p>A missing instance is not a failure. A lower deployment holds no
+   * production account, and refusing to start over an environment it will never
+   * be asked about would make the directory harder to roll out one environment at
+   * a time, not safer.
+   */
+  private void build(
+      DirectoryEnv environment,
+      FamProperties.Integration.UserLookup.Instance instance,
+      FamProperties.Integration.UserLookup config) {
+
+    if (instance == null || !instance.isConfigured()) {
+      log.info("nr-user-lookup-api {} instance is not configured; "
+          + "lookups for {} applications will fail at call time.", environment, environment);
+      return;
+    }
+
+    RestClient http = restClientFactory.create(instance.baseUrl(),
         config.timeouts().connect(), config.timeouts().read(),
         headers -> headers.setAccept(List.of(MediaType.APPLICATION_JSON)));
 
-    tokenSource = ClientCredentialsTokenSource.fromProperties(
-        config.tokenUrl(), config.clientId(), config.clientSecret(), config.scope(),
+    // Its own token source, not a shared one: each host is behind its own
+    // Keycloak, and a token minted against one realm is refused by another.
+    ClientCredentialsTokenSource tokenSource = ClientCredentialsTokenSource.fromProperties(
+        instance.tokenUrl(), instance.clientId(), instance.clientSecret(), instance.scope(),
         config.timeouts().connect(), config.timeouts().read(), restClientFactory);
 
+    endpoints.put(environment, new Endpoint(http, tokenSource, instance.baseUrl()));
+
     if (tokenSource == null) {
-      log.warn("nr-user-lookup-api configured without credentials; calls will be "
-          + "unauthenticated. Set USER_LOOKUP_TOKEN_URL / CLIENT_ID / CLIENT_SECRET.");
+      log.warn("nr-user-lookup-api {} instance configured without credentials; calls will be "
+          + "unauthenticated. Set USER_LOOKUP_TOKEN_URL_{} / CLIENT_ID_{} / CLIENT_SECRET_{}.",
+          environment, environment, environment, environment);
     } else {
-      log.info("nr-user-lookup-api client active (base-url={}, client-id={})",
-          config.baseUrl(), tokenSource.clientId());
+      log.info("nr-user-lookup-api {} client active (base-url={}, client-id={})",
+          environment, instance.baseUrl(), tokenSource.clientId());
     }
   }
 
@@ -91,9 +131,9 @@ public class UserLookupClient {
     return famProperties.integration() == null ? null : famProperties.integration().userLookup();
   }
 
-  public boolean isConfigured() {
-    FamProperties.Integration.UserLookup config = config();
-    return config != null && config.baseUrl() != null && !config.baseUrl().isBlank();
+  /** Whether the instance for this environment can be called at all. */
+  public boolean isConfigured(DirectoryEnv environment) {
+    return endpoints.containsKey(environment);
   }
 
   /**
@@ -113,13 +153,15 @@ public class UserLookupClient {
    * them.
    */
   public UserLookupIdirSearchResult searchIdir(
-      String userId, String firstName, String lastName, Integer pageSize) {
+      DirectoryEnv environment, String userId, String firstName, String lastName,
+      Integer pageSize) {
 
+    Endpoint endpoint = endpointFor(environment);
     String user = normalize(userId);
     String first = normalize(firstName);
     String last = normalize(lastName);
 
-    UserLookupIdirSearchResult result = exchange(() -> http.post()
+    UserLookupIdirSearchResult result = exchange(environment, () -> endpoint.http().post()
         .uri(builder -> {
           builder.path(IDIR_SEARCH_PATH);
           if (user != null) {
@@ -139,7 +181,7 @@ public class UserLookupClient {
           }
           return builder.build();
         })
-        .headers(this::applyAuth)
+        .headers(headers -> applyAuth(endpoint, headers))
         .retrieve()
         .body(UserLookupIdirSearchResult.class));
 
@@ -147,8 +189,8 @@ public class UserLookupClient {
   }
 
   /** Exact IDIR match by user id. Empty when the directory reports no match. */
-  public Optional<UserLookupIdirUserDto> getIdirDetail(String userId) {
-    return getIdirDetail("userId", userId);
+  public Optional<UserLookupIdirUserDto> getIdirDetail(DirectoryEnv environment, String userId) {
+    return getIdirDetail(environment, "userId", userId);
   }
 
   /**
@@ -161,20 +203,24 @@ public class UserLookupClient {
    * <p>Same endpoint and the same {@code idir:read} scope as the userId form -
    * the directory takes either key.
    */
-  public Optional<UserLookupIdirUserDto> getIdirDetailByGuid(String userGuid) {
-    return getIdirDetail("userGuid", userGuid);
+  public Optional<UserLookupIdirUserDto> getIdirDetailByGuid(
+      DirectoryEnv environment, String userGuid) {
+    return getIdirDetail(environment, "userGuid", userGuid);
   }
 
-  private Optional<UserLookupIdirUserDto> getIdirDetail(String parameter, String value) {
+  private Optional<UserLookupIdirUserDto> getIdirDetail(
+      DirectoryEnv environment, String parameter, String value) {
+
     String normalized = normalize(value);
     if (normalized == null) {
       return Optional.empty();
     }
 
-    UserLookupIdirUserDto result = exchange(() -> http.get()
+    Endpoint endpoint = endpointFor(environment);
+    UserLookupIdirUserDto result = exchange(environment, () -> endpoint.http().get()
         .uri(builder -> builder.path(IDIR_DETAIL_PATH)
             .queryParam(parameter, normalized).build())
-        .headers(this::applyAuth)
+        .headers(headers -> applyAuth(endpoint, headers))
         .retrieve()
         .body(UserLookupIdirUserDto.class));
 
@@ -188,18 +234,21 @@ public class UserLookupClient {
    * same-organisation rule: this client has no requester to compare against, so
    * that check belongs to the caller.
    */
-  public Optional<UserLookupBceidUserDto> getBusinessBceid(SearchBy searchBy, String searchValue) {
+  public Optional<UserLookupBceidUserDto> getBusinessBceid(
+      DirectoryEnv environment, SearchBy searchBy, String searchValue) {
+
     String value = normalize(searchValue);
     if (searchBy == null || value == null) {
       return Optional.empty();
     }
 
-    UserLookupBceidUserDto result = exchange(() -> http.get()
+    Endpoint endpoint = endpointFor(environment);
+    UserLookupBceidUserDto result = exchange(environment, () -> endpoint.http().get()
         .uri(builder -> builder.path(BUSINESS_BCEID_PATH)
             .queryParam("searchUserBy", searchBy.wireValue())
             .queryParam("searchValue", value)
             .build())
-        .headers(this::applyAuth)
+        .headers(headers -> applyAuth(endpoint, headers))
         .retrieve()
         .body(UserLookupBceidUserDto.class));
 
@@ -224,26 +273,44 @@ public class UserLookupClient {
 
   // ---------------------------------------------------------------------------
 
-  private void applyAuth(HttpHeaders headers) {
-    if (tokenSource == null) {
+  /**
+   * The instance for one environment, or a failure naming the one that is missing.
+   *
+   * <p>Never a fallback to another environment. A directory answering about the
+   * wrong environment returns a real person's record under a GUID that does not
+   * exist where the role is about to be written, and CSS refuses that assignment
+   * without saying why - the silent failure this whole arrangement exists to
+   * avoid. An unconfigured instance says so instead.
+   */
+  private Endpoint endpointFor(DirectoryEnv environment) {
+    Endpoint endpoint = endpoints.get(environment);
+    if (endpoint == null) {
+      throw new ca.bc.gov.nrs.fam.exception.UpstreamException(
+          org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+          ca.bc.gov.nrs.fam.constants.ErrorCode.INVALID_OPERATION,
+          ("The %s instance of nr-user-lookup-api is not configured, so users of %s "
+              + "applications cannot be looked up. Set USER_LOOKUP_BASE_URL_%s and its "
+              + "credentials.").formatted(environment, environment, environment),
+          UPSTREAM);
+    }
+    return endpoint;
+  }
+
+  private void applyAuth(Endpoint endpoint, HttpHeaders headers) {
+    if (endpoint.tokenSource() == null) {
       return;
     }
-    String token = tokenSource.fetchCached();
+    String token = endpoint.tokenSource().fetchCached();
     if (!token.isBlank()) {
       headers.set(HttpHeaders.AUTHORIZATION, "Bearer " + token);
     }
   }
 
-  private <T> T exchange(java.util.function.Supplier<T> call) {
-    if (!isConfigured()) {
-      throw new ca.bc.gov.nrs.fam.exception.UpstreamException(
-          org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
-          ca.bc.gov.nrs.fam.constants.ErrorCode.INVALID_OPERATION,
-          "nr-user-lookup-api is not configured (USER_LOOKUP_BASE_URL).", UPSTREAM);
-    }
+  private <T> T exchange(DirectoryEnv environment, java.util.function.Supplier<T> call) {
     try {
       return call.get();
     } catch (ResourceAccessException e) {
+      log.warn("nr-user-lookup-api {} instance unreachable.", environment);
       throw errorTranslator.connectivityFailure(UPSTREAM, e);
     }
   }

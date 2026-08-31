@@ -30,25 +30,49 @@ public record FamProperties(
       ForestClient forestClient, Css css, UserLookup userLookup, Smtp smtp) {
 
     /**
-     * nr-user-lookup-api, the shared BC Gov identity directory. Replaces the IDIM
-     * proxy.
+     * nr-user-lookup-api, the BC Gov identity directory. Replaces the IDIM proxy.
      *
-     * <p>One instance rather than a TEST/PROD pair: unlike IDIM, the directory is
-     * not environment-partitioned, so nothing here consults
-     * {@code ApiInstanceEnvResolver}.
+     * <p><b>Three instances, one per environment.</b> An earlier note here said
+     * the directory was not environment-partitioned and that nothing needed to
+     * consult a resolver. That was wrong, and expensively so: BCeID is deployed
+     * in three environments and the same person is a different account with a
+     * different GUID in each, so a GUID read from the wrong instance is one CSS
+     * cannot resolve when it comes to assign the role. The instance to use is
+     * decided by the application being administered - see
+     * {@code ApiInstanceEnvResolver#resolveDirectory}.
      *
-     * <p>A confidential service account. Note this means lookups are attributed
-     * to FAM rather than to the person performing them - see the note on
-     * {@code UserLookupClient}.
+     * <p>Separate hosts and separate service accounts, because each instance sits
+     * behind its own Keycloak. That is why the credentials live on the instance
+     * rather than beside them: there is no shared account to fall back on, and a
+     * token minted against one realm is not accepted by another.
+     *
+     * <p>Each is a confidential service account. Note this means lookups are
+     * attributed to FAM rather than to the person performing them - see the note
+     * on {@code UserLookupClient}.
      */
     public record UserLookup(
-        String baseUrl,
-        String tokenUrl,
-        String clientId,
-        String clientSecret,
-        /** Normally blank: the scopes are default client scopes on the account. */
-        String scope,
-        Timeouts timeouts) {}
+        Instance dev, Instance test, Instance prod, Timeouts timeouts) {
+
+      /**
+       * One deployment of the directory, with the account that reaches it.
+       *
+       * <p>Unconfigured is a normal state rather than an error: a lower
+       * deployment has no production account, and asking it for one is refused
+       * where the environment is chosen rather than failing at startup.
+       */
+      public record Instance(
+          String baseUrl,
+          String tokenUrl,
+          String clientId,
+          String clientSecret,
+          /** Normally blank: the scopes are default client scopes on the account. */
+          String scope) {
+
+        public boolean isConfigured() {
+          return baseUrl != null && !baseUrl.isBlank();
+        }
+      }
+    }
 
     /**
      * BC Gov Common Hosted Single Sign-On API.

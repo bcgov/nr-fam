@@ -78,13 +78,24 @@ export const useUserSearch = () => {
                     lastName,
                     userId,
                     IDIR_SEARCH_PAGE_SIZE,
+                    /*
+                        The directory is deployed once per environment and a
+                        person is a different account with a different GUID in
+                        each, so the environment decides which one answers. It is
+                        the application's, because the GUID this returns is the
+                        one CSS will be asked to assign a role to - searching one
+                        environment and granting in another is refused upstream
+                        with nothing said about why.
+                    */
+                    params.environment,
                     { timeout: IDIR_SEARCH_TIMEOUT_MS }
                 );
                 return res.data.items.map(normalizeIdir);
             }
 
             const res = await AppActlApiService.idirBceidProxyApi.bceidLookup(
-                params.searchText
+                params.searchText,
+                params.environment
             );
             // Not an error: the username simply is not in the directory, and the
             // caller reports "no results" the same way it does for IDIR.

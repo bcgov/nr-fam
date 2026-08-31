@@ -37,10 +37,11 @@ export const IDIRBCeIDProxyApiAxiosParamCreator = function (configuration?: Conf
          * Lookup a BCeID Business user by user ID.
          * @summary Lookup BCEID user
          * @param {string} userId 
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        bceidLookup: async (userId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        bceidLookup: async (userId: string, environment?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'userId' is not null or undefined
             assertParamExists('bceidLookup', 'userId', userId)
             const localVarPath = `/identity-lookup/bceid`;
@@ -63,6 +64,10 @@ export const IDIRBCeIDProxyApiAxiosParamCreator = function (configuration?: Conf
                 localVarQueryParameter['userId'] = userId;
             }
 
+            if (environment !== undefined) {
+                localVarQueryParameter['environment'] = environment;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -78,10 +83,11 @@ export const IDIRBCeIDProxyApiAxiosParamCreator = function (configuration?: Conf
          * Lookup an IDIR user by user ID.
          * @summary Lookup IDIR user
          * @param {string} userId 
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        idirLookup: async (userId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        idirLookup: async (userId: string, environment?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'userId' is not null or undefined
             assertParamExists('idirLookup', 'userId', userId)
             const localVarPath = `/identity-lookup/idir`;
@@ -104,6 +110,10 @@ export const IDIRBCeIDProxyApiAxiosParamCreator = function (configuration?: Conf
                 localVarQueryParameter['userId'] = userId;
             }
 
+            if (environment !== undefined) {
+                localVarQueryParameter['environment'] = environment;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -122,10 +132,11 @@ export const IDIRBCeIDProxyApiAxiosParamCreator = function (configuration?: Conf
          * @param {string} [lastName] IDIR last name search value (min 2 chars)
          * @param {string} [userId] IDIR user id search value (min 2 chars)
          * @param {number} [pageSize] Number of records to return
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchIdirUsers: async (firstName?: string, lastName?: string, userId?: string, pageSize?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        searchIdirUsers: async (firstName?: string, lastName?: string, userId?: string, pageSize?: number, environment?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/identity-lookup/users/idir/search`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -158,6 +169,10 @@ export const IDIRBCeIDProxyApiAxiosParamCreator = function (configuration?: Conf
                 localVarQueryParameter['pageSize'] = pageSize;
             }
 
+            if (environment !== undefined) {
+                localVarQueryParameter['environment'] = environment;
+            }
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -183,11 +198,12 @@ export const IDIRBCeIDProxyApiFp = function(configuration?: Configuration) {
          * Lookup a BCeID Business user by user ID.
          * @summary Lookup BCEID user
          * @param {string} userId 
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async bceidLookup(userId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UserLookupBceidUserDto>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.bceidLookup(userId, options);
+        async bceidLookup(userId: string, environment?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UserLookupBceidUserDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.bceidLookup(userId, environment, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['IDIRBCeIDProxyApi.bceidLookup']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -196,11 +212,12 @@ export const IDIRBCeIDProxyApiFp = function(configuration?: Configuration) {
          * Lookup an IDIR user by user ID.
          * @summary Lookup IDIR user
          * @param {string} userId 
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async idirLookup(userId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UserLookupIdirUserDto>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.idirLookup(userId, options);
+        async idirLookup(userId: string, environment?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UserLookupIdirUserDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.idirLookup(userId, environment, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['IDIRBCeIDProxyApi.idirLookup']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -212,11 +229,12 @@ export const IDIRBCeIDProxyApiFp = function(configuration?: Configuration) {
          * @param {string} [lastName] IDIR last name search value (min 2 chars)
          * @param {string} [userId] IDIR user id search value (min 2 chars)
          * @param {number} [pageSize] Number of records to return
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UserLookupIdirSearchResult>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.searchIdirUsers(firstName, lastName, userId, pageSize, options);
+        async searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, environment?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<UserLookupIdirSearchResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.searchIdirUsers(firstName, lastName, userId, pageSize, environment, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['IDIRBCeIDProxyApi.searchIdirUsers']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -235,21 +253,23 @@ export const IDIRBCeIDProxyApiFactory = function (configuration?: Configuration,
          * Lookup a BCeID Business user by user ID.
          * @summary Lookup BCEID user
          * @param {string} userId 
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        bceidLookup(userId: string, options?: any): AxiosPromise<UserLookupBceidUserDto> {
-            return localVarFp.bceidLookup(userId, options).then((request) => request(axios, basePath));
+        bceidLookup(userId: string, environment?: string, options?: any): AxiosPromise<UserLookupBceidUserDto> {
+            return localVarFp.bceidLookup(userId, environment, options).then((request) => request(axios, basePath));
         },
         /**
          * Lookup an IDIR user by user ID.
          * @summary Lookup IDIR user
          * @param {string} userId 
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        idirLookup(userId: string, options?: any): AxiosPromise<UserLookupIdirUserDto> {
-            return localVarFp.idirLookup(userId, options).then((request) => request(axios, basePath));
+        idirLookup(userId: string, environment?: string, options?: any): AxiosPromise<UserLookupIdirUserDto> {
+            return localVarFp.idirLookup(userId, environment, options).then((request) => request(axios, basePath));
         },
         /**
          * Search for IDIR users.
@@ -258,11 +278,12 @@ export const IDIRBCeIDProxyApiFactory = function (configuration?: Configuration,
          * @param {string} [lastName] IDIR last name search value (min 2 chars)
          * @param {string} [userId] IDIR user id search value (min 2 chars)
          * @param {number} [pageSize] Number of records to return
+         * @param {string} [environment] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, options?: any): AxiosPromise<UserLookupIdirSearchResult> {
-            return localVarFp.searchIdirUsers(firstName, lastName, userId, pageSize, options).then((request) => request(axios, basePath));
+        searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, environment?: string, options?: any): AxiosPromise<UserLookupIdirSearchResult> {
+            return localVarFp.searchIdirUsers(firstName, lastName, userId, pageSize, environment, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -277,21 +298,23 @@ export interface IDIRBCeIDProxyApiInterface {
      * Lookup a BCeID Business user by user ID.
      * @summary Lookup BCEID user
      * @param {string} userId 
+     * @param {string} [environment] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof IDIRBCeIDProxyApiInterface
      */
-    bceidLookup(userId: string, options?: RawAxiosRequestConfig): AxiosPromise<UserLookupBceidUserDto>;
+    bceidLookup(userId: string, environment?: string, options?: RawAxiosRequestConfig): AxiosPromise<UserLookupBceidUserDto>;
 
     /**
      * Lookup an IDIR user by user ID.
      * @summary Lookup IDIR user
      * @param {string} userId 
+     * @param {string} [environment] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof IDIRBCeIDProxyApiInterface
      */
-    idirLookup(userId: string, options?: RawAxiosRequestConfig): AxiosPromise<UserLookupIdirUserDto>;
+    idirLookup(userId: string, environment?: string, options?: RawAxiosRequestConfig): AxiosPromise<UserLookupIdirUserDto>;
 
     /**
      * Search for IDIR users.
@@ -300,11 +323,12 @@ export interface IDIRBCeIDProxyApiInterface {
      * @param {string} [lastName] IDIR last name search value (min 2 chars)
      * @param {string} [userId] IDIR user id search value (min 2 chars)
      * @param {number} [pageSize] Number of records to return
+     * @param {string} [environment] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof IDIRBCeIDProxyApiInterface
      */
-    searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, options?: RawAxiosRequestConfig): AxiosPromise<UserLookupIdirSearchResult>;
+    searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, environment?: string, options?: RawAxiosRequestConfig): AxiosPromise<UserLookupIdirSearchResult>;
 
 }
 
@@ -319,24 +343,26 @@ export class IDIRBCeIDProxyApi extends BaseAPI implements IDIRBCeIDProxyApiInter
      * Lookup a BCeID Business user by user ID.
      * @summary Lookup BCEID user
      * @param {string} userId 
+     * @param {string} [environment] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof IDIRBCeIDProxyApi
      */
-    public bceidLookup(userId: string, options?: RawAxiosRequestConfig) {
-        return IDIRBCeIDProxyApiFp(this.configuration).bceidLookup(userId, options).then((request) => request(this.axios, this.basePath));
+    public bceidLookup(userId: string, environment?: string, options?: RawAxiosRequestConfig) {
+        return IDIRBCeIDProxyApiFp(this.configuration).bceidLookup(userId, environment, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * Lookup an IDIR user by user ID.
      * @summary Lookup IDIR user
      * @param {string} userId 
+     * @param {string} [environment] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof IDIRBCeIDProxyApi
      */
-    public idirLookup(userId: string, options?: RawAxiosRequestConfig) {
-        return IDIRBCeIDProxyApiFp(this.configuration).idirLookup(userId, options).then((request) => request(this.axios, this.basePath));
+    public idirLookup(userId: string, environment?: string, options?: RawAxiosRequestConfig) {
+        return IDIRBCeIDProxyApiFp(this.configuration).idirLookup(userId, environment, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -346,12 +372,13 @@ export class IDIRBCeIDProxyApi extends BaseAPI implements IDIRBCeIDProxyApiInter
      * @param {string} [lastName] IDIR last name search value (min 2 chars)
      * @param {string} [userId] IDIR user id search value (min 2 chars)
      * @param {number} [pageSize] Number of records to return
+     * @param {string} [environment] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof IDIRBCeIDProxyApi
      */
-    public searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, options?: RawAxiosRequestConfig) {
-        return IDIRBCeIDProxyApiFp(this.configuration).searchIdirUsers(firstName, lastName, userId, pageSize, options).then((request) => request(this.axios, this.basePath));
+    public searchIdirUsers(firstName?: string, lastName?: string, userId?: string, pageSize?: number, environment?: string, options?: RawAxiosRequestConfig) {
+        return IDIRBCeIDProxyApiFp(this.configuration).searchIdirUsers(firstName, lastName, userId, pageSize, environment, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

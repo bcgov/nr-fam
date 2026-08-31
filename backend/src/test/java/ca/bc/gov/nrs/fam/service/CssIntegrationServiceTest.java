@@ -20,6 +20,7 @@ import ca.bc.gov.nrs.fam.dto.ScopeDto;
 import ca.bc.gov.nrs.fam.dto.CssScopeSelection;
 import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
@@ -95,8 +96,12 @@ class CssIntegrationServiceTest {
 
     // Filtering and naming are tested on their own; here the rows come straight
     // back so these assertions see exactly what CSS reported.
-    when(assignmentVisibilityService.visibleTo(any(), any()))
-        .thenAnswer(i -> i.getArgument(1));
+    when(assignmentVisibilityService.visibleTo(any(), any(), any()))
+        .thenAnswer(i -> i.getArgument(2));
+
+    // The real mapping is ApiInstanceEnvResolver's, tested there. Stubbed rather
+    // than left null so these tests assert the environment is passed on at all.
+    when(apiInstanceEnvResolver.resolveDirectory(any())).thenReturn(DirectoryEnv.DEV);
   }
 
   private static CssRoleDto role(String name, boolean composite) {
@@ -643,7 +648,7 @@ class CssIntegrationServiceTest {
     // created for a refused grant would outlive it.
     givenRoles();
     doThrow(FamHttpException.forbidden("permission_required", "different org"))
-        .when(targetOrganizationGuard).requireSameOrganization(any(), any(), anyString());
+        .when(targetOrganizationGuard).requireSameOrganization(any(), any(), any(), anyString());
 
     assertThatThrownBy(() -> service.assignUserRoles(
         INTEGRATION, ENV, request(null, List.of()), requesterWithGuid("SOMEONEELSE")))
@@ -661,8 +666,13 @@ class CssIntegrationServiceTest {
     service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()),
         requesterWithGuid("SOMEONEELSE"));
 
+    // The environment is whatever the resolver answered for this application -
+    // the mapping itself is ApiInstanceEnvResolver's to get right, and is tested
+    // there. What matters here is that the guard is told, rather than left to
+    // look the target up in some default directory.
     verify(targetOrganizationGuard).requireSameOrganization(
-        any(), eq(UserType.IDIR), eq("AABBCCDDEEFF00112233445566778899"));
+        any(), eq(DirectoryEnv.DEV), eq(UserType.IDIR),
+        eq("AABBCCDDEEFF00112233445566778899"));
   }
 
   @Test
@@ -967,7 +977,7 @@ class CssIntegrationServiceTest {
   @DisplayName("applies the organisation rule to a revocation too")
   void appliesOrganizationGuardToRevoke() {
     doThrow(FamHttpException.forbidden("permission_required", "different org"))
-        .when(targetOrganizationGuard).requireSameOrganization(any(), any(), anyString());
+        .when(targetOrganizationGuard).requireSameOrganization(any(), any(), any(), anyString());
 
     assertThatThrownBy(() ->
         service.revokeUserRole(INTEGRATION, ENV, revokeRequest(null, null), DEFINER))
@@ -1798,15 +1808,25 @@ class CssIntegrationServiceTest {
   }
 
   @Test
-  @DisplayName("keeps environments apart - a dev tab must not list prod administrators")
+  @DisplayName("reads a prod application's administrators from FAM's own prod environment")
   void administratorsAreEnvironmentSpecific() {
+    /*
+        The environment is the one being administered, not the one FAM happens
+        to be deployed in. Administering a prod application is an act against
+        prod, and the role that authorises it lives there - so this reads FAM's
+        own integration in prod, and a dev tab cannot list prod administrators.
+
+        This read has to match the write in appointApplicationAdmin exactly. Any
+        disagreement between them is an appointment that lands somewhere the
+        table does not look, which reports success and shows nothing.
+    */
     when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
         .thenReturn(List.of());
 
     service.getAdministrators(INTEGRATION, "prod", AdminRoleAuthGroup.APP_ADMIN);
 
     verify(cssApiService).getUsersWithRole(
-        FAM_OWN_INTEGRATION, "dev", "APP_ADMIN_" + INTEGRATION + "_PROD");
+        FAM_OWN_INTEGRATION, "prod", "APP_ADMIN_" + INTEGRATION + "_PROD");
   }
 
   @Test
@@ -2008,6 +2028,42 @@ class CssIntegrationServiceTest {
 
     // The application's own integration holds application roles, never these.
     verify(cssApiService, never()).createRole(eq(INTEGRATION), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("appoints against the application's environment, not FAM's own")
+  void appointUsesTheApplicationEnvironment() {
+    /*
+        The regression this guards: every other appointment test administers a
+        dev application from a dev deployment, where the application's
+        environment and FAM's own are the same string - so an appointment that
+        wrote to FAM's deployment environment passed all of them, and appointing
+        a delegate for a TEST application quietly wrote the delegation into dev.
+        It reported success and the row never appeared, because the read looked
+        where the write should have gone.
+
+        Administering a test application is an act against test. The role that
+        authorises it belongs on FAM's own integration - the application's
+        integration holds application roles, never these - in the environment
+        being administered.
+    */
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "test")).thenReturn(List.of());
+
+    Requester appAdminOfTest = Requester.builder()
+        .userName("JSMITH").userGuid("SOMEONEELSE")
+        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, "test")))
+        .build();
+
+    service.appointDelegatedAdmin(
+        INTEGRATION, "test", appointment(null, List.of()), appAdminOfTest);
+
+    String delegation = "DELEGATED_ADMIN_" + INTEGRATION + "_TEST__CHR_FREP_EDITOR";
+    verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "test", delegation);
+    verify(cssApiService).assignUserRoles(
+        eq(FAM_OWN_INTEGRATION), eq("test"), anyString(), eq(List.of(delegation)));
+
+    // Nothing at all in dev, which is where this used to land.
+    verify(cssApiService, never()).assignUserRoles(anyInt(), eq("dev"), anyString(), anyList());
   }
 
   @Test

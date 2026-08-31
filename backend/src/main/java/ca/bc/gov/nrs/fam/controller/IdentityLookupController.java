@@ -7,6 +7,7 @@ import ca.bc.gov.nrs.fam.dto.UserLookupIdirSearchResult;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
+import ca.bc.gov.nrs.fam.service.ApiInstanceEnvResolver;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +47,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class IdentityLookupController {
 
   private final UserLookupClient userLookupClient;
+
+  /*
+      Which of the directory's three instances to ask. The environment comes from
+      the caller because the answer belongs to an application: a person is a
+      different account with a different GUID in each, and the GUID returned here
+      is the one CSS will be asked to assign a role to. Looking somebody up in
+      one environment and granting in another is refused by CSS with nothing said
+      about why.
+  */
+  private final ApiInstanceEnvResolver apiInstanceEnvResolver;
   private final AuthorizationService authorizationService;
 
   /**
@@ -62,12 +73,14 @@ public class IdentityLookupController {
       description = "Lookup an IDIR user by user ID.")
   public UserLookupIdirUserDto lookupIdir(
       @RequestParam @Size(max = 20) String userId,
+      @RequestParam(required = false) String environment,
       Requester requester) {
 
     authorizationService.authorize(requester);
     authorizationService.internalOnlyAction(requester);
 
-    return userLookupClient.getIdirDetail(userId)
+    return userLookupClient
+        .getIdirDetail(apiInstanceEnvResolver.resolveDirectory(environment), userId)
         .orElseGet(() -> new UserLookupIdirUserDto(false, userId, null, null, null, null));
   }
 
@@ -86,12 +99,14 @@ public class IdentityLookupController {
       description = "Lookup a BCeID Business user by user ID.")
   public UserLookupBceidUserDto lookupBceid(
       @RequestParam @Size(max = 20) String userId,
+      @RequestParam(required = false) String environment,
       Requester requester) {
 
     authorizationService.authorize(requester);
 
     UserLookupBceidUserDto result = userLookupClient
-        .getBusinessBceid(UserLookupClient.SearchBy.USER_ID, userId)
+        .getBusinessBceid(apiInstanceEnvResolver.resolveDirectory(environment),
+            UserLookupClient.SearchBy.USER_ID, userId)
         .orElse(null);
 
     if (result == null) {
@@ -108,6 +123,7 @@ public class IdentityLookupController {
       description = "Search for IDIR users.")
   public UserLookupIdirSearchResult searchIdirUsers(
       @ParameterObject @Valid IdimIdirUsersSearchParams searchParams,
+      @RequestParam(required = false) String environment,
       Requester requester) {
 
     authorizationService.authorize(requester);
@@ -125,6 +141,7 @@ public class IdentityLookupController {
         requester.userName(), requester.userGuid());
 
     return userLookupClient.searchIdir(
+        apiInstanceEnvResolver.resolveDirectory(environment),
         searchParams.getUserId(), searchParams.getFirstName(), searchParams.getLastName(),
         searchParams.getPageSize());
   }

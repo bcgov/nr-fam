@@ -6,6 +6,7 @@ import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.security.Requester;
 import java.util.ArrayList;
@@ -65,9 +66,10 @@ public class AssignmentVisibilityService {
    *
    * @param requester null for an internal caller, which is not somebody's view
    */
-  public List<CssUserRoleRowDto> visibleTo(Requester requester, List<CssUserRoleRowDto> rows) {
+  public List<CssUserRoleRowDto> visibleTo(
+      Requester requester, DirectoryEnv directory, List<CssUserRoleRowDto> rows) {
     if (requester == null || requester.userType() != UserType.BCEID) {
-      return enrichmentService.withResolvedNames(rows);
+      return enrichmentService.withResolvedNames(directory, rows);
     }
 
     String ownOrganization = requester.businessGuid();
@@ -89,12 +91,12 @@ public class AssignmentVisibilityService {
       return List.of();
     }
 
-    Map<String, UserLookupBceidUserDto> directory = resolve(candidates);
+    Map<String, UserLookupBceidUserDto> bceidUsers = resolve(directory, candidates);
 
     List<CssUserRoleRowDto> visible = new ArrayList<>();
     for (CssUserRoleRowDto row : candidates) {
       UserLookupBceidUserDto user = CssRoleNaming.guidFromUsername(row.username())
-          .map(directory::get).orElse(null);
+          .map(bceidUsers::get).orElse(null);
 
       if (user == null) {
         // Unverifiable, so not shown. Distinct from the directory being down,
@@ -120,7 +122,8 @@ public class AssignmentVisibilityService {
    * CSS may not have, so the same call serves both - which is why BCeID rows are
    * named here rather than by the enrichment service.
    */
-  private Map<String, UserLookupBceidUserDto> resolve(List<CssUserRoleRowDto> rows) {
+  private Map<String, UserLookupBceidUserDto> resolve(
+      DirectoryEnv directory, List<CssUserRoleRowDto> rows) {
     Set<String> guids = new LinkedHashSet<>();
     for (CssUserRoleRowDto row : rows) {
       CssRoleNaming.guidFromUsername(row.username()).ifPresent(guids::add);
@@ -130,7 +133,7 @@ public class AssignmentVisibilityService {
     for (String guid : guids) {
       // Deliberately unguarded: a failure here must reach the caller as an
       // error, not become a row quietly missing from the listing.
-      userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, guid)
+      userLookupClient.getBusinessBceid(directory, UserLookupClient.SearchBy.USER_GUID, guid)
           .ifPresent(user -> resolved.put(guid, user));
     }
     return resolved;

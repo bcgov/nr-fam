@@ -2,6 +2,7 @@ package ca.bc.gov.nrs.fam.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -98,7 +99,7 @@ class BulkGrantServiceTest {
     when(cssIntegrationService.getRoles(INTEGRATION, ENV))
         .thenReturn(List.of(role("FSPTS_VIEW_ALL", false, false)));
 
-    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.of(
+    when(userLookupClient.getIdirDetail(any(), eq(USERNAME))).thenReturn(Optional.of(
         new UserLookupIdirUserDto(true, "JANES", GUID, "Jane", "Smith", "jane@gov.bc.ca")));
   }
 
@@ -129,8 +130,8 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("falls back to Business BCeID when the username is not an IDIR one")
   void resolvesBceid() {
-    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.empty());
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
+    when(userLookupClient.getIdirDetail(any(), eq(USERNAME))).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), eq(UserLookupClient.SearchBy.USER_ID), eq(USERNAME)))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
@@ -147,8 +148,8 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("a username neither directory knows is an error, not a silent skip")
   void unknownUsername() {
-    when(userLookupClient.getIdirDetail(anyString())).thenReturn(Optional.empty());
-    when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getIdirDetail(any(), anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(Optional.empty());
 
     assertThat(preview(USERNAME + ",,FSPTS_VIEW_ALL"))
         .singleElement()
@@ -194,7 +195,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("searches only the directory the file named")
   void searchesOnlyTheStatedDirectory() {
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
+    when(userLookupClient.getBusinessBceid(any(), eq(UserLookupClient.SearchBy.USER_ID), eq(USERNAME)))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
@@ -202,7 +203,7 @@ class BulkGrantServiceTest {
 
     // Stating it is what the column buys: without it every Business BCeID row
     // pays for a failed IDIR lookup first.
-    verify(userLookupClient, never()).getIdirDetail(anyString());
+    verify(userLookupClient, never()).getIdirDetail(any(), anyString());
   }
 
   @Test
@@ -210,8 +211,8 @@ class BulkGrantServiceTest {
   void refusesAUserFromTheOtherDirectory() {
     // The name is a real Business BCeID user, but the row says IDIR. Falling
     // back would grant a different person who happens to share the name.
-    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.empty());
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
+    when(userLookupClient.getIdirDetail(any(), eq(USERNAME))).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), eq(UserLookupClient.SearchBy.USER_ID), eq(USERNAME)))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
@@ -226,7 +227,7 @@ class BulkGrantServiceTest {
   @Test
   @DisplayName("accepts BCEID as well as the stored BCEID_BUS")
   void acceptsEitherBceidSpelling() {
-    when(userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_ID, USERNAME))
+    when(userLookupClient.getBusinessBceid(any(), eq(UserLookupClient.SearchBy.USER_ID), eq(USERNAME)))
         .thenReturn(Optional.of(new UserLookupBceidUserDto(true,
             "JSMITH-BCEID", GUID, "BUSGUID", "Acme Forestry", "Jane", "Smith", "j@acme.com")));
 
@@ -742,7 +743,7 @@ class BulkGrantServiceTest {
     assertThat(preview(csv)).hasSize(3).allSatisfy(row ->
         assertThat(row.valid()).isTrue());
 
-    verify(userLookupClient, org.mockito.Mockito.times(1)).getIdirDetail(USERNAME);
+    verify(userLookupClient, org.mockito.Mockito.times(1)).getIdirDetail(any(), eq(USERNAME));
   }
 
   @Test
@@ -751,15 +752,15 @@ class BulkGrantServiceTest {
     // The absence has to be remembered too, or a file repeating one bad name
     // pays the full lookup on every one of its rows - which is the file most
     // likely to be large and wrong.
-    when(userLookupClient.getIdirDetail(anyString())).thenReturn(Optional.empty());
-    when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getIdirDetail(any(), anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(Optional.empty());
 
     String csv = ("NOBODY,IDIR,FSPTS_VIEW_ALL\n").repeat(5);
 
     assertThat(preview(csv)).hasSize(5).allSatisfy(row ->
         assertThat(row.valid()).isFalse());
 
-    verify(userLookupClient, org.mockito.Mockito.times(1)).getIdirDetail("NOBODY");
+    verify(userLookupClient, org.mockito.Mockito.times(1)).getIdirDetail(any(), eq("NOBODY"));
   }
 
   @Test
@@ -866,7 +867,7 @@ class BulkGrantServiceTest {
   void refusesAUserWithNoGuid() {
     // Nothing to provision against. Granting anyway would report success over a
     // grant made to nobody.
-    when(userLookupClient.getIdirDetail(USERNAME)).thenReturn(Optional.of(
+    when(userLookupClient.getIdirDetail(any(), eq(USERNAME))).thenReturn(Optional.of(
         new UserLookupIdirUserDto(true, USERNAME, null, "Jane", "Smith", "jane@gov.bc.ca")));
 
     assertThat(preview(USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
@@ -883,7 +884,7 @@ class BulkGrantServiceTest {
   @DisplayName("one failing row does not stop the others")
   void oneFailureDoesNotStopTheRest() {
     String other = "BOBJ";
-    when(userLookupClient.getIdirDetail(other)).thenReturn(Optional.of(new UserLookupIdirUserDto(
+    when(userLookupClient.getIdirDetail(any(), eq(other))).thenReturn(Optional.of(new UserLookupIdirUserDto(
         true, other, "BBBBCCCCDDDDEEEEFFFF000011112222", "Bob", "Jones", "bob@gov.bc.ca")));
 
     when(cssIntegrationService.assignUserRoles(anyInt(), anyString(), any(), any()))
@@ -921,6 +922,6 @@ class BulkGrantServiceTest {
     // between the two steps cannot smuggle a row past the checks.
     verify(cssIntegrationService, org.mockito.Mockito.atLeastOnce())
         .getRoles(INTEGRATION, ENV);
-    verify(userLookupClient, org.mockito.Mockito.atLeastOnce()).getIdirDetail(USERNAME);
+    verify(userLookupClient, org.mockito.Mockito.atLeastOnce()).getIdirDetail(any(), eq(USERNAME));
   }
 }

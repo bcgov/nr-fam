@@ -188,3 +188,50 @@ export const toGrantRequestErrorBanner = (
               },
           ]
         : [];
+
+/**
+ * Which tab of Manage permissions something is about.
+ *
+ * By name rather than by index, because the index depends on who is looking:
+ * the two admin tabs are withheld from a delegated administrator and the DevOps
+ * tab from everybody but a FAM administrator, so position 1 is "Delegated
+ * admins" for one person and does not exist for another. A name survives that;
+ * an index sends somebody to the wrong tab or past the end of the strip.
+ */
+export type PermissionsTab = "users" | "delegated" | "app-admins" | "devops";
+
+const TAB_NAMES: readonly PermissionsTab[] = [
+    "users",
+    "delegated",
+    "app-admins",
+    "devops",
+];
+
+/** Whether a value off the query string names a tab. */
+export const isPermissionsTab = (
+    value: string | null | undefined
+): value is PermissionsTab => TAB_NAMES.includes(value as PermissionsTab);
+
+/** The tabs one caller can see, in the order the strip renders them. */
+export const visibleTabs = (
+    canSeeAdminTabs: boolean,
+    canSeeDevopsTab: boolean
+): PermissionsTab[] => [
+    "users",
+    ...(canSeeAdminTabs ? (["delegated", "app-admins"] as const) : []),
+    ...(canSeeDevopsTab ? (["devops"] as const) : []),
+];
+
+/**
+ * Where a named tab sits in the strip, or the first tab when it is not there.
+ *
+ * Falling back rather than failing is what makes restoring a tab from the URL
+ * work: the name is read on the way in, before `/auth/self/permissions` has
+ * answered, so "devops" is briefly not a tab this caller has. Answering Users
+ * until the roles arrive and the right tab afterwards is correct in both
+ * moments, where an index held in state would be stale in the second.
+ */
+export const tabIndexOf = (
+    tab: PermissionsTab,
+    visible: readonly PermissionsTab[]
+): number => Math.max(0, visible.indexOf(tab));

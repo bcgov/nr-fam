@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { useSelectedApp } from "@/context/application/useSelectedApp";
+import { isPermissionsTab } from "@/pages/ManagePermissions/utils";
+import { ROUTES } from "@/routes/routePaths";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 
 /**
@@ -78,4 +80,25 @@ export const useGrantTargetName = (): string => {
     // The environment alone is a poor name, but it is true, and it is better
     // than a blank while the list loads.
     return resolved?.description ?? environment.toUpperCase();
+};
+
+/**
+ * Where a grant screen goes when it is finished or abandoned.
+ *
+ * Manage permissions is a tabbed screen and these forms are opened from one of
+ * its tabs, so returning to the bare route dropped somebody who had just
+ * appointed a DevOps administrator onto the list of ordinary users, with no sign
+ * of what they had done. The tab travels out on the query string, alongside the
+ * application, and comes back the same way.
+ *
+ * Falls back to the bare route for a screen reached without one - a bookmark, or
+ * a link written by hand - which lands on Users, as it always did.
+ */
+export const useManagePermissionsReturn = (): string => {
+    const [params] = useSearchParams();
+    const tab = params.get("tab");
+
+    return isPermissionsTab(tab)
+        ? `${ROUTES.managePermissions}?tab=${tab}`
+        : ROUTES.managePermissions;
 };

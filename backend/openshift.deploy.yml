@@ -261,29 +261,75 @@ objects:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-forest-client
                       key: fc-api-token-prod
-                # nr-user-lookup-api. Every value comes from the secret created
-                # by common/openshift.init.yml, whose client id and secret CI
-                # provisions rather than a human configuring them.
-                - name: USER_LOOKUP_BASE_URL
+                # nr-user-lookup-api, one instance per environment. Every value
+                # comes from the secret created by common/openshift.init.yml,
+                # whose client ids and secrets CI provisions rather than a human
+                # configuring them.
+                #
+                # All three, in every deployment: the instance used follows the
+                # application being administered, not this deployment, because a
+                # person's BCeID GUID differs between them. A PROD FAM
+                # administering a TEST application must read TEST.
+                - name: USER_LOOKUP_BASE_URL_DEV
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-user-lookup
-                      key: user-lookup-base-url
-                - name: USER_LOOKUP_TOKEN_URL
+                      key: user-lookup-base-url-dev
+                - name: USER_LOOKUP_TOKEN_URL_DEV
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-user-lookup
-                      key: user-lookup-token-url
-                - name: USER_LOOKUP_CLIENT_ID
+                      key: user-lookup-token-url-dev
+                - name: USER_LOOKUP_CLIENT_ID_DEV
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-user-lookup
-                      key: user-lookup-client-id
-                - name: USER_LOOKUP_CLIENT_SECRET
+                      key: user-lookup-client-id-dev
+                - name: USER_LOOKUP_CLIENT_SECRET_DEV
                   valueFrom:
                     secretKeyRef:
                       name: ${NAME}-${ZONE}-user-lookup
-                      key: user-lookup-client-secret
+                      key: user-lookup-client-secret-dev
+                - name: USER_LOOKUP_BASE_URL_TEST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-base-url-test
+                - name: USER_LOOKUP_TOKEN_URL_TEST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-token-url-test
+                - name: USER_LOOKUP_CLIENT_ID_TEST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-client-id-test
+                - name: USER_LOOKUP_CLIENT_SECRET_TEST
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-client-secret-test
+                - name: USER_LOOKUP_BASE_URL_PROD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-base-url-prod
+                - name: USER_LOOKUP_TOKEN_URL_PROD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-token-url-prod
+                - name: USER_LOOKUP_CLIENT_ID_PROD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-client-id-prod
+                - name: USER_LOOKUP_CLIENT_SECRET_PROD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${NAME}-${ZONE}-user-lookup
+                      key: user-lookup-client-secret-prod
                   # Unused while Caddy proxies /api (same-origin), but kept
                   # correct so a future direct-route setup is not silently broken.
                 - name: ALLOW_ORIGIN

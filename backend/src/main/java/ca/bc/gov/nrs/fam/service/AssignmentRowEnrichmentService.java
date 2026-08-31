@@ -3,6 +3,7 @@ package ca.bc.gov.nrs.fam.service;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,8 +63,10 @@ public class AssignmentRowEnrichmentService {
    * <p>Returns the rows unchanged when nothing needs resolving, when the
    * directory is not configured, or when it cannot be reached.
    */
-  public List<CssUserRoleRowDto> withResolvedNames(List<CssUserRoleRowDto> rows) {
-    if (!userLookupClient.isConfigured()) {
+  public List<CssUserRoleRowDto> withResolvedNames(
+      DirectoryEnv directory, List<CssUserRoleRowDto> rows) {
+
+    if (!userLookupClient.isConfigured(directory)) {
       return rows;
     }
 
@@ -87,7 +90,7 @@ public class AssignmentRowEnrichmentService {
     Map<String, UserLookupIdirUserDto> resolved = new HashMap<>();
     for (String guid : toLookUp) {
       try {
-        userLookupClient.getIdirDetailByGuid(guid)
+        userLookupClient.getIdirDetailByGuid(directory, guid)
             .ifPresent(user -> resolved.put(guid, user));
       } catch (RuntimeException e) {
         // One failure is enough to know the rest will fail the same way, and

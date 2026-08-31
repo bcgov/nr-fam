@@ -10,9 +10,9 @@ import { PageTitle } from "@/components/PageTitle";
 import { UserSearch } from "@/components/Search/UserSearch";
 import { StepContainer } from "@/components/StepContainer";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
-import { ROUTES } from "@/routes/routePaths";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import type { SelectedUser } from "@/types/SelectUserType";
+import { anyAssigned, anyRefused, refusalReason } from "@/utils/AssignmentResult";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import {
     newRoleScopeSelection,
@@ -28,7 +28,11 @@ import {
     toDelegatedAdminRequests,
     totalDelegations,
 } from "@/pages/AddDelegatedAdmin/delegationUtils";
-import { useGrantTarget, useGrantTargetName } from "../grantTarget";
+import {
+    useGrantTarget,
+    useGrantTargetName,
+    useManagePermissionsReturn,
+} from "../grantTarget";
 import { hasErrors, NO_ERRORS, validateGrantForm } from "../AddAppPermission/validation";
 import "./AddDelegatedAdmin.css";
 
@@ -57,6 +61,7 @@ export const AddDelegatedAdmin: FC = () => {
     const permissionToast = usePermissionToast();
     const { integrationId, environment } = useGrantTarget();
     const applicationName = useGrantTargetName();
+    const returnTo = useManagePermissionsReturn();
 
     const [users, setUsers] = useState<SelectedUser[]>([]);
     const [domain, setDomain] = useState<UserType>(UserType.Idir);
@@ -123,16 +128,41 @@ export const AddDelegatedAdmin: FC = () => {
             let appointed = 0;
 
             for (let index = 0; index < requests.length; index++) {
+                const role = roleLabel(roles[index].role);
                 try {
-                    await AdminMgmtApiService.cssIntegrationsApi.createCssDelegatedAdmin(
-                        integrationId,
-                        environment,
-                        requests[index]
-                    );
-                    appointed++;
+                    const { data } =
+                        await AdminMgmtApiService.cssIntegrationsApi.createCssDelegatedAdmin(
+                            integrationId,
+                            environment,
+                            requests[index]
+                        );
+
+                    /*
+                        A 200 is not an appointment.
+
+                        The endpoint answers with one result per delegation - one
+                        per scope value - and reports a refusal from CSS in the
+                        body rather than as a status, because the delegation role
+                        may have been created before the assignment was refused.
+                        Counting the call itself as a success announced delegated
+                        administrators CSS had never assigned, who then did not
+                        appear in the table with nothing said about why.
+
+                        Both branches, not one: a role scoped to three districts
+                        can land for two and be refused for the third, and that
+                        is a success and a failure at once.
+                    */
+                    if (anyAssigned(data)) {
+                        appointed++;
+                    }
+                    if (anyRefused(data)) {
+                        failures.push(
+                            `${role}: ${refusalReason(data, "CSS did not assign the delegation.")}`
+                        );
+                    }
                 } catch (error) {
                     failures.push(
-                        `${roleLabel(roles[index].role)}: ${describeAppointmentError(error)}`
+                        `${role}: ${describeAppointmentError(error)}`
                     );
                 }
             }
@@ -166,7 +196,7 @@ export const AddDelegatedAdmin: FC = () => {
                 );
             }
 
-            navigate(ROUTES.managePermissions);
+            navigate(returnTo);
         },
         onError: (error: unknown) => {
             // Only reached if the loop itself failed, since per-role failures
@@ -328,7 +358,7 @@ export const AddDelegatedAdmin: FC = () => {
                     <Button
                         kind="secondary"
                         type="button"
-                        onClick={() => navigate(ROUTES.managePermissions)}
+                        onClick={() => navigate(returnTo)}
                     >
                         Cancel
                     </Button>

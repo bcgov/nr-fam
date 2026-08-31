@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirSearchResult;
 import ca.bc.gov.nrs.fam.exception.UpstreamException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,8 +36,11 @@ class UserLookupClientTest {
 
   private UserLookupClient clientWith(String tokenUrl, String clientId, String clientSecret) {
     FamProperties.Integration.UserLookup config = new FamProperties.Integration.UserLookup(
-        server.url("/").toString().replaceAll("/$", ""),
-        tokenUrl, clientId, clientSecret, "",
+        null,
+        new FamProperties.Integration.UserLookup.Instance(
+            server.url("/").toString().replaceAll("/$", ""),
+            tokenUrl, clientId, clientSecret, ""),
+        null,
         new FamProperties.Integration.Timeouts(Duration.ofSeconds(2), Duration.ofSeconds(2)));
 
     FamProperties properties = new FamProperties("dev", null,
@@ -70,7 +74,7 @@ class UserLookupClientTest {
         {"found":true,"userId":"JSMITH","guid":"AABB",
          "firstName":"Jane","lastName":"Smith","email":"jane@gov.bc.ca"}""");
 
-    assertThat(unauthenticatedClient().getIdirDetail("JSMITH")).hasValueSatisfying(user -> {
+    assertThat(unauthenticatedClient().getIdirDetail(DirectoryEnv.TEST, "JSMITH")).hasValueSatisfying(user -> {
       assertThat(user.firstName()).isEqualTo("Jane");
       assertThat(user.lastName()).isEqualTo("Smith");
       assertThat(user.email()).isEqualTo("jane@gov.bc.ca");
@@ -87,7 +91,7 @@ class UserLookupClientTest {
         {"found":true,"userId":"JSMITH","guid":"AABB",
          "firstName":"Jane","lastName":"Smith","email":"jane@gov.bc.ca"}""");
 
-    assertThat(unauthenticatedClient().getIdirDetailByGuid("AABB"))
+    assertThat(unauthenticatedClient().getIdirDetailByGuid(DirectoryEnv.TEST, "AABB"))
         .hasValueSatisfying(user -> assertThat(user.userId()).isEqualTo("JSMITH"));
 
     RecordedRequest request = server.takeRequest();
@@ -101,20 +105,20 @@ class UserLookupClientTest {
     // The directory answers 200 with found=false and echoes the GUID back.
     enqueueJson("{\"found\":false,\"guid\":\"AABB\"}");
 
-    assertThat(unauthenticatedClient().getIdirDetailByGuid("AABB")).isEmpty();
+    assertThat(unauthenticatedClient().getIdirDetailByGuid(DirectoryEnv.TEST, "AABB")).isEmpty();
   }
 
   @Test
   @DisplayName("does not call out for a blank GUID")
   void blankGuidIsEmpty() {
-    assertThat(unauthenticatedClient().getIdirDetailByGuid("  ")).isEmpty();
+    assertThat(unauthenticatedClient().getIdirDetailByGuid(DirectoryEnv.TEST, "  ")).isEmpty();
   }
 
   @Test
   @DisplayName("treats found=false as no match rather than a result")
   void notFoundIsEmpty() {
     enqueueJson("{\"found\":false}");
-    assertThat(unauthenticatedClient().getIdirDetail("GHOST")).isEmpty();
+    assertThat(unauthenticatedClient().getIdirDetail(DirectoryEnv.TEST, "GHOST")).isEmpty();
   }
 
   @Test
@@ -122,7 +126,7 @@ class UserLookupClientTest {
   void sendsOnlySuppliedCriteria() throws Exception {
     enqueueJson("{\"totalItems\":0,\"pageSize\":0,\"items\":[]}");
 
-    unauthenticatedClient().searchIdir(null, "Jane", "  ", null);
+    unauthenticatedClient().searchIdir(DirectoryEnv.TEST, null, "Jane", "  ", null);
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getMethod()).isEqualTo("POST");
@@ -139,7 +143,7 @@ class UserLookupClientTest {
     // smaller, so dropping this silently truncates the search.
     enqueueJson("{\"totalItems\":0,\"pageSize\":0,\"items\":[]}");
 
-    unauthenticatedClient().searchIdir("JSMITH", null, null, 500);
+    unauthenticatedClient().searchIdir(DirectoryEnv.TEST, "JSMITH", null, null, 500);
 
     assertThat(server.takeRequest().getPath()).contains("pageSize=500");
   }
@@ -151,7 +155,7 @@ class UserLookupClientTest {
         {"totalItems":1,"pageSize":50,
          "items":[{"userId":"JSMITH","firstName":"Jane","lastName":"Smith"}]}""");
 
-    UserLookupIdirSearchResult result = unauthenticatedClient().searchIdir("JSMITH", null, null, null);
+    UserLookupIdirSearchResult result = unauthenticatedClient().searchIdir(DirectoryEnv.TEST, "JSMITH", null, null, null);
 
     assertThat(result.totalItems()).isEqualTo(1);
     assertThat(result.items()).singleElement()
@@ -162,7 +166,7 @@ class UserLookupClientTest {
   @DisplayName("a response with no items reads as empty, not as a null list")
   void missingItemsIsEmptyList() {
     enqueueJson("{\"totalItems\":0,\"pageSize\":50}");
-    assertThat(unauthenticatedClient().searchIdir("X", null, null, null).items()).isEmpty();
+    assertThat(unauthenticatedClient().searchIdir(DirectoryEnv.TEST, "X", null, null, null).items()).isEmpty();
   }
 
   @Test
@@ -171,7 +175,7 @@ class UserLookupClientTest {
     enqueueJson("{\"found\":true,\"userId\":\"BUSER\",\"businessGuid\":\"ORG\"}");
 
     unauthenticatedClient()
-        .getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, "AABBCC");
+        .getBusinessBceid(DirectoryEnv.TEST, UserLookupClient.SearchBy.USER_GUID, "AABBCC");
 
     RecordedRequest request = server.takeRequest();
     assertThat(request.getPath()).contains("searchUserBy=userGuid").contains("searchValue=AABBCC");
@@ -185,7 +189,7 @@ class UserLookupClientTest {
     enqueueJson("{\"found\":true,\"userId\":\"BUSER\",\"businessGuid\":\"OTHER-ORG\"}");
 
     assertThat(unauthenticatedClient()
-        .getBusinessBceid(UserLookupClient.SearchBy.USER_ID, "BUSER"))
+        .getBusinessBceid(DirectoryEnv.TEST, UserLookupClient.SearchBy.USER_ID, "BUSER"))
         .hasValueSatisfying(u -> assertThat(u.businessGuid()).isEqualTo("OTHER-ORG"));
   }
 
@@ -197,7 +201,7 @@ class UserLookupClientTest {
     // access to, and "nobody matched" is a different answer from "it is down".
     server.shutdown();
 
-    assertThatThrownBy(() -> unauthenticatedClient().searchIdir("JSMITH", null, null, null))
+    assertThatThrownBy(() -> unauthenticatedClient().searchIdir(DirectoryEnv.TEST, "JSMITH", null, null, null))
         .isInstanceOf(UpstreamException.class);
   }
 
@@ -206,7 +210,7 @@ class UserLookupClientTest {
   void unconfiguredFailsClearly() {
     FamProperties properties = new FamProperties("dev", null,
         new FamProperties.Integration(null, null,
-            new FamProperties.Integration.UserLookup(null, null, null, null, null,
+            new FamProperties.Integration.UserLookup(null, null, null,
                 new FamProperties.Integration.Timeouts(
                     Duration.ofSeconds(1), Duration.ofSeconds(1))), null));
 
@@ -214,8 +218,8 @@ class UserLookupClientTest {
         new UpstreamErrorTranslator(new ObjectMapper()));
     client.init();
 
-    assertThat(client.isConfigured()).isFalse();
-    assertThatThrownBy(() -> client.getIdirDetail("JSMITH"))
+    assertThat(client.isConfigured(DirectoryEnv.TEST)).isFalse();
+    assertThatThrownBy(() -> client.getIdirDetail(DirectoryEnv.TEST, "JSMITH"))
         .isInstanceOf(UpstreamException.class)
         .hasMessageContaining("USER_LOOKUP_BASE_URL");
   }
@@ -233,7 +237,7 @@ class UserLookupClientTest {
   @Test
   @DisplayName("blank criteria yield no call at all")
   void blankLookupSkipsTheCall() {
-    assertThat(unauthenticatedClient().getIdirDetail("   ")).isEmpty();
+    assertThat(unauthenticatedClient().getIdirDetail(DirectoryEnv.TEST, "   ")).isEmpty();
     assertThat(server.getRequestCount()).isZero();
   }
 }
