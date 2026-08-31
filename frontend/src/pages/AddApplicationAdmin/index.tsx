@@ -8,12 +8,16 @@ import { InlineSpinner } from "@/components/InlineSpinner";
 import { UserSearch } from "@/components/Search/UserSearch";
 import { StepContainer } from "@/components/StepContainer";
 import { describeError } from "@/components/PermissionsTable/CssPermissionsTable";
-import { ROUTES } from "@/routes/routePaths";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import type { SelectedUser } from "@/types/SelectUserType";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { useErrorToast } from "@/context/notification/useErrorToast";
-import { useGrantTarget, useGrantTargetName } from "../grantTarget";
+import { anyAssigned, refusalReason } from "@/utils/AssignmentResult";
+import {
+    useGrantTarget,
+    useGrantTargetName,
+    useManagePermissionsReturn,
+} from "../grantTarget";
 import "./AddApplicationAdmin.css";
 
 /**
@@ -29,6 +33,7 @@ export const AddApplicationAdmin: FC = () => {
     const queryClient = useQueryClient();
     const { integrationId, environment } = useGrantTarget();
     const applicationName = useGrantTargetName();
+    const returnTo = useManagePermissionsReturn();
 
     const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
     const [domain, setDomain] = useState<UserType>(UserType.Idir);
@@ -58,9 +63,24 @@ export const AddApplicationAdmin: FC = () => {
                     user_type: domain,
                 }
             ),
-        onSuccess: () => {
+        onSuccess: (response) => {
+            // A 200 is not an appointment. CSS can refuse the assignment after
+            // the role has been created, and the endpoint reports that in the
+            // body rather than as a status - so the outcome has to be read, or
+            // a refusal is announced as success and the person never appears in
+            // the table.
+            if (!anyAssigned(response.data)) {
+                setSubmitError(
+                    refusalReason(
+                        response.data,
+                        "CSS did not assign the application administrator role."
+                    )
+                );
+                return;
+            }
+
             invalidateAfterAccessChange(queryClient, integrationId, environment);
-            navigate(ROUTES.managePermissions);
+            navigate(returnTo);
         },
         onError: (error: unknown) => {
             // Names the actual refusal - appointing yourself, or reaching outside
@@ -125,7 +145,7 @@ export const AddApplicationAdmin: FC = () => {
                     <Button
                         kind="secondary"
                         type="button"
-                        onClick={() => navigate(ROUTES.managePermissions)}
+                        onClick={() => navigate(returnTo)}
                     >
                         Cancel
                     </Button>

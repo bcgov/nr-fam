@@ -72,7 +72,32 @@ const EDITOR = {
     role_type_client: false,
 };
 
-const renderPage = () => {
+/** One delegation, assigned - what the endpoint answers on a clean appointment. */
+const assigned = (roleName: string) => ({
+    data: [
+        {
+            role_name: roleName,
+            role_created: false,
+            assigned: true,
+            email_sending_status: "NOT_REQUIRED",
+        },
+    ],
+});
+
+/** The same shape when CSS refused it, which still arrives with a 200. */
+const refused = (roleName: string, message: string) => ({
+    data: [
+        {
+            role_name: roleName,
+            role_created: true,
+            assigned: false,
+            error_message: message,
+            email_sending_status: "NOT_REQUIRED",
+        },
+    ],
+});
+
+const renderPage = (search = "?integrationId=6538&environment=dev") => {
     const auth: AuthContextValue = {
         authState: {
             isAuthenticated: true,
@@ -93,7 +118,7 @@ const renderPage = () => {
             <AuthContext.Provider value={auth}>
                 <MemoryRouter
                     initialEntries={[
-                        "/manage-permissions/add-delegated-admin?integrationId=6538&environment=dev",
+                        `/manage-permissions/add-delegated-admin${search}`,
                     ]}
                 >
                     <NotificationProvider>
@@ -164,7 +189,9 @@ describe("AddDelegatedAdmin", () => {
         getCssApplicationRoles
             .mockReset()
             .mockResolvedValue({ data: [VIEWER, EDITOR] });
-        createCssDelegatedAdmin.mockReset().mockResolvedValue({ data: {} });
+        createCssDelegatedAdmin
+            .mockReset()
+            .mockResolvedValue(assigned("DELEGATED_ADMIN_6538_DEV__FREP_VIEWER"));
         getDistricts.mockReset().mockResolvedValue({
             data: [
                 { org_unit_code: "DCC", org_unit_name: "Cariboo", expired: false },
@@ -271,7 +298,7 @@ describe("AddDelegatedAdmin", () => {
     it("keeps the delegations that landed when another is refused", async () => {
         // They have happened in CSS and cannot be taken back by throwing here.
         createCssDelegatedAdmin
-            .mockResolvedValueOnce({ data: {} })
+            .mockResolvedValueOnce(assigned("DELEGATED_ADMIN_6538_DEV__FREP_VIEWER"))
             .mockRejectedValueOnce({
                 response: { data: { detail: { description: "Not yours to delegate" } } },
             });
@@ -327,5 +354,47 @@ describe("AddDelegatedAdmin", () => {
             within(toast).getByText("Delegated admin added")
         ).toBeInTheDocument();
         expect(toast.textContent).toContain("JSMITH can now grant 1 role");
+    });
+
+    it("does not announce an appointment CSS refused in a 200", async () => {
+        /*
+            The endpoint answers 200 with assigned:false when CSS declines the
+            assignment - the delegation role was created, the person was not
+            given it. Counting the call itself as success announced delegated
+            administrators who then were not in the table, with nothing said
+            about why.
+        */
+        createCssDelegatedAdmin.mockResolvedValue(
+            refused(
+                "DELEGATED_ADMIN_6538_DEV__FREP_VIEWER",
+                "could not verify user with the upstream identity provider"
+            )
+        );
+        renderPage();
+        await chooseUser();
+        await tickRole("Viewer");
+        await userEvent.click(
+            screen.getByRole("button", { name: "Add delegated admin" })
+        );
+
+        expect(
+            await screen.findByText(/could not verify user/)
+        ).toBeInTheDocument();
+        expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it("returns to the tab it was opened from", async () => {
+        renderPage("?integrationId=6538&environment=dev&tab=delegated");
+        await chooseUser();
+        await tickRole("Viewer");
+        await userEvent.click(
+            screen.getByRole("button", { name: "Add delegated admin" })
+        );
+
+        await waitFor(() =>
+            expect(navigate).toHaveBeenCalledWith(
+                "/manage-permissions?tab=delegated"
+            )
+        );
     });
 });

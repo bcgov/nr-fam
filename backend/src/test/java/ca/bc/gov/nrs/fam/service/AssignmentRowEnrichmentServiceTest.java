@@ -1,12 +1,15 @@
 package ca.bc.gov.nrs.fam.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.dto.ScopeDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
@@ -43,7 +46,7 @@ class AssignmentRowEnrichmentServiceTest {
 
   @BeforeEach
   void directoryIsAvailable() {
-    when(userLookupClient.isConfigured()).thenReturn(true);
+    when(userLookupClient.isConfigured(any())).thenReturn(true);
   }
 
   /** A user CSS has never seen sign in: a username and nothing else. */
@@ -58,7 +61,7 @@ class AssignmentRowEnrichmentServiceTest {
   }
 
   private void directoryKnows(String guid, String userId, String first, String last) {
-    when(userLookupClient.getIdirDetailByGuid(guid)).thenReturn(
+    when(userLookupClient.getIdirDetailByGuid(any(), eq(guid))).thenReturn(
         Optional.of(new UserLookupIdirUserDto(
             true, userId, guid, first, last, userId.toLowerCase() + "@gov.bc.ca")));
   }
@@ -68,7 +71,7 @@ class AssignmentRowEnrichmentServiceTest {
   void namesUnsignedInUser() {
     directoryKnows(GUID, "JSMITH", "Jane", "Smith");
 
-    assertThat(service.withResolvedNames(List.of(unnamed(GUID, "R"))))
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R"))))
         .singleElement()
         .satisfies(row -> {
           // The user id is what an administrator recognises, not the GUID.
@@ -87,9 +90,9 @@ class AssignmentRowEnrichmentServiceTest {
     // normalising is what makes the deduplication below reliable.
     directoryKnows(GUID, "JSMITH", "Jane", "Smith");
 
-    service.withResolvedNames(List.of(unnamed(GUID, "R")));
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R")));
 
-    verify(userLookupClient).getIdirDetailByGuid(GUID);
+    verify(userLookupClient).getIdirDetailByGuid(any(), eq(GUID));
   }
 
   @Test
@@ -97,11 +100,11 @@ class AssignmentRowEnrichmentServiceTest {
   void leavesNamedRowsAlone() {
     // CSS is the more current source once somebody has signed in, and looking
     // them up again would cost a call per user to change nothing.
-    assertThat(service.withResolvedNames(List.of(named())))
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(named())))
         .singleElement()
         .satisfies(row -> assertThat(row.username()).isEqualTo("JSMITH"));
 
-    verify(userLookupClient, never()).getIdirDetailByGuid(anyString());
+    verify(userLookupClient, never()).getIdirDetailByGuid(any(), anyString());
   }
 
   @Test
@@ -111,10 +114,10 @@ class AssignmentRowEnrichmentServiceTest {
     // five rows and one person.
     directoryKnows(GUID, "JSMITH", "Jane", "Smith");
 
-    List<CssUserRoleRowDto> enriched = service.withResolvedNames(
+    List<CssUserRoleRowDto> enriched = service.withResolvedNames(DirectoryEnv.TEST, 
         List.of(unnamed(GUID, "R1"), unnamed(GUID, "R2"), unnamed(GUID, "R3")));
 
-    verify(userLookupClient, times(1)).getIdirDetailByGuid(GUID);
+    verify(userLookupClient, times(1)).getIdirDetailByGuid(any(), eq(GUID));
     assertThat(enriched).allSatisfy(row -> assertThat(row.firstName()).isEqualTo("Jane"));
   }
 
@@ -127,7 +130,7 @@ class AssignmentRowEnrichmentServiceTest {
         GUID.toLowerCase() + "@azureidir", GUID, "IDIR", null, null, null,
         "CHR_FREP_EDITOR", "Submitter (CHR)", List.of(new ScopeDto("DISTRICT", "DCC", null)), null);
 
-    assertThat(service.withResolvedNames(List.of(scoped)))
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(scoped)))
         .singleElement()
         .satisfies(row -> {
           assertThat(row.roleName()).isEqualTo("CHR_FREP_EDITOR");
@@ -144,12 +147,12 @@ class AssignmentRowEnrichmentServiceTest {
   void survivesDirectoryFailure() {
     // The assignments are already known and correct. An outage costs a few
     // names, not the table.
-    when(userLookupClient.getIdirDetailByGuid(anyString()))
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString()))
         .thenThrow(new UpstreamException(
             org.springframework.http.HttpStatus.GATEWAY_TIMEOUT, "upstream_timeout",
             "timed out", "user-lookup-api"));
 
-    assertThat(service.withResolvedNames(List.of(unnamed(GUID, "R"))))
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R"))))
         .singleElement()
         .satisfies(row -> assertThat(row.username()).isEqualTo(GUID.toLowerCase() + "@azureidir"));
   }
@@ -159,21 +162,21 @@ class AssignmentRowEnrichmentServiceTest {
   void stopsAfterFirstFailure() {
     // One failure is enough to know the rest will fail the same way, and this
     // runs while somebody waits for a table.
-    when(userLookupClient.getIdirDetailByGuid(anyString()))
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString()))
         .thenThrow(new IllegalStateException("down"));
 
-    service.withResolvedNames(List.of(
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(
         unnamed("AAAA1111", "R"), unnamed("BBBB2222", "R"), unnamed("CCCC3333", "R")));
 
-    verify(userLookupClient, times(1)).getIdirDetailByGuid(anyString());
+    verify(userLookupClient, times(1)).getIdirDetailByGuid(any(), anyString());
   }
 
   @Test
   @DisplayName("leaves a row the directory does not recognise as it was")
   void leavesUnknownUserAsIs() {
-    when(userLookupClient.getIdirDetailByGuid(anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString())).thenReturn(Optional.empty());
 
-    assertThat(service.withResolvedNames(List.of(unnamed(GUID, "R"))))
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R"))))
         .singleElement()
         .satisfies(row -> assertThat(row.username()).isEqualTo(GUID.toLowerCase() + "@azureidir"));
   }
@@ -181,10 +184,10 @@ class AssignmentRowEnrichmentServiceTest {
   @Test
   @DisplayName("does not call the directory when it is not configured")
   void skipsWhenUnconfigured() {
-    when(userLookupClient.isConfigured()).thenReturn(false);
+    when(userLookupClient.isConfigured(any())).thenReturn(false);
 
-    assertThat(service.withResolvedNames(List.of(unnamed(GUID, "R")))).hasSize(1);
-    verify(userLookupClient, never()).getIdirDetailByGuid(anyString());
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R")))).hasSize(1);
+    verify(userLookupClient, never()).getIdirDetailByGuid(any(), anyString());
   }
 
   @Test
@@ -193,9 +196,9 @@ class AssignmentRowEnrichmentServiceTest {
     CssUserRoleRowDto bceid = new CssUserRoleRowDto(
         "abc@bceidbusiness", "ABC", "BCEID", null, null, null, "R", null, List.of(), null);
 
-    service.withResolvedNames(List.of(bceid));
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(bceid));
 
-    verify(userLookupClient, never()).getIdirDetailByGuid(anyString());
+    verify(userLookupClient, never()).getIdirDetailByGuid(any(), anyString());
   }
 
   @Test
@@ -203,13 +206,13 @@ class AssignmentRowEnrichmentServiceTest {
   void boundsLookupsPerListing() {
     // Each is a separate call to a SOAP-backed directory; a large backlog of
     // never-signed-in users must not turn one page load into hundreds.
-    when(userLookupClient.getIdirDetailByGuid(anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString())).thenReturn(Optional.empty());
 
     List<CssUserRoleRowDto> rows = IntStream.range(0, 40)
         .mapToObj(i -> unnamed("GUID%02d".formatted(i), "R"))
         .toList();
 
-    assertThat(service.withResolvedNames(rows)).hasSize(40);
-    verify(userLookupClient, times(25)).getIdirDetailByGuid(anyString());
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, rows)).hasSize(40);
+    verify(userLookupClient, times(25)).getIdirDetailByGuid(any(), anyString());
   }
 }

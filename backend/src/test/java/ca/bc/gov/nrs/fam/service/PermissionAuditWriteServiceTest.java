@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,6 +53,7 @@ class PermissionAuditWriteServiceTest {
   @Mock private EntityManager entityManager;
   @Mock private UserLookupClient userLookupClient;
   @Mock private CssNameSnapshot cssNameSnapshot;
+  @Mock private ApiInstanceEnvResolver apiInstanceEnvResolver;
   /**
    * Configured the way the application configures it
    * ({@code spring.jackson.property-naming-strategy: SNAKE_CASE}). A default
@@ -106,7 +108,7 @@ class PermissionAuditWriteServiceTest {
     // FAM keeps no row for the target - a grant routinely names somebody who has
     // never signed in - so without this snapshot the GUID is unresolvable once
     // the row is written.
-    when(userLookupClient.getIdirDetailByGuid(TARGET_GUID))
+    when(userLookupClient.getIdirDetailByGuid(any(), eq(TARGET_GUID)))
         .thenReturn(Optional.of(new UserLookupIdirUserDto(
             true, "BJONES", TARGET_GUID, "Bob", "Jones", "bob@gov.bc.ca")));
 
@@ -123,7 +125,7 @@ class PermissionAuditWriteServiceTest {
   void directoryFailureDoesNotLoseTheAuditRow() {
     // CSS has already applied the change. Refusing to record it because a name
     // could not be looked up would be strictly worse than recording it without.
-    when(userLookupClient.getIdirDetailByGuid(anyString()))
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString()))
         .thenThrow(new RuntimeException("directory down"));
 
     service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",

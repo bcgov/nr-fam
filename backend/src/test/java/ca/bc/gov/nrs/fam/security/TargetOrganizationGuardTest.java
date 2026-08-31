@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
@@ -67,7 +68,7 @@ class TargetOrganizationGuardTest {
   }
 
   private void directoryReports(String businessGuid) {
-    when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(
         Optional.of(new UserLookupBceidUserDto(
             true, "TARGET", TARGET_GUID, businessGuid, "Example Forestry Ltd",
             "Jane", "Smith", "jane@example.com")));
@@ -79,7 +80,7 @@ class TargetOrganizationGuardTest {
     directoryReports(OWN_ORG);
 
     assertThatCode(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .doesNotThrowAnyException();
   }
 
@@ -91,7 +92,7 @@ class TargetOrganizationGuardTest {
     directoryReports(OTHER_ORG);
 
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .isInstanceOf(FamHttpException.class)
         .hasMessageContaining("same organization");
   }
@@ -102,7 +103,7 @@ class TargetOrganizationGuardTest {
     directoryReports(OWN_ORG.toLowerCase());
 
     assertThatCode(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .doesNotThrowAnyException();
   }
 
@@ -115,11 +116,11 @@ class TargetOrganizationGuardTest {
     directoryReports(OTHER_ORG);
 
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .isInstanceOf(FamHttpException.class);
 
     verify(userLookupClient).getBusinessBceid(
-        UserLookupClient.SearchBy.USER_GUID, TARGET_GUID);
+        DirectoryEnv.TEST, UserLookupClient.SearchBy.USER_GUID, TARGET_GUID);
   }
 
   @Test
@@ -128,10 +129,10 @@ class TargetOrganizationGuardTest {
     // An IDIR user belongs to no business, so there is no organisation that
     // could match. Upstream excluded them from a BCeID administrator's view too.
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.IDIR, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.IDIR, TARGET_GUID))
         .isInstanceOf(FamHttpException.class);
 
-    verify(userLookupClient, never()).getBusinessBceid(any(), anyString());
+    verify(userLookupClient, never()).getBusinessBceid(any(), any(), anyString());
   }
 
   @Test
@@ -139,10 +140,10 @@ class TargetOrganizationGuardTest {
   void unknownUserIsRefusedIdentically() {
     // Distinguishing them would report whether an account exists at another
     // organisation, which is what the rule exists to prevent.
-    when(userLookupClient.getBusinessBceid(any(), anyString())).thenReturn(Optional.empty());
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, "NOBODY"))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, "NOBODY"))
         .isInstanceOf(FamHttpException.class)
         .hasMessageContaining("same organization");
   }
@@ -154,7 +155,7 @@ class TargetOrganizationGuardTest {
     directoryReports(null);
 
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .isInstanceOf(FamHttpException.class);
   }
 
@@ -164,7 +165,7 @@ class TargetOrganizationGuardTest {
     directoryReports(OWN_ORG);
 
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(null), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(null), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .isInstanceOf(FamHttpException.class);
   }
 
@@ -173,12 +174,12 @@ class TargetOrganizationGuardTest {
   void failsClosedOnDirectoryFailure() {
     // An unverifiable organisation is not a matching one, so the grant must not
     // proceed.
-    when(userLookupClient.getBusinessBceid(any(), anyString()))
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString()))
         .thenThrow(new UpstreamException(HttpStatus.GATEWAY_TIMEOUT, "upstream_timeout",
             "timed out", "user-lookup-api"));
 
     assertThatThrownBy(() -> guard.requireSameOrganization(
-        bceidAdmin(OWN_ORG), UserType.BCEID, TARGET_GUID))
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .isInstanceOf(UpstreamException.class);
   }
 
@@ -188,19 +189,19 @@ class TargetOrganizationGuardTest {
     // They administer across organisations by definition, so there is nothing to
     // compare and no call to make.
     assertThatCode(() -> guard.requireSameOrganization(
-        idirAdmin(), UserType.BCEID, TARGET_GUID))
+        idirAdmin(), DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .doesNotThrowAnyException();
 
-    verify(userLookupClient, never()).getBusinessBceid(any(), anyString());
+    verify(userLookupClient, never()).getBusinessBceid(any(), any(), anyString());
   }
 
   @Test
   @DisplayName("leaves a system grant alone")
   void systemGrantIsUnrestricted() {
     // No requester means no organisation to be outside of.
-    assertThatCode(() -> guard.requireSameOrganization(null, UserType.BCEID, TARGET_GUID))
+    assertThatCode(() -> guard.requireSameOrganization(null, DirectoryEnv.TEST, UserType.BCEID, TARGET_GUID))
         .doesNotThrowAnyException();
 
-    verify(userLookupClient, never()).getBusinessBceid(any(), anyString());
+    verify(userLookupClient, never()).getBusinessBceid(any(), any(), anyString());
   }
 }

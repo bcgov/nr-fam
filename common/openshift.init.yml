@@ -1,5 +1,23 @@
 apiVersion: template.openshift.io/v1
 kind: Template
+
+# ---------------------------------------------------------------------------
+# No Secret is created here, and no credential is a parameter of this template.
+#
+# `oc process` substitutes every -p value into one string, and the deployer
+# action can echo that string when debug is on. GitHub redacts registered secret
+# values, but only where they still match the registered literal - `oc process`
+# emits JSON, so a secret containing a quote or a backslash comes out escaped and
+# slips past the mask.
+#
+# So the credential-bearing Secrets - database, css, user-lookup and
+# forest-client - are created by reusable-deploy.yml with `oc create secret`,
+# where the values reach the process through the environment and never enter a
+# template. What is left here is addresses and names, which are safe to log.
+#
+# Anything added below that needs a credential belongs in that step, not in a
+# parameter.
+# ---------------------------------------------------------------------------
 parameters:
   - name: NAME
     description: Product name
@@ -7,91 +25,6 @@ parameters:
   - name: ZONE
     description: Deployment zone, e.g. pr-### or prod
     required: true
-  # ---------------------------------------------------------------------------
-  # FAM runs against an on-prem PostgreSQL instance. This repo does not deploy a
-  # database - there is no StatefulSet, no Patroni, no Crunchy operator. These
-  # parameters describe how to *reach* that instance; they are supplied from
-  # GitHub environment secrets/vars by reusable-deploy.yml.
-  # ---------------------------------------------------------------------------
-  - name: DB_HOST
-    description: Hostname of the on-prem PostgreSQL instance
-    required: true
-  - name: DB_PORT
-    description: Port of the on-prem PostgreSQL instance
-    value: "5432"
-  - name: DB_NAME
-    description: Database name on the on-prem instance
-    required: true
-  - name: DB_USER
-    description: Runtime application role (created by the DBA team; see migrations/dba/)
-    required: true
-  - name: DB_PASSWORD
-    description: Password for the runtime application role
-    required: true
-  # ---------------------------------------------------------------------------
-  # BC Gov Common Hosted Single Sign-On credentials. A confidential client: the
-  # secret is backend-only and must never reach the frontend ConfigMap below,
-  # which the browser fetches. The non-secret CSS settings (URLs, IdP aliases)
-  # live on backend/openshift.deploy.yml, which is what reads them.
-  # ---------------------------------------------------------------------------
-  - name: CSS_API_CLIENT_ID
-    description: CSS API account client id (CSS app -> My Teams -> CSS API Account)
-    required: true
-  - name: CSS_API_CLIENT_SECRET
-    description: CSS API account client secret
-    required: true
-  # ---------------------------------------------------------------------------
-  # nr-user-lookup-api, the shared BC Gov identity directory. Replaces the IDIM
-  # proxy. The client id and secret are not configured by hand: CI provisions the
-  # service-account client and assigns the scopes the API enforces - see
-  # .github/scripts/ensure-keycloak-service-account.sh.
-  #
-  # All four are optional so a PR preview without the admin credentials still
-  # deploys; the backend then fails identity lookups loudly at call time rather
-  # than returning empty results.
-  # ---------------------------------------------------------------------------
-  - name: USER_LOOKUP_BASE_URL
-    description: Scheme and host of nr-user-lookup-api
-    required: false
-    value: ""
-  - name: USER_LOOKUP_TOKEN_URL
-    description: Keycloak token endpoint for the service account's client_credentials grant
-    required: false
-    value: ""
-  - name: USER_LOOKUP_CLIENT_ID
-    description: Service-account client id, provisioned by CI
-    required: false
-    value: ""
-  - name: USER_LOOKUP_CLIENT_SECRET
-    description: Service-account client secret, read back by CI
-    required: false
-    value: ""
-
-  # ---------------------------------------------------------------------------
-  # Forest Client API keys, sent as X-API-KEY. The API publishes two instances
-  # and each needs its own key from the BC API Service Portal - they are not
-  # interchangeable. See backend/openshift.deploy.yml for which is used when.
-  #
-  # The PROD key belongs only to the PROD deployment. Leaving it blank in DEV and
-  # TEST is the intended configuration, not an oversight: it is the second of the
-  # two things standing between a lower environment and live client data (the
-  # first being ApiInstanceEnvResolver, which never selects PROD off a non-prod
-  # deployment).
-  #
-  # Optional, and blank fails late rather than at startup: the instance still
-  # initialises and the first forest-client search returns 401. Only a blank
-  # base URL disables an instance outright.
-  # ---------------------------------------------------------------------------
-  - name: FC_API_TOKEN_TEST
-    description: Forest Client API key for the TEST instance
-    required: false
-    value: ""
-
-  - name: FC_API_TOKEN_PROD
-    description: Forest Client API key for the PROD instance; PROD deployment only
-    required: false
-    value: ""
-
   # ---------------------------------------------------------------------------
   # Frontend runtime configuration. The SPA fetches /env.json into localStorage
   # before it mounts (public/env.js), so one built image can be promoted between
@@ -110,47 +43,6 @@ parameters:
   - name: DOMAIN
     value: apps.gold.devops.gov.bc.ca
 objects:
-  - apiVersion: v1
-    kind: Secret
-    metadata:
-      name: ${NAME}-${ZONE}-database
-      labels:
-        app: ${NAME}-${ZONE}
-    stringData:
-      database-host: ${DB_HOST}
-      database-port: ${DB_PORT}
-      database-name: ${DB_NAME}
-      database-user: ${DB_USER}
-      database-password: ${DB_PASSWORD}
-  - apiVersion: v1
-    kind: Secret
-    metadata:
-      name: ${NAME}-${ZONE}-css
-      labels:
-        app: ${NAME}-${ZONE}
-    stringData:
-      css-api-client-id: ${CSS_API_CLIENT_ID}
-      css-api-client-secret: ${CSS_API_CLIENT_SECRET}
-  - apiVersion: v1
-    kind: Secret
-    metadata:
-      name: ${NAME}-${ZONE}-user-lookup
-      labels:
-        app: ${NAME}-${ZONE}
-    stringData:
-      user-lookup-base-url: ${USER_LOOKUP_BASE_URL}
-      user-lookup-token-url: ${USER_LOOKUP_TOKEN_URL}
-      user-lookup-client-id: ${USER_LOOKUP_CLIENT_ID}
-      user-lookup-client-secret: ${USER_LOOKUP_CLIENT_SECRET}
-  - apiVersion: v1
-    kind: Secret
-    metadata:
-      name: ${NAME}-${ZONE}-forest-client
-      labels:
-        app: ${NAME}-${ZONE}
-    stringData:
-      fc-api-token-test: ${FC_API_TOKEN_TEST}
-      fc-api-token-prod: ${FC_API_TOKEN_PROD}
   - apiVersion: v1
     kind: ConfigMap
     metadata:

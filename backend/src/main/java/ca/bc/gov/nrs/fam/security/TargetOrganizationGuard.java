@@ -4,6 +4,7 @@ import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -68,7 +69,8 @@ public class TargetOrganizationGuard {
    * @param requester null for a system grant, which is not somebody's request
    */
   public void requireSameOrganization(
-      Requester requester, UserType targetUserType, String targetUserGuid) {
+      Requester requester, DirectoryEnv directory, UserType targetUserType,
+      String targetUserGuid) {
 
     if (requester == null || requester.userType() != UserType.BCEID) {
       return;
@@ -80,7 +82,8 @@ public class TargetOrganizationGuard {
     }
 
     Optional<UserLookupBceidUserDto> target =
-        userLookupClient.getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, targetUserGuid);
+        userLookupClient.getBusinessBceid(
+            directory, UserLookupClient.SearchBy.USER_GUID, targetUserGuid);
 
     if (target.isEmpty()) {
       // Not "no such user": see REFUSED.

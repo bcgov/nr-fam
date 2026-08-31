@@ -7,6 +7,11 @@ import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.dto.CssIntegrationDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.exception.UpstreamException;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import java.time.Duration;
@@ -204,6 +209,45 @@ class CssApiServiceTest {
     assertThat(request.getPath())
         .isEqualTo("/api/v1/integrations/1/dev/users/abc%40azureidir/roles-new");
     assertThat(request.getBody().readUtf8()).isEqualTo("[{\"name\":\"R1\"},{\"name\":\"R2\"}]");
+  }
+
+  @Test
+  @DisplayName("logs the address it assigned at, encoding and all")
+  void logsTheAssignmentUrl() throws Exception {
+    /*
+        The endpoint refuses a username it cannot resolve upstream and says
+        little about why, so the exact address - base path, environment, and how
+        the "@" in the username came out - is what a question to the CSS team
+        starts from. At info, because that is the level a deployment runs at.
+    */
+    enqueueToken();
+    enqueueJson("{\"data\":[]}");
+
+    Logger logger = (Logger) LoggerFactory.getLogger(CssApiService.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      service.assignUserRoles(1, "dev", "abc@azureidir", List.of("R1"));
+    } finally {
+      logger.detachAppender(appender);
+    }
+
+    server.takeRequest();
+    RecordedRequest request = server.takeRequest();
+
+    ILoggingEvent logged = appender.list.stream()
+        .filter(event -> event.getFormattedMessage().contains("roles-new"))
+        .findFirst()
+        .orElseThrow();
+
+    assertThat(logged.getLevel()).isEqualTo(Level.INFO);
+    // The address logged is the address called, not a second rendering of the
+    // template that is free to disagree with it.
+    assertThat(logged.getFormattedMessage())
+        .contains(server.url("/").toString().replaceAll("/$", "") + request.getPath())
+        .contains("abc%40azureidir")
+        .contains("R1");
   }
 
   @Test

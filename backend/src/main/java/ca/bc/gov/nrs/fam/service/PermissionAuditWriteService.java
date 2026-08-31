@@ -8,6 +8,7 @@ import ca.bc.gov.nrs.fam.constants.PrivilegeDetailsScopeType;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
 import ca.bc.gov.nrs.fam.dto.PrivilegeChangeTargetDto;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.dto.PrivilegeChangePerformerDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
@@ -55,6 +56,7 @@ public class PermissionAuditWriteService {
   private final EntityManager entityManager;
   private final ObjectMapper objectMapper;
   private final UserLookupClient userLookupClient;
+  private final ApiInstanceEnvResolver apiInstanceEnvResolver;
   private final CssNameSnapshot cssNameSnapshot;
 
   /**
@@ -241,7 +243,8 @@ public class PermissionAuditWriteService {
     audit.setChangeDate(LocalDateTime.now());
     audit.setChangePerformerUserDetails(toJson(performerDetails(requester)));
     if (targetUserGuid != null) {
-      audit.setChangeTargetUserDetails(toJson(targetDetails(targetUserGuid, targetUserType)));
+      audit.setChangeTargetUserDetails(toJson(
+          targetDetails(cssEnvironment, targetUserGuid, targetUserType)));
     }
     audit.setPrivilegeDetails(toJson(privilegeDetails));
 
@@ -258,16 +261,22 @@ public class PermissionAuditWriteService {
    * change happened, and refusing to record it would be strictly worse than
    * recording it without a name. The GUID is always stored either way.
    */
-  private PrivilegeChangeTargetDto targetDetails(String userGuid, UserType userType) {
+  private PrivilegeChangeTargetDto targetDetails(
+      String cssEnvironment, String userGuid, UserType userType) {
+
     try {
+      // The directory belonging to the application this change was made against.
+      // A GUID means different people in different environments, so looking it
+      // up in the wrong one would write somebody else's name into the trail.
+      DirectoryEnv directory = apiInstanceEnvResolver.resolveDirectory(cssEnvironment);
       if (userType == UserType.IDIR) {
-        return userLookupClient.getIdirDetailByGuid(userGuid)
+        return userLookupClient.getIdirDetailByGuid(directory, userGuid)
             .map(u -> new PrivilegeChangeTargetDto(
                 userGuid, u.userId(), u.firstName(), u.lastName(), u.email()))
             .orElseGet(() -> new PrivilegeChangeTargetDto(userGuid, null, null, null, null));
       }
       return userLookupClient
-          .getBusinessBceid(UserLookupClient.SearchBy.USER_GUID, userGuid)
+          .getBusinessBceid(directory, UserLookupClient.SearchBy.USER_GUID, userGuid)
           .map(u -> new PrivilegeChangeTargetDto(
               userGuid, u.userId(), u.firstName(), u.lastName(), u.email()))
           .orElseGet(() -> new PrivilegeChangeTargetDto(userGuid, null, null, null, null));

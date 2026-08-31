@@ -62,7 +62,28 @@ const IDIR_RESULT = {
     ],
 };
 
-const renderPage = () => {
+/** What the endpoint answers on a clean appointment. */
+const assigned = {
+    data: {
+        role_name: "APP_ADMIN_6538_DEV",
+        role_created: false,
+        assigned: true,
+        email_sending_status: "NOT_REQUIRED",
+    },
+};
+
+/** The same shape when CSS refused it, which still arrives with a 200. */
+const refused = (message: string) => ({
+    data: {
+        role_name: "APP_ADMIN_6538_DEV",
+        role_created: true,
+        assigned: false,
+        error_message: message,
+        email_sending_status: "NOT_REQUIRED",
+    },
+});
+
+const renderPage = (search = "?integrationId=6538&environment=dev") => {
     // UserSearch reads the signed-in user, to refuse a search for themselves.
     const auth: AuthContextValue = {
         authState: {
@@ -83,9 +104,7 @@ const renderPage = () => {
         <QueryClientProvider client={queryClient}>
           <AuthContext.Provider value={auth}>
             <MemoryRouter
-                initialEntries={[
-                    "/manage-permissions/add-application-admin?integrationId=6538&environment=dev",
-                ]}
+                initialEntries={[`/manage-permissions/add-application-admin${search}`]}
             >
                 <NotificationProvider>
                     <SelectedAppProvider>
@@ -103,10 +122,20 @@ const renderPage = () => {
     );
 };
 
+/** Search, then confirm the one result - the whole of this form's first step. */
+const chooseUser = async () => {
+    await userEvent.type(screen.getByRole("textbox"), "smith");
+    await userEvent.click(screen.getByRole("button", { name: "Search users" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+        within(dialog).getByRole("button", { name: "Confirm" })
+    );
+};
+
 describe("AddApplicationAdmin", () => {
     beforeEach(() => {
         searchIdirUsers.mockReset().mockResolvedValue({ data: IDIR_RESULT });
-        createCssApplicationAdmin.mockReset().mockResolvedValue({ data: {} });
+        createCssApplicationAdmin.mockReset().mockResolvedValue(assigned);
         navigate.mockReset();
     });
 
@@ -143,6 +172,40 @@ describe("AddApplicationAdmin", () => {
             user_guid: "AAAA1111",
             user_type: "IDIR",
         });
+    });
+
+    it("does not announce an appointment CSS refused in a 200", async () => {
+        /*
+            The endpoint answers 200 with assigned:false when CSS declines the
+            assignment - the role was created, the person was not given it.
+            Reading only the status announced administrators who then were not in
+            the table, with nothing said about why.
+        */
+        createCssApplicationAdmin.mockResolvedValue(
+            refused("could not verify user with the upstream identity provider")
+        );
+        renderPage();
+        await chooseUser();
+        await userEvent.click(
+            screen.getByRole("button", { name: "Add application admin" })
+        );
+
+        expect(
+            await screen.findByText(/could not verify user/)
+        ).toBeInTheDocument();
+        expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it("returns to the tab it was opened from", async () => {
+        renderPage("?integrationId=6538&environment=dev&tab=app-admins");
+        await chooseUser();
+        await userEvent.click(
+            screen.getByRole("button", { name: "Add application admin" })
+        );
+
+        await waitFor(() =>
+            expect(navigate).toHaveBeenCalledWith("/manage-permissions?tab=app-admins")
+        );
     });
 
     it("says where the tier stops", async () => {

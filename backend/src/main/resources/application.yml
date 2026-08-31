@@ -52,6 +52,12 @@ spring:
           auth: ${SMTP_AUTH:false}
           starttls:
             enable: ${SMTP_STARTTLS:false}
+          ssl:
+            # Jakarta Mail does not verify that the relay's certificate matches
+            # the host we dialled unless asked to, so a STARTTLS session is
+            # otherwise open to an active man in the middle. Not an env var:
+            # there is no deployment that should turn this off.
+            checkserveridentity: true
           connectiontimeout: 5000
           timeout: 10000
           writetimeout: 10000
@@ -251,19 +257,43 @@ fam:
       from: ${SMTP_FROM:}
       reply-to: ${SMTP_REPLY_TO:}
 
-    # nr-user-lookup-api - the shared BC Gov identity directory, replacing the
-    # IDIM proxy. One instance, not partitioned by environment.
+    # nr-user-lookup-api - the BC Gov identity directory, replacing the IDIM
+    # proxy. Three instances, one per environment, chosen by the environment of
+    # the application being administered.
     #
-    # Leaving all three credential values blank disables authentication and calls
-    # go out unauthenticated; setting only some of them is rejected at startup,
-    # because a half-configured directory reads as "no results" rather than as a
-    # misconfiguration.
+    # Not one instance shared between them: BCeID is deployed three times and the
+    # same person is a different account with a different GUID in each, so a GUID
+    # read from the wrong instance is one CSS cannot resolve when it assigns the
+    # role - which it reports as a refusal nobody sees.
+    #
+    # Each host sits behind its own Keycloak, so each needs its own service
+    # account and its own token URL. There is no shared account: a token minted
+    # against one realm is not accepted by another.
+    #
+    # An instance left unconfigured is normal rather than an error - a lower
+    # deployment has no production account. Leaving an instance's credentials
+    # blank while setting its base URL sends its calls out unauthenticated;
+    # setting only some of them is rejected at startup, because a half-configured
+    # directory reads as "no results" rather than as a misconfiguration.
     user-lookup:
-      base-url: ${USER_LOOKUP_BASE_URL:}
-      token-url: ${USER_LOOKUP_TOKEN_URL:}
-      client-id: ${USER_LOOKUP_CLIENT_ID:}
-      client-secret: ${USER_LOOKUP_CLIENT_SECRET:}
-      scope: ${USER_LOOKUP_SCOPE:}
+      dev:
+        base-url: ${USER_LOOKUP_BASE_URL_DEV:}
+        token-url: ${USER_LOOKUP_TOKEN_URL_DEV:}
+        client-id: ${USER_LOOKUP_CLIENT_ID_DEV:}
+        client-secret: ${USER_LOOKUP_CLIENT_SECRET_DEV:}
+        scope: ${USER_LOOKUP_SCOPE_DEV:}
+      test:
+        base-url: ${USER_LOOKUP_BASE_URL_TEST:}
+        token-url: ${USER_LOOKUP_TOKEN_URL_TEST:}
+        client-id: ${USER_LOOKUP_CLIENT_ID_TEST:}
+        client-secret: ${USER_LOOKUP_CLIENT_SECRET_TEST:}
+        scope: ${USER_LOOKUP_SCOPE_TEST:}
+      prod:
+        base-url: ${USER_LOOKUP_BASE_URL_PROD:}
+        token-url: ${USER_LOOKUP_TOKEN_URL_PROD:}
+        client-id: ${USER_LOOKUP_CLIENT_ID_PROD:}
+        client-secret: ${USER_LOOKUP_CLIENT_SECRET_PROD:}
+        scope: ${USER_LOOKUP_SCOPE_PROD:}
       timeouts:
         connect: 5s
         read: 20s

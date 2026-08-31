@@ -17,6 +17,7 @@ import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
 import ca.bc.gov.nrs.fam.dto.UserLookupBceidUserDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
@@ -440,7 +441,8 @@ public class BulkGrantService {
     if (resolvedUsers.containsKey(lookupKey)) {
       resolved = resolvedUsers.get(lookupKey);
     } else {
-      resolved = resolve(row.userName(), stated);
+      resolved = resolve(
+          apiInstanceEnvResolver.resolveDirectory(environment), row.userName(), stated);
       resolvedUsers.put(lookupKey, resolved);
     }
 
@@ -508,7 +510,8 @@ public class BulkGrantService {
       // here too is what keeps the confirmation honest, rather than showing a row
       // as grantable and refusing it on submit.
       targetOrganizationGuard.requireSameOrganization(
-          requester, resolved.userType(), resolved.userGuid());
+          requester, apiInstanceEnvResolver.resolveDirectory(environment),
+          resolved.userType(), resolved.userGuid());
     } catch (FamHttpException e) {
       return withError(candidate, e.getDescription());
     }
@@ -615,10 +618,11 @@ public class BulkGrantService {
    * When it did not, both are tried in turn - which costs a Business BCeID user
    * a failed IDIR lookup on every row.
    */
-  private Resolved resolve(String userName, UserType stated) {
+  private Resolved resolve(DirectoryEnv directory, String userName, UserType stated) {
     if (stated == null || stated == UserType.IDIR) {
       try {
-        Optional<UserLookupIdirUserDto> idir = userLookupClient.getIdirDetail(userName);
+        Optional<UserLookupIdirUserDto> idir =
+            userLookupClient.getIdirDetail(directory, userName);
         if (idir.isPresent()) {
           UserLookupIdirUserDto user = idir.get();
           return new Resolved(UserType.IDIR, user.guid(), user.userId(),
@@ -632,7 +636,7 @@ public class BulkGrantService {
     if (stated == null || stated == UserType.BCEID) {
       try {
         Optional<UserLookupBceidUserDto> bceid = userLookupClient.getBusinessBceid(
-            UserLookupClient.SearchBy.USER_ID, userName);
+            directory, UserLookupClient.SearchBy.USER_ID, userName);
         if (bceid.isPresent()) {
           UserLookupBceidUserDto user = bceid.get();
           return new Resolved(UserType.BCEID, user.guid(), user.userId(),

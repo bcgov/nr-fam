@@ -43,9 +43,15 @@ jobs:
       oc_token: ${{ secrets.oc_token }}
       css_api_client_id: ${{ secrets.css_api_client_id }}
       css_api_client_secret: ${{ secrets.css_api_client_secret }}
-      keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
-      keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
-      user_lookup_base_url: ${{ secrets.user_lookup_base_url }}
+      keycloak_sa_client_id_dev: ${{ secrets.keycloak_sa_client_id_dev }}
+      keycloak_sa_client_secret_dev: ${{ secrets.keycloak_sa_client_secret_dev }}
+      user_lookup_base_url_dev: ${{ secrets.user_lookup_base_url_dev }}
+      keycloak_sa_client_id_test: ${{ secrets.keycloak_sa_client_id_test }}
+      keycloak_sa_client_secret_test: ${{ secrets.keycloak_sa_client_secret_test }}
+      user_lookup_base_url_test: ${{ secrets.user_lookup_base_url_test }}
+      keycloak_sa_client_id_prod: ${{ secrets.keycloak_sa_client_id_prod }}
+      keycloak_sa_client_secret_prod: ${{ secrets.keycloak_sa_client_secret_prod }}
+      user_lookup_base_url_prod: ${{ secrets.user_lookup_base_url_prod }}
       fc_api_token_test: ${{ secrets.fc_api_token_test }}
       fc_api_token_prod: ${{ secrets.fc_api_token_prod }}
     with:
@@ -83,9 +89,15 @@ jobs:
       oc_token: ${{ secrets.oc_token }}
       css_api_client_id: ${{ secrets.css_api_client_id }}
       css_api_client_secret: ${{ secrets.css_api_client_secret }}
-      keycloak_sa_client_id: ${{ secrets.keycloak_sa_client_id }}
-      keycloak_sa_client_secret: ${{ secrets.keycloak_sa_client_secret }}
-      user_lookup_base_url: ${{ secrets.user_lookup_base_url }}
+      keycloak_sa_client_id_dev: ${{ secrets.keycloak_sa_client_id_dev }}
+      keycloak_sa_client_secret_dev: ${{ secrets.keycloak_sa_client_secret_dev }}
+      user_lookup_base_url_dev: ${{ secrets.user_lookup_base_url_dev }}
+      keycloak_sa_client_id_test: ${{ secrets.keycloak_sa_client_id_test }}
+      keycloak_sa_client_secret_test: ${{ secrets.keycloak_sa_client_secret_test }}
+      user_lookup_base_url_test: ${{ secrets.user_lookup_base_url_test }}
+      keycloak_sa_client_id_prod: ${{ secrets.keycloak_sa_client_id_prod }}
+      keycloak_sa_client_secret_prod: ${{ secrets.keycloak_sa_client_secret_prod }}
+      user_lookup_base_url_prod: ${{ secrets.user_lookup_base_url_prod }}
       fc_api_token_test: ${{ secrets.fc_api_token_test }}
       fc_api_token_prod: ${{ secrets.fc_api_token_prod }}
     with:

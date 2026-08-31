@@ -23,9 +23,12 @@ vi.mock("@/services/ApiServiceFactory", () => ({
             searchIdirUsers: (
                 firstName?: string,
                 lastName?: string,
-                userId?: string
-            ) => searchIdirUsers(firstName, lastName, userId),
-            bceidLookup: (userId: string) => bceidLookup(userId),
+                userId?: string,
+                _pageSize?: number,
+                environment?: string
+            ) => searchIdirUsers(firstName, lastName, userId, environment),
+            bceidLookup: (userId: string, environment?: string) =>
+                bceidLookup(userId, environment),
         },
     },
     AdminMgmtApiService: {},
@@ -137,7 +140,8 @@ describe("UserSearch", () => {
         expect(searchIdirUsers).toHaveBeenCalledWith(
             undefined,
             undefined,
-            "smith"
+            "smith",
+            "dev"
         );
     });
 
@@ -150,7 +154,7 @@ describe("UserSearch", () => {
         );
         await search("jane");
 
-        expect(searchIdirUsers).toHaveBeenCalledWith("jane", undefined, undefined);
+        expect(searchIdirUsers).toHaveBeenCalledWith("jane", undefined, undefined, "dev");
     });
 
     it("reports the chosen people to the form", async () => {
@@ -429,7 +433,9 @@ describe("UserSearch", () => {
         );
         await search("contractor");
 
-        await waitFor(() => expect(bceidLookup).toHaveBeenCalledWith("contractor"));
+        await waitFor(() =>
+            expect(bceidLookup).toHaveBeenCalledWith("contractor", "dev")
+        );
         const dialog = await openResults();
         expect(within(dialog).getByText("CONTRACTOR")).toBeInTheDocument();
     });

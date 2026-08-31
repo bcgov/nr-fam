@@ -56,14 +56,17 @@ const FAM = {
     fam_application: true,
 };
 
-const renderPage = (seed?: (client: QueryClient) => void) => {
+const renderPage = (
+    seed?: (client: QueryClient) => void,
+    route = "/manage-permissions"
+) => {
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
     });
     seed?.(queryClient);
     return render(
         <QueryClientProvider client={queryClient}>
-            <MemoryRouter>
+            <MemoryRouter initialEntries={[route]}>
                 <NotificationProvider>
                     <SelectedAppProvider>
                         <ManagePermissions />
@@ -130,6 +133,44 @@ describe("ManagePermissions", () => {
             expect(tabNames().join(" ")).toContain("Delegated admins")
         );
         expect(tabNames().join(" ")).toContain("Application admins");
+    });
+
+    it("opens on the tab named in the URL", async () => {
+        /*
+            How appointing an administrator gets back to where it started. The
+            add screens are separate routes, so returning is a remount - without
+            the name on the query string somebody who had just added a DevOps
+            admin landed on the list of ordinary users.
+        */
+        renderPage(undefined, "/manage-permissions?tab=devops");
+        await waitFor(() => expect(getApplications).toHaveBeenCalled());
+
+        await choose("FREP (DEV)");
+
+        const selected = await screen.findByRole("tab", { selected: true });
+        expect(selected).toHaveTextContent("DevOps admins");
+    });
+
+    it("opens on Users when the URL names a tab this caller cannot see", async () => {
+        // The name is read before self-permissions has answered, so the tab it
+        // names is briefly not one this caller has - and it is never one for a
+        // delegated administrator. Falling back beats a strip pointing past its
+        // own end.
+        fetchSelfPermissions.mockResolvedValue([
+            {
+                role: "DELEGATED_ADMIN",
+                css_integration_id: 6538,
+                environment: "dev",
+            },
+        ]);
+        renderPage(undefined, "/manage-permissions?tab=devops");
+        await waitFor(() => expect(getApplications).toHaveBeenCalled());
+
+        await choose("FREP (DEV)");
+
+        const selected = await screen.findByRole("tab", { selected: true });
+        expect(selected).toHaveTextContent("Users");
+        expect(tabNames().join(" ")).not.toContain("DevOps admins");
     });
 
     it("offers only Users for FAM itself", async () => {

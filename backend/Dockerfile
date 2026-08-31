@@ -35,4 +35,15 @@ ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=50 -Djav
 
 EXPOSE 8080
 USER nonroot
+
+# Distroless has no shell and no curl or wget, so the probe is a class in the
+# application's own jar using java.net.http. OpenShift ignores HEALTHCHECK and
+# runs its own probes; this serves anyone running the image directly. The JVM
+# needs a moment to come up, hence the start period. The heap flags are not
+# tuning: they undo JAVA_TOOL_OPTIONS above, which would otherwise have this
+# throwaway JVM reserve half the container's memory alongside the application.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD ["java", "-Xms8m", "-Xmx32m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", \
+       "-cp", "app.jar", "ca.bc.gov.nrs.fam.HealthCheck"]
+
 ENTRYPOINT ["java", "-jar", "app.jar"]
