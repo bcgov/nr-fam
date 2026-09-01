@@ -3,7 +3,10 @@ import { isAxiosError } from "axios";
 import type { UserLookupBceidUserDto, UserLookupIdirUserDto } from "fam-api";
 import { UserType } from "fam-api/model";
 import { useCallback, useState } from "react";
-import { PERMISSION_REQUIRED_FOR_OPERATION } from "@/constants/ApiErrorCodes";
+import {
+    DIFFERENT_ORG_GRANT_PROHIBITED,
+    PERMISSION_REQUIRED_FOR_OPERATION,
+} from "@/constants/ApiErrorCodes";
 import { AppActlApiService } from "@/services/ApiServiceFactory";
 import type { SelectedUser } from "@/types/SelectUserType";
 import type { UserSearchParams } from "@/types/UserSearchTypes";
@@ -55,6 +58,13 @@ const normalizeBceid = (item: UserLookupBceidUserDto): SelectedUser => {
         lastName,
         email: item.email ?? "",
         fullName: [firstName, lastName].filter(Boolean).join(" "),
+        // Which organisation this person belongs to. Two BCeID accounts can
+        // carry the same name at different businesses, and the whole point of
+        // searching by an exact username is that the result is somebody you then
+        // grant access to - so the org is part of knowing you found the right
+        // person, not decoration.
+        businessLegalName: item.businessLegalName ?? null,
+        businessGuid: item.businessGuid ?? null,
         sourceDomain: UserType.BceidBus,
     };
 };
@@ -105,7 +115,10 @@ export const useUserSearch = () => {
             console.error("User search failed:", error);
             if (isAxiosError(error) && error.response?.status === 403) {
                 const detail = error.response.data?.detail;
-                if (detail?.code === PERMISSION_REQUIRED_FOR_OPERATION) {
+                if (
+                    detail?.code === PERMISSION_REQUIRED_FOR_OPERATION ||
+                    detail?.code === DIFFERENT_ORG_GRANT_PROHIBITED
+                ) {
                     // The backend explains which permission is missing, which is
                     // what tells a BCeID administrator they are reaching outside
                     // their own organisation.

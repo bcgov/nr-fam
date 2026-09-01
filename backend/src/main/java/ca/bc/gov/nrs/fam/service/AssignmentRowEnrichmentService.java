@@ -127,7 +127,11 @@ public class AssignmentRowEnrichmentService {
     if (!IDIR_DOMAIN.equals(row.domain()) || hasName(row)) {
       return Optional.empty();
     }
-    return CssRoleNaming.guidFromUsername(row.username());
+    // The row's own GUID. Parsing it back out of `username` worked only while
+    // CSS had no name for the person - that is the very condition this method
+    // screens for above - but it read a display name for a federated one, which
+    // is the same confusion that emptied the BCeID listing.
+    return Optional.ofNullable(row.userGuid()).filter(guid -> !guid.isBlank());
   }
 
   private static boolean hasName(CssUserRoleRowDto row) {

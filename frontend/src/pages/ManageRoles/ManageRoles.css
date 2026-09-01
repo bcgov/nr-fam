@@ -14,8 +14,9 @@
 }
 
 .manage-roles-container .application-dropdown {
+  /* Shares the row with the environment picker beside it. */
   flex: 1;
-  max-width: 32rem;
+  max-width: var(--fam-application-picker-width);
 }
 
 /*

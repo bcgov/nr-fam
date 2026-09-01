@@ -116,13 +116,69 @@ describe("MyPermissions", () => {
 
         const row = (await screen.findByText("FAM administrator")).closest(
             "tr"
-        ) as HTMLElement;
-        expect(within(row).getByText("—")).toBeInTheDocument();
+        ) as HTMLTableRowElement;
+        // By column, not by "a dash somewhere in the row": this row now carries
+        // two, since a FAM administrator is delegated no single role either.
+        // Application, Environment, Role, May grant.
+        expect(row.cells[1]).toHaveTextContent("—");
         // And the one that is scoped to an environment still says so.
         const scoped = screen.getByText("Application administrator").closest(
             "tr"
         ) as HTMLElement;
         expect(within(scoped).getByText("DEV")).toBeInTheDocument();
+    });
+
+    it("tells two delegations in one application apart", async () => {
+        /*
+            The reported symptom: somebody delegated two roles in one
+            application holds two roles and so gets two rows, and both read
+            "Sandbox REPT / TEST / Delegated administrator" - the same sentence
+            twice, with nothing saying why it appeared at all, let alone twice.
+        */
+        fetchSelfPermissions.mockResolvedValue([
+            {
+                role: "DELEGATED_ADMIN",
+                role_description: "Delegated administrator",
+                application_name: "Sandbox REPT",
+                environment: "test",
+                delegated_role_name: "REPT_ADMIN",
+                delegated_role_display_name: "Administrator",
+                scopes: [],
+            },
+            {
+                role: "DELEGATED_ADMIN",
+                role_description: "Delegated administrator",
+                application_name: "Sandbox REPT",
+                environment: "test",
+                // No sidecar, so the code is what there is to show.
+                delegated_role_name: "REPT_VIEWER",
+                delegated_role_display_name: null,
+                scopes: [],
+            },
+        ]);
+        renderPage();
+
+        expect(await screen.findByText("Administrator")).toBeInTheDocument();
+        expect(screen.getByText("REPT_VIEWER")).toBeInTheDocument();
+    });
+
+    it("says what a scoped delegation is narrowed to", async () => {
+        // Two delegations of one role for different districts are two rows that
+        // would otherwise read alike - the same duplication one level down.
+        fetchSelfPermissions.mockResolvedValue([
+            {
+                role: "DELEGATED_ADMIN",
+                role_description: "Delegated administrator",
+                application_name: "FREP",
+                environment: "dev",
+                delegated_role_name: "CHR_FREP_EDITOR",
+                delegated_role_display_name: "Editor",
+                scopes: [{ type: "DISTRICT", value: "DCC", label: "Cariboo" }],
+            },
+        ]);
+        renderPage();
+
+        expect(await screen.findByText("Editor (Cariboo)")).toBeInTheDocument();
     });
 
     it("renders the fast half without waiting for the slow one", async () => {

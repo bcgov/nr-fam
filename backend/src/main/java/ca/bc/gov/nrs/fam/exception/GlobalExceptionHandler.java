@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -95,6 +96,36 @@ public class GlobalExceptionHandler {
 
     log.error("Validation failed for {} {}: {}", request.getMethod(), request.getRequestURI(),
         details);
+    return ResponseEntity.unprocessableEntity().body(Map.of("detail", details));
+  }
+
+  /**
+   * A query parameter or path variable that could not be read as its type.
+   *
+   * <p>422 rather than the 500 this used to produce by falling through to the
+   * handler below. A value the API cannot parse is the caller's to fix, and
+   * answering "Internal Server Error" both misattributes the fault and hides
+   * which parameter was wrong - a BCeID user type arriving as {@code BCEID_BUS}
+   * on a query string spent a while looking like a server fault for exactly
+   * that reason.
+   *
+   * <p>The message comes from the converter rather than the exception, whose
+   * text names Java types and the failing class.
+   */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<Map<String, Object>> handleParamTypeMismatch(
+      MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+
+    Throwable cause = ex.getMostSpecificCause();
+    String message = cause instanceof IllegalArgumentException && cause.getMessage() != null
+        ? cause.getMessage()
+        : "'%s' is not a valid value for %s.".formatted(ex.getValue(), ex.getName());
+
+    List<Map<String, Object>> details = List.of(
+        validationDetail(List.of("query", ex.getName()), message, "type_error"));
+
+    log.warn("Unreadable parameter on {} {}: {}", request.getMethod(),
+        request.getRequestURI(), message);
     return ResponseEntity.unprocessableEntity().body(Map.of("detail", details));
   }
 

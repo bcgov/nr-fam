@@ -8,7 +8,11 @@ import {
     TableRow,
 } from "@carbon/react";
 import { useQuery } from "@tanstack/react-query";
-import type { SelfApplicationRoleDto } from "fam-api";
+import type {
+    ScopeDto,
+    SelfApplicationRoleDto,
+    SelfPermissionDto,
+} from "fam-api";
 import { useMemo, type FC } from "react";
 import { PageTitle } from "@/components/PageTitle";
 import { StepContainer } from "@/components/StepContainer";
@@ -39,10 +43,33 @@ import "./MyPermissions.css";
  * Every scope the role is held under, joined - "DCC", or "DCC, 00001018" for a
  * role scoped by both.
  */
-const scopeOf = (role: SelfApplicationRoleDto): string =>
+const scopeOf = (role: { scopes?: ScopeDto[] | null }): string =>
     (role.scopes ?? [])
         .map((scope) => scope.label || scope.value)
         .join(", ");
+
+/**
+ * What a delegated administrator may hand out, as one cell.
+ *
+ * <p>Empty at every other tier: an application administrator may grant whatever
+ * the application defines and a FAM administrator administers everything, so
+ * neither has one role to name.
+ *
+ * <p>The scope rides in the same cell rather than earning a column of its own.
+ * It is only ever present on a delegation, so a column would be empty on most
+ * rows - and the reason it is here at all is the reason the role is: two
+ * delegations of one role for different districts are two rows that would
+ * otherwise read alike.
+ */
+const mayGrantOf = (permission: SelfPermissionDto): string => {
+    const role = permission.delegated_role_display_name
+        ?? permission.delegated_role_name;
+    if (!role) {
+        return "";
+    }
+    const scope = scopeOf(permission);
+    return scope ? `${role} (${scope})` : role;
+};
 
 /** Shared with the loading skeletons so headers and columns cannot drift. */
 const ROLE_HEADERS = [
@@ -53,7 +80,11 @@ const ROLE_HEADERS = [
     "District / client",
 ];
 
-const PERMISSION_HEADERS = ["Application", "Environment", "Role"];
+/*
+    "May grant" matches the column of the same name on the Manage permissions
+    admin tables, which answers the same question about somebody else.
+*/
+const PERMISSION_HEADERS = ["Application", "Environment", "Role", "May grant"];
 
 export const MyPermissions: FC = () => {
     const permissionsQuery = useQuery({
@@ -222,7 +253,7 @@ export const MyPermissions: FC = () => {
                                 ) : (
                                     permissions.map((permission, index) => (
                                         <TableRow
-                                            key={`${permission.role}-${permission.css_integration_id ?? "all"}-${permission.environment ?? "all"}-${index}`}
+                                            key={`${permission.role}-${permission.css_integration_id ?? "all"}-${permission.environment ?? "all"}-${permission.delegated_role_name ?? ""}-${scopeOf(permission)}-${index}`}
                                         >
                                             <TableCell>
                                                 {permission.application_name}
@@ -243,6 +274,13 @@ export const MyPermissions: FC = () => {
                                             </TableCell>
                                             <TableCell>
                                                 {permission.role_description}
+                                            </TableCell>
+                                            <TableCell>
+                                                {mayGrantOf(permission) || (
+                                                    <span className="not-applicable">
+                                                        {PLACE_HOLDER}
+                                                    </span>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))

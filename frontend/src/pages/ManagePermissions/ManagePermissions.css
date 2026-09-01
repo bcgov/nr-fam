@@ -3,10 +3,13 @@
   margin-top: 2.5rem;
 }
 
+/*
+    No flex here any more. It read `flex: 1 1 24rem` to leave room for an add
+    button beside it; that button moved onto the Users tab, its container stopped
+    being a flex row, and the declaration has been doing nothing since.
+*/
 .manage-permission-view .application-dropdown {
-  /* Takes the width, leaving the add button its natural size beside it. */
-  flex: 1 1 24rem;
-  max-width: 40rem;
+  max-width: var(--fam-application-picker-width);
 }
 
 /*

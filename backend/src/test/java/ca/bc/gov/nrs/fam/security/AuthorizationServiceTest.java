@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -123,6 +124,27 @@ class AuthorizationServiceTest {
     assertThatThrownBy(() -> service.enforceSameOrganization(bceidRequester("ORG-A"), "ORG-B"))
         .isInstanceOf(FamHttpException.class)
         .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  @DisplayName("names this refusal specifically, so the search field can say why")
+  void otherOrganizationHasItsOwnCode() {
+    // The user search shows "User is not resident to your business" against the
+    // field rather than a page-level failure, and keys off this code. Matching
+    // on the message instead would couple the screen to its wording.
+    assertThatThrownBy(() -> service.enforceSameOrganization(bceidRequester("ORG-A"), "ORG-B"))
+        .isInstanceOf(FamHttpException.class)
+        .extracting("code").isEqualTo(ErrorCode.DIFFERENT_ORG_GRANT_PROHIBITED);
+  }
+
+  @Test
+  @DisplayName("refuses a target whose organisation is unknown")
+  void refusesUnknownOrganization() {
+    // An unknown organisation is not a matching one - the alternative is showing
+    // somebody at another business because the directory was vague about it.
+    assertThatThrownBy(() -> service.enforceSameOrganization(bceidRequester("ORG-A"), null))
+        .isInstanceOf(FamHttpException.class)
+        .extracting("code").isEqualTo(ErrorCode.DIFFERENT_ORG_GRANT_PROHIBITED);
   }
 
   @Test

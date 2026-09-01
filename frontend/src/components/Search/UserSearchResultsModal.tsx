@@ -12,6 +12,7 @@ import {
     TableRow,
 } from "@carbon/react";
 import { useEffect, useMemo, useState, type FC } from "react";
+import { PLACE_HOLDER } from "@/constants/constants";
 import { Modal } from "@/components/Modal";
 import type { SelectedUser } from "@/types/SelectUserType";
 import "./UserSearchResultsModal.css";
@@ -35,6 +36,17 @@ const PAGE_SIZES = [10, 20, 50, 100];
 /** Identifies a row: the same user id can exist in both directories. */
 const keyOf = (user: SelectedUser) => `${user.userId}|${user.sourceDomain}`;
 
+/**
+ * Whether to show the business column at all.
+ *
+ * <p>Only a Business BCeID account belongs to one, and an IDIR search is the
+ * common case - a permanent column would be empty on almost every search this
+ * modal ever shows. Decided over every result rather than the visible page, so
+ * the column does not appear and vanish as somebody pages through.
+ */
+const showsBusiness = (rows: readonly SelectedUser[]) =>
+    rows.some((user) => Boolean(user.businessLegalName));
+
 export const UserSearchResultsModal: FC<Props> = ({
     open,
     rows,
@@ -42,6 +54,7 @@ export const UserSearchResultsModal: FC<Props> = ({
     onConfirm,
     onCancel,
 }) => {
+    const withBusiness = showsBusiness(rows);
     const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
@@ -98,6 +111,9 @@ export const UserSearchResultsModal: FC<Props> = ({
                                 <TableHeader>First name</TableHeader>
                                 <TableHeader>Last name</TableHeader>
                                 <TableHeader>Email</TableHeader>
+                                {withBusiness ? (
+                                    <TableHeader>Business</TableHeader>
+                                ) : null}
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -132,6 +148,15 @@ export const UserSearchResultsModal: FC<Props> = ({
                                         <TableCell>{user.firstName}</TableCell>
                                         <TableCell>{user.lastName}</TableCell>
                                         <TableCell>{user.email}</TableCell>
+                                        {withBusiness ? (
+                                            <TableCell>
+                                                {user.businessLegalName || (
+                                                    <span className="not-applicable">
+                                                        {PLACE_HOLDER}
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                        ) : null}
                                     </TableRow>
                                 );
                             })}

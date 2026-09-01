@@ -262,6 +262,51 @@ class PermissionAuditServiceTest {
     }
 
     @Test
+    @DisplayName("lists a Business BCeID target, whose key is stored by code")
+    void listsBceidTargets() {
+      /*
+          AuditUser writes userType.getCode(), so a BCeID row is
+          "BCEID_BUS\\<guid>" - and this was read back with valueOf, which looks
+          for a constant named BCEID_BUS and does not find one. Every BCeID
+          target parsed as null and was dropped as a row naming nobody.
+
+          IDIR survived on a coincidence: its code and its constant name are the
+          same string, and every fixture here used it. So the list quietly held
+          IDIR users only, and a BCeID administrator - who may grant to BCeID
+          users alone - was told nothing had ever been recorded.
+      */
+      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
+          .thenReturn(List.<Object[]>of(
+              row("BCEID_BUS\\ABC123", LocalDateTime.now(),
+                  details("MVilleneuve3", "Marco", "Villeneuve"))));
+
+      assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
+          .singleElement()
+          .satisfies(user -> {
+            assertThat(user.targetUserType()).isEqualTo(UserType.BCEID);
+            assertThat(user.targetUserGuid()).isEqualTo("ABC123");
+            assertThat(user.username()).isEqualTo("MVilleneuve3");
+          });
+    }
+
+    @Test
+    @DisplayName("lists both directories together, ordered as the query gave them")
+    void listsBothDirectories() {
+      // The mix is the realistic case and the one that showed the bug as "half
+      // the users are missing" rather than "the page is broken".
+      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
+          .thenReturn(List.of(
+              row("BCEID_BUS\\BBB", LocalDateTime.of(2026, 8, 2, 0, 0),
+                  details("MVilleneuve3", "Marco", "Villeneuve")),
+              row("IDIR\\AAA", LocalDateTime.of(2026, 8, 1, 0, 0),
+                  details("JSMITH", "Jane", "Smith"))));
+
+      assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
+          .extracting(user -> user.targetUserType())
+          .containsExactly(UserType.BCEID, UserType.IDIR);
+    }
+
+    @Test
     @DisplayName("one row per person, carrying their most recent change")
     void onePerPerson() {
       /*

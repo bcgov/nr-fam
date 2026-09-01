@@ -115,11 +115,21 @@ public class PermissionAuditService {
     if (separator <= 0) {
       return null;
     }
-    try {
-      return UserType.valueOf(targetUser.substring(0, separator).toUpperCase(Locale.ROOT));
-    } catch (IllegalArgumentException e) {
-      return null;
-    }
+    /*
+        By code, not by constant name.
+
+        AuditUser writes userType.getCode(), so a Business BCeID row is stored as
+        "BCEID_BUS\<guid>" - and valueOf looks for a constant called BCEID_BUS,
+        which does not exist. Every BCeID target therefore parsed as null and was
+        dropped from the list a few lines up, as though the row named nobody.
+
+        IDIR survived because its code and its constant name are the same string.
+        So the user-history list quietly held IDIR users only, and a BCeID
+        administrator - who may now only grant to BCeID users - saw an empty one
+        and was told nothing had been recorded.
+    */
+    return UserType.fromCode(targetUser.substring(0, separator).toUpperCase(Locale.ROOT))
+        .orElse(null);
   }
 
   private static String guidOf(String targetUser) {

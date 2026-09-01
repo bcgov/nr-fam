@@ -20,6 +20,7 @@ import { DestructiveModal } from "@/components/DestructiveModal";
 import { PLACE_HOLDER } from "@/constants/constants";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
+import { domainLabel, formatFullName } from "@/utils/UserUtils";
 import { sortedByRole } from "@/utils/RoleSort";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
@@ -58,7 +59,7 @@ const tierLabel = (tier: AdminRoleAuthGroup) =>
           : "application admin";
 
 const fullNameOf = (row: CssAdministratorRowDto): string =>
-    [row.first_name, row.last_name].filter(Boolean).join(" ");
+    formatFullName(row.first_name, row.last_name, row.username);
 
 /** Prefers a resolved label - a district's or client's name - over the raw code. */
 const scopeTextOf = (row: CssAdministratorRowDto): string =>
@@ -274,7 +275,7 @@ export const AdministratorsTable: FC<Props> = ({
                                     key={`${row.user_guid ?? row.username}-${row.delegated_role_name ?? ""}-${scopeTextOf(row)}-${index}`}
                                 >
                                     <TableCell>{row.username}</TableCell>
-                                    <TableCell>{row.domain ?? PLACE_HOLDER}</TableCell>
+                                    <TableCell>{domainLabel(row.domain) || PLACE_HOLDER}</TableCell>
                                     {/*
                                         Blank until the person first signs in:
                                         CSS holds only a username for somebody

@@ -2012,9 +2012,21 @@
           },
           "role_name" : {
             "type" : "string"
+          },
+          "delegated_role_name" : {
+            "type" : "string"
+          },
+          "delegated_role_display_name" : {
+            "type" : "string"
+          },
+          "scopes" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ScopeDto"
+            }
           }
         },
-        "required" : [ "application_name", "role", "role_description", "role_name" ]
+        "required" : [ "application_name", "role", "role_description", "role_name", "scopes" ]
       },
       "SelfApplicationRoleDto" : {
         "properties" : {

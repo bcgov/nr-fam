@@ -99,6 +99,7 @@ public class CssIntegrationService {
   private final ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService
       forestClientIntegrationService;
   private final ApiInstanceEnvResolver apiInstanceEnvResolver;
+  private final CssNameSnapshot cssNameSnapshot;
 
   /**
    * Applications available to administer, one per integration/environment pair.
@@ -1976,12 +1977,28 @@ public class CssIntegrationService {
   /**
    * How the application is named to a user in a notification.
    *
-   * <p>The integration's project name would read better, but fetching it costs a
-   * CSS round trip on every grant purely for the wording of an email.
+   * <p>Its own name - {@code FREP (DEV)} - not {@code integration 6583 (DEV)},
+   * which was what the recipient used to be told. An integration id is FAM's
+   * internal handle on an application; the person being emailed has no way to
+   * turn it into the thing they have just been given access to, and no reason to
+   * have to.
+   *
+   * <p>An earlier note here said the project name would read better but cost a
+   * CSS round trip per grant. It costs one per minute:
+   * {@link CssNameSnapshot} already memoises exactly this lookup for the audit
+   * trail, and a bulk upload writing a thousand rows asks once. The objection
+   * was true of an uncached read and outlived the cache that answered it.
+   *
+   * <p>Falls back to the old wording when CSS cannot be reached. It reads badly,
+   * but it is true and it still identifies the application to an administrator
+   * the recipient might forward it to - better than a subject line naming
+   * nothing at all.
    */
-  private static String applicationLabel(int integrationId, String environment) {
-    return "integration %d (%s)".formatted(
-        integrationId, environment == null ? "" : environment.toUpperCase(java.util.Locale.ROOT));
+  private String applicationLabel(int integrationId, String environment) {
+    return cssNameSnapshot.applicationName(integrationId, environment)
+        .filter(name -> !name.isBlank())
+        .orElseGet(() -> "integration %d (%s)".formatted(integrationId,
+            environment == null ? "" : environment.toUpperCase(java.util.Locale.ROOT)));
   }
 
   private static List<String> resolveTargetRoles(CssUserRoleAssignmentRequest request) {

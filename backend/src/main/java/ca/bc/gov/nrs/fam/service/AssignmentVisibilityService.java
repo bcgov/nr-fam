@@ -95,8 +95,20 @@ public class AssignmentVisibilityService {
 
     List<CssUserRoleRowDto> visible = new ArrayList<>();
     for (CssUserRoleRowDto row : candidates) {
-      UserLookupBceidUserDto user = CssRoleNaming.guidFromUsername(row.username())
-          .map(bceidUsers::get).orElse(null);
+      /*
+          The row's own GUID, not one re-derived from its username.
+
+          `username` here is the display form - MVilleneuve3 - which
+          guidFromUsername cannot read a GUID out of, because there is no "@" in
+          it. So this resolved to nothing and every row was dropped as
+          unrecognised, which is a BCeID administrator being shown an empty
+          users table.
+
+          It only ever worked for somebody CSS could not name, where
+          displayUsername falls back to <guid>@bceidbusiness - so it worked until
+          the person signed in for the first time, and broke afterwards.
+      */
+      UserLookupBceidUserDto user = guidOf(row).map(bceidUsers::get).orElse(null);
 
       if (user == null) {
         // Unverifiable, so not shown. Distinct from the directory being down,
@@ -126,7 +138,7 @@ public class AssignmentVisibilityService {
       DirectoryEnv directory, List<CssUserRoleRowDto> rows) {
     Set<String> guids = new LinkedHashSet<>();
     for (CssUserRoleRowDto row : rows) {
-      CssRoleNaming.guidFromUsername(row.username()).ifPresent(guids::add);
+      guidOf(row).ifPresent(guids::add);
     }
 
     Map<String, UserLookupBceidUserDto> resolved = new HashMap<>();
@@ -137,6 +149,17 @@ public class AssignmentVisibilityService {
           .ifPresent(user -> resolved.put(guid, user));
     }
     return resolved;
+  }
+
+  /**
+   * The GUID CSS reported for this row.
+   *
+   * <p>Read from the field built for it rather than parsed back out of a
+   * display name. Blank is treated as absent: a row FAM cannot identify cannot
+   * be checked against an organisation either.
+   */
+  private static Optional<String> guidOf(CssUserRoleRowDto row) {
+    return Optional.ofNullable(row.userGuid()).filter(guid -> !guid.isBlank());
   }
 
   /** An unknown organisation is not a matching one. */

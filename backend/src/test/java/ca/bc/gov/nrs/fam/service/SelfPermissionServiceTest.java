@@ -31,6 +31,7 @@ import org.mockito.quality.Strictness;
 class SelfPermissionServiceTest {
 
   @Mock private CssApiService cssApiService;
+  @Mock private CssNameSnapshot cssNameSnapshot;
 
   /**
    * Real config rather than a mock: the IDIR alias decides the CSS username this
@@ -100,6 +101,74 @@ class SelfPermissionServiceTest {
         .containsExactlyInAnyOrder(
             org.assertj.core.groups.Tuple.tuple("FREP", AdminRoleAuthGroup.APP_ADMIN),
             org.assertj.core.groups.Tuple.tuple("FOM", AdminRoleAuthGroup.DELEGATED_ADMIN));
+  }
+
+  @Test
+  @DisplayName("names the role a delegated administrator may grant")
+  void namesTheDelegatedRole() {
+    /*
+        The reason this column exists. Somebody delegated two roles in one
+        application holds two roles and so gets two rows, and both used to read
+        "Sandbox REPT / TEST / Delegated administrator" - the same sentence
+        twice, with nothing saying why it appeared at all, let alone twice.
+
+        The display name comes from the label sidecar; the code is what a role
+        added directly in the CSS console has, and is what the screen falls back
+        to.
+    */
+    givenIntegrations();
+    when(cssNameSnapshot.roleDisplayName(54321, "dev", "FOM_SUBMITTER"))
+        .thenReturn(java.util.Optional.of("Submitter"));
+    when(cssNameSnapshot.roleDisplayName(54321, "dev", "FOM_REVIEWER"))
+        .thenReturn(java.util.Optional.empty());
+
+    assertThat(service.getSelfPermissions(requesterWith(
+        "DELEGATED_ADMIN_54321_DEV__FOM_SUBMITTER",
+        "DELEGATED_ADMIN_54321_DEV__FOM_REVIEWER")))
+        .extracting(
+            SelfPermissionDto::delegatedRoleName,
+            SelfPermissionDto::delegatedRoleDisplayName)
+        .containsExactly(
+            // Ordered by the delegated role, so two rows for one application do
+            // not swap places between loads.
+            org.assertj.core.groups.Tuple.tuple("FOM_REVIEWER", null),
+            org.assertj.core.groups.Tuple.tuple("FOM_SUBMITTER", "Submitter"));
+  }
+
+  @Test
+  @DisplayName("carries the scope a delegation is narrowed to")
+  void carriesTheDelegatedScope() {
+    // Two delegations of one role for different districts would otherwise read
+    // alike, which is the same duplication one level down.
+    givenIntegrations();
+
+    assertThat(service.getSelfPermissions(
+        requesterWith("DELEGATED_ADMIN_54321_DEV__FOM_SUBMITTER_DISTRICT-DCC")))
+        .singleElement()
+        .satisfies(permission -> {
+          assertThat(permission.delegatedRoleName()).isEqualTo("FOM_SUBMITTER");
+          assertThat(permission.scopes()).singleElement().satisfies(scope -> {
+            assertThat(scope.type()).isEqualTo("DISTRICT");
+            assertThat(scope.value()).isEqualTo("DCC");
+          });
+        });
+  }
+
+  @Test
+  @DisplayName("names no delegated role at the tiers that are not delegated one")
+  void otherTiersNameNoRole() {
+    // An application administrator may grant whatever the application defines,
+    // and a FAM administrator administers everything - neither has one role to
+    // name, and inventing one would read as a limit they do not have.
+    givenIntegrations();
+
+    assertThat(service.getSelfPermissions(
+        requesterWith("APP_ADMIN_22264_DEV", FamAdminRole.FAM_ADMIN)))
+        .allSatisfy(permission -> {
+          assertThat(permission.delegatedRoleName()).isNull();
+          assertThat(permission.delegatedRoleDisplayName()).isNull();
+          assertThat(permission.scopes()).isEmpty();
+        });
   }
 
   @Test
