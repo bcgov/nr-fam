@@ -64,6 +64,19 @@ class AssignmentVisibilityServiceTest {
         guid.toLowerCase() + "@bceidbusiness", guid, "BCEID", null, null, null, roleName, null, List.of(), null);
   }
 
+  /**
+   * A row for somebody who has signed in, which is what CSS mostly returns.
+   *
+   * <p>The difference that matters: `username` is the display form, not
+   * {@code <guid>@bceidbusiness}. The other fixture's federated username is what
+   * CSS reports only until the person first signs in - and it is the shape that
+   * hid this bug, because a GUID can be parsed back out of it.
+   */
+  private static CssUserRoleRowDto signedInBceidRow(String guid, String roleName) {
+    return new CssUserRoleRowDto(
+        "MVilleneuve3", guid, "BCEID", null, null, null, roleName, null, List.of(), null);
+  }
+
   private static CssUserRoleRowDto idirRow() {
     return new CssUserRoleRowDto(
         "JSMITH", "AAAA9999", "IDIR", "Jane", "Smith", "jane@gov.bc.ca", "R", null, List.of(), null);
@@ -74,6 +87,28 @@ class AssignmentVisibilityServiceTest {
         .thenReturn(Optional.of(new UserLookupBceidUserDto(
             true, "TARGET" + guid, guid, organization, "Example Forestry Ltd",
             "Jane", "Smith", "jane@example.com")));
+  }
+
+  @Test
+  @DisplayName("shows a signed-in BCeID user, whose row carries no federated username")
+  void showsSignedInBceidUsers() {
+    /*
+        The regression. CSS reports a display username - MVilleneuve3 - for
+        anybody who has signed in, and the GUID was being parsed back out of
+        that field instead of read from the one holding it. There is no "@" in a
+        display name, so every such row resolved to nothing and was dropped as
+        "a BCeID user the directory does not recognise".
+
+        It worked for a user who had never signed in and broke the moment they
+        did, so a BCeID administrator watched their users table empty itself.
+    */
+    directoryReports("BBBB2222", OWN_ORG);
+
+    assertThat(service.visibleTo(
+        bceidAdmin(OWN_ORG), DirectoryEnv.TEST,
+        List.of(signedInBceidRow("BBBB2222", "R"))))
+        .singleElement()
+        .satisfies(row -> assertThat(row.userGuid()).isEqualTo("BBBB2222"));
   }
 
   @Test

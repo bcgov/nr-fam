@@ -57,12 +57,17 @@ const IDIR_RESULT = {
 
 const renderSearch = (
     props: Partial<Parameters<typeof UserSearch>[0]> = {},
-    signedInAs = "ADMINUSER"
+    signedInAs = "ADMINUSER",
+    idpProvider?: string
 ) => {
     const onSelectionChange = props.onSelectionChange ?? vi.fn();
     const authState: AuthState = {
         isAuthenticated: true,
-        famLoginUser: { username: signedInAs, organization: "Timber Co" },
+        famLoginUser: {
+            username: signedInAs,
+            organization: "Timber Co",
+            idpProvider,
+        },
         isAuthRestored: true,
         accessRoles: ["FAM_ADMIN"],
     };
@@ -423,6 +428,8 @@ describe("UserSearch", () => {
                 guid: "CCCC3333",
                 firstName: "Sam",
                 lastName: "Doe",
+                businessLegalName: "Cariboo Logging Ltd.",
+                businessGuid: "BBBB2222",
             },
         });
         renderSearch();
@@ -438,6 +445,102 @@ describe("UserSearch", () => {
         );
         const dialog = await openResults();
         expect(within(dialog).getByText("CONTRACTOR")).toBeInTheDocument();
+        /*
+            Which organisation the account belongs to. Two BCeID accounts can
+            carry the same person's name at different businesses, and the result
+            is somebody about to be granted access - the org is part of knowing
+            the right person was found.
+        */
+        expect(within(dialog).getByText("Business")).toBeInTheDocument();
+        expect(
+            within(dialog).getByText("Cariboo Logging Ltd.")
+        ).toBeInTheDocument();
+    });
+
+    it("offers a BCeID administrator only the BCeID directory", async () => {
+        /*
+            They may only grant to Business BCeID users - TargetOrganizationGuard
+            refuses anything else - so an IDIR search is one whose every result
+            is unusable. Presentation only; the guard is what decides.
+        */
+        renderSearch({}, "ADMINUSER", "bceidbusiness");
+
+        const domain = screen.getByLabelText("User domain") as HTMLSelectElement;
+        expect(within(domain).getAllByRole("option")).toHaveLength(1);
+        expect(within(domain).getByRole("option")).toHaveValue(
+            UserType.BceidBus
+        );
+        // One option is not a choice.
+        expect(domain).toBeDisabled();
+    });
+
+    it("tells the form the directory it starts on", async () => {
+        /*
+            The form keeps its own `domain` and only heard about changes, so a
+            BCeID administrator's form sat on IDIR while the selector beside it
+            read Business BCeID - and would have submitted a BCeID GUID labelled
+            as an IDIR user.
+        */
+        const onDomainChange = vi.fn();
+        renderSearch({ onDomainChange }, "ADMINUSER", "bceidbusiness");
+
+        await waitFor(() =>
+            expect(onDomainChange).toHaveBeenCalledWith(UserType.BceidBus)
+        );
+    });
+
+    it("still offers both directories to an IDIR administrator", async () => {
+        renderSearch({}, "ADMINUSER", "idir");
+
+        const domain = screen.getByLabelText("User domain") as HTMLSelectElement;
+        expect(within(domain).getAllByRole("option")).toHaveLength(2);
+        expect(domain).not.toBeDisabled();
+    });
+
+    it("says so against the field when the user is at another business", async () => {
+        /*
+            A Business BCeID administrator may only see people at their own
+            business. The backend refuses before returning the person, so
+            nothing about them reaches the screen - and the message belongs
+            against the field, since it is about what was typed.
+        */
+        bceidLookup.mockRejectedValue({
+            isAxiosError: true,
+            response: {
+                status: 403,
+                data: {
+                    detail: {
+                        code: "different_org_grant_prohibited",
+                        description:
+                            "Operation requires business bceid users to be within the same organization",
+                    },
+                },
+            },
+        });
+        renderSearch({}, "ADMINUSER", "bceidbusiness");
+        await search("outsider");
+
+        const field = await screen.findByRole("textbox");
+        await waitFor(() =>
+            expect(
+                screen.getByText("User is not resident to your business")
+            ).toBeInTheDocument()
+        );
+        expect(field).toBeInvalid();
+
+        // Nothing about the person: not their name, not their organisation, and
+        // no hint as to whether the account exists at all.
+        expect(screen.queryByText(/Org name/)).not.toBeInTheDocument();
+    });
+
+    it("leaves the business column out of an IDIR search", async () => {
+        // Only a Business BCeID account belongs to one, and IDIR is the common
+        // search - a permanent column would be empty on almost every one.
+        renderSearch();
+        await search("smith");
+
+        const dialog = await openResults();
+        expect(within(dialog).queryByText("Business")).not.toBeInTheDocument();
     });
 
     it("clears the selection when the domain changes", async () => {

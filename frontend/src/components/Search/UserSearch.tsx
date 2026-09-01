@@ -10,7 +10,11 @@ import {
     type ReactNode,
 } from "react";
 import { InlineSpinner } from "@/components/InlineSpinner";
-import { PERMISSION_REQUIRED_FOR_OPERATION } from "@/constants/ApiErrorCodes";
+import {
+    DIFFERENT_ORG_GRANT_PROHIBITED,
+    PERMISSION_REQUIRED_FOR_OPERATION,
+} from "@/constants/ApiErrorCodes";
+import { IDP_CLAIM } from "@/enum/IdpEnum";
 import { useAuth } from "@/context/auth/useAuth";
 import { useUserSearch } from "@/hooks/useUserSearch";
 import type { SelectedUser } from "@/types/SelectUserType";
@@ -30,6 +34,17 @@ import "./UserSearch.css";
 const MAX_SEARCH_TEXT_LENGTH = 35; // The API allows 50; this is deliberately less.
 
 const SELF_SELECTION_ERROR = "You cannot grant permissions to yourself.";
+
+/**
+ * A Business BCeID caller searching somebody at another business.
+ *
+ * <p>Says nothing about whether the account exists. The backend refuses before
+ * it returns the person, so there is no name, email or organisation here to
+ * leak - and a message that distinguished "no such user" from "not yours to
+ * see" would report whether an account exists at another business, which is
+ * what the rule exists to prevent.
+ */
+const OTHER_BUSINESS_ERROR = "User is not resident to your business";
 
 type DomainChangeRequest = {
     currentDomain: UserType;
@@ -98,7 +113,37 @@ export const UserSearch: FC<Props> = ({
     onBeforeDomainChange,
     formError,
 }) => {
-    const [domain, setDomain] = useState<UserType>(availableDomains[0]);
+    const { authState } = useAuth();
+
+    /*
+        What this caller may search.
+
+        A Business BCeID administrator may only grant to Business BCeID users -
+        the backend refuses anything else outright, in TargetOrganizationGuard -
+        so offering an IDIR search to one is offering a search whose every result
+        is unusable. The same reasoning the application-admin screens already
+        apply when they hard-code IDIR.
+
+        Presentation only, as everywhere else here: the guard decides, this only
+        stops asking a question with no good answer.
+
+        Falls back to what the screen asked for if the intersection is empty,
+        rather than rendering a selector with nothing in it. That is a screen a
+        BCeID administrator cannot reach - appointing an application admin is
+        IDIR-only and needs a tier they do not hold - and an empty control would
+        be a worse way to say so than the refusal they would get.
+    */
+    const domains = useMemo(() => {
+        if (authState.famLoginUser?.idpProvider !== IDP_CLAIM.BUSINESS_BCEID) {
+            return availableDomains;
+        }
+        const allowed = availableDomains.filter(
+            (option) => option === UserType.BceidBus
+        );
+        return allowed.length > 0 ? allowed : availableDomains;
+    }, [availableDomains, authState.famLoginUser?.idpProvider]);
+
+    const [domain, setDomain] = useState<UserType>(domains[0]);
     const [searchType, setSearchType] = useState<UserSearchType>("username");
     const [searchText, setSearchText] = useState("");
     const [searchTextError, setSearchTextError] = useState("");
@@ -106,13 +151,29 @@ export const UserSearch: FC<Props> = ({
     const [selected, setSelected] = useState<SelectedUser[]>([]);
     const [isResultsOpen, setResultsOpen] = useState(false);
 
-    const { authState } = useAuth();
     const { searchUsers, isPending, searchResults, isSuccess, searchError, reset } =
         useUserSearch();
 
     const currentUsername = (
         authState.famLoginUser?.username ?? ""
     ).toLowerCase();
+
+    /*
+        Tell the form which directory is actually selected, including on first
+        render.
+
+        onDomainChange fires only when somebody changes the selector, so a form
+        that initialises its own `domain` to IDIR stayed on IDIR while the
+        selector beside it showed Business BCeID - and submitted a BCeID GUID
+        labelled as an IDIR user. The backend refuses that, correctly, with a
+        message about the wrong thing.
+    */
+    useEffect(() => {
+        onDomainChange?.(domain);
+        // onDomainChange is a prop the callers redefine each render; depending on
+        // it would fire this on every one.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [domain]);
 
     const searchTypes = useMemo(() => searchTypesFor(domain), [domain]);
     const isUsernameSearch = searchType === "username";
@@ -161,7 +222,9 @@ export const UserSearch: FC<Props> = ({
         setSelected([]);
         onSelectionChange([]);
         reset();
-        onDomainChange?.(next);
+        // Not reported here: the effect above watches `domain` and covers both
+        // this and the first render, so the form cannot be told twice or - as it
+        // was - not at all until somebody touched the selector.
     };
 
     const handleDomainSelection = (next: UserType) => {
@@ -250,6 +313,21 @@ export const UserSearch: FC<Props> = ({
         if (!searchError) {
             return;
         }
+        /*
+            Against the field, not below the whole search block.
+
+            This one is about what was typed - a username belonging to another
+            business - so it belongs where the typing happened, in red, the same
+            way a too-long or malformed username is reported. It also carries
+            nothing about the person searched for: the backend refuses before
+            returning them, so FAM never holds a name, an email or an
+            organisation to leak, and the message deliberately does not hint at
+            whether the account exists.
+        */
+        if (searchError.code === DIFFERENT_ORG_GRANT_PROHIBITED) {
+            setSearchTextError(OTHER_BUSINESS_ERROR);
+            return;
+        }
         if (searchError.code === PERMISSION_REQUIRED_FOR_OPERATION) {
             // Naming the organisation is the point: a BCeID administrator gets
             // this when they reach outside their own, and the message is
@@ -319,9 +397,9 @@ export const UserSearch: FC<Props> = ({
                     onChange={(event) =>
                         handleDomainSelection(event.target.value as UserType)
                     }
-                    disabled={disabled || availableDomains.length === 1 || isPending}
+                    disabled={disabled || domains.length === 1 || isPending}
                 >
-                    {availableDomains.map((option) => (
+                    {domains.map((option) => (
                         <SelectItem
                             key={option}
                             value={option}

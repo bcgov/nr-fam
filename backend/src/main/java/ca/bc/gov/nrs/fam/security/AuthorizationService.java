@@ -260,7 +260,19 @@ public class AuthorizationService {
     }
     String own = requester.businessGuid();
     if (own == null || targetBusinessGuid == null || !own.equalsIgnoreCase(targetBusinessGuid)) {
-      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+      /*
+          Its own code rather than the general "permission required".
+
+          The screen says something specific about this one - that the person
+          searched for belongs to another business - and it says it against the
+          search field rather than as a page-level failure. Keying that off the
+          generic code would have meant matching on the prose below, which is
+          the sort of coupling that survives exactly until somebody rewords it.
+
+          The code is the one upstream used for this, carried over unused until
+          now - see ErrorCode.
+      */
+      throw FamHttpException.forbidden(ErrorCode.DIFFERENT_ORG_GRANT_PROHIBITED,
           "Operation requires business bceid users to be within the same organization");
     }
   }

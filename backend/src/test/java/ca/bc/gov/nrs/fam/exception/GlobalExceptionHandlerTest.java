@@ -4,12 +4,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
+import ca.bc.gov.nrs.fam.constants.UserType;
+import ca.bc.gov.nrs.fam.constants.UserTypeConverter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.format.support.DefaultFormattingConversionService;
+import org.springframework.format.support.FormattingConversionService;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -30,15 +34,33 @@ import org.springframework.web.bind.annotation.RestController;
 @DisplayName("GlobalExceptionHandler response shapes")
 class GlobalExceptionHandlerTest {
 
+  /**
+   * The converter is registered the way production registers it, so these
+   * exercise Spring's own parameter binding rather than the converter alone.
+   * The bug this covers was never in the converter - there wasn't one - it was
+   * in what Spring did without it.
+   */
+  private static FormattingConversionService conversionService() {
+    FormattingConversionService service = new DefaultFormattingConversionService();
+    service.addConverter(new UserTypeConverter());
+    return service;
+  }
+
   private final MockMvc mockMvc = MockMvcBuilders
       .standaloneSetup(new TestController())
       .setControllerAdvice(new GlobalExceptionHandler())
+      .setConversionService(conversionService())
       .build();
 
   record Payload(@NotBlank String name) {}
 
   @RestController
   static class TestController {
+
+    @GetMapping("/user-type")
+    String userType(@org.springframework.web.bind.annotation.RequestParam UserType type) {
+      return type.name();
+    }
 
     @GetMapping("/business-error")
     String businessError() {
@@ -124,5 +146,40 @@ class GlobalExceptionHandlerTest {
         .andExpect(status().isInternalServerError())
         .andExpect(jsonPath("$.detail.code").value(ErrorCode.UNKNOWN_STATE))
         .andExpect(jsonPath("$.detail.description").value("Internal Server Error"));
+  }
+
+  @Test
+  @DisplayName("reads a user type off the query string by its wire code")
+  void readsUserTypeFromQueryString() throws Exception {
+    /*
+        BCEID is published as BCEID_BUS, and Spring's default enum conversion
+        matches constant names - so this arrived as "No enum constant
+        UserType.BCEID_BUS" and a 500. IDIR hid it, its code and constant name
+        being the same string, which is why it took a BCeID user's history to
+        surface it.
+    */
+    mockMvc.perform(MockMvcRequestBuilders.get("/user-type").param("type", "BCEID_BUS"))
+        .andExpect(status().isOk())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+            .content().string("BCEID"));
+
+    mockMvc.perform(MockMvcRequestBuilders.get("/user-type").param("type", "IDIR"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("answers an unreadable parameter as the caller's error, not a server fault")
+  void unreadableParameterIsNotAServerError() {
+    // 422 with the parameter named. A 500 saying "Internal Server Error" both
+    // misattributes the fault and hides which value was wrong.
+    try {
+      mockMvc.perform(MockMvcRequestBuilders.get("/user-type").param("type", "BCSC"))
+          .andExpect(status().isUnprocessableEntity())
+          .andExpect(jsonPath("$.detail[0].loc[0]").value("query"))
+          .andExpect(jsonPath("$.detail[0].loc[1]").value("type"))
+          .andExpect(jsonPath("$.detail[0].msg", Matchers.containsString("BCSC")));
+    } catch (Exception e) {
+      throw new AssertionError(e);
+    }
   }
 }

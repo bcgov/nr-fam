@@ -31,6 +31,7 @@ import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { ROUTES } from "@/routes/routePaths";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
+import { domainLabel, formatFullName } from "@/utils/UserUtils";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { describeApiError } from "@/utils/ApiUtils";
 import { NewUserTag } from "./NewUserTag";
@@ -113,7 +114,7 @@ const HEADERS = [
 ];
 
 const fullNameOf = (row: CssUserRoleRowDto) =>
-    [row.first_name, row.last_name].filter(Boolean).join(" ");
+    formatFullName(row.first_name, row.last_name, row.username);
 
 /**
  * Unique per assignment, not per user: somebody holding three roles is three
@@ -261,7 +262,11 @@ export const CssPermissionsTable: FC<Props> = ({
                 // the code is still what an application authorises on.
                 row.role_label,
                 row.role_name,
+                // Both, for the same reason as the role above: the label is
+                // what the row shows, the code is what someone used to typing
+                // BCEID will reach for.
                 row.domain,
+                domainLabel(row.domain),
                 // Scope was never searchable, which was tolerable when it was
                 // one quiet column. It is chips now, and a district code is the
                 // obvious thing to look for.
@@ -535,7 +540,8 @@ export const CssPermissionsTable: FC<Props> = ({
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
-                                                    {data.domain ?? PLACE_HOLDER}
+                                                    {domainLabel(data.domain) ||
+                                                        PLACE_HOLDER}
                                                 </TableCell>
                                                 <TableCell>
                                                     {data.full_name || PLACE_HOLDER}

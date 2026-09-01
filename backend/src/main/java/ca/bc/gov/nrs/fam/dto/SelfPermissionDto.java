@@ -32,4 +32,34 @@ public record SelfPermissionDto(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String roleDescription,
 
     /** The underlying CSS role name, so the screen can show what it derives from. */
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String roleName) {}
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String roleName,
+
+    /**
+     * For a delegated administrator, the role they may hand out.
+     *
+     * <p>Null at every other tier: an application administrator may grant
+     * whatever the application defines, so there is no one role to name.
+     *
+     * <p>Without it a delegated administrator's rows are indistinguishable.
+     * Somebody delegated two roles in one application holds two roles and gets
+     * two rows, and both said "Sandbox REPT / TEST / Delegated administrator" -
+     * the same sentence twice, with nothing on screen explaining why it appeared
+     * at all, let alone twice.
+     *
+     * <p>The base role, without the scope encoded into the CSS name. The scopes
+     * travel separately below, so a delegation covering two districts reads as
+     * one role with two scopes rather than as a role with a strange name.
+     */
+    String delegatedRoleName,
+
+    /** What that role is called, from its label sidecar. Null when it has none. */
+    String delegatedRoleDisplayName,
+
+    /**
+     * What the delegation is narrowed to, empty when it is not narrowed.
+     *
+     * <p>Carried for the same reason as the role: two delegations of one role
+     * for different districts are two rows that would otherwise read alike.
+     */
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
+    java.util.List<ScopeDto> scopes) {}

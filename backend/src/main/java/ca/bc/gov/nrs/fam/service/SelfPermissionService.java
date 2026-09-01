@@ -41,6 +41,7 @@ public class SelfPermissionService {
 
   private final CssApiService cssApiService;
   private final FamProperties famProperties;
+  private final CssNameSnapshot cssNameSnapshot;
 
   /**
    * The caller's administrative permissions, one row per administrative role.
@@ -73,7 +74,10 @@ public class SelfPermissionService {
 
       if (tier == AdminRoleAuthGroup.FAM_ADMIN) {
         permissions.add(new SelfPermissionDto(
-            null, null, "All applications", tier, describe(tier), role));
+            null, null, "All applications", tier, describe(tier), role,
+            // A FAM administrator is delegated nothing; they administer
+            // everything.
+            null, null, List.of()));
         continue;
       }
 
@@ -90,6 +94,19 @@ public class SelfPermissionService {
         names = integrationNames();
       }
 
+      /*
+          What this role lets them hand out, for a delegated administrator.
+
+          Empty at every other tier, where the row already says everything there
+          is to say. The display name is read through the memo the audit trail
+          uses, so somebody delegated six roles in one application costs one
+          request rather than six - and none at all when they hold no
+          delegations.
+      */
+      CssRoleNaming.ScopedRoleName delegated = FamAdminRole.delegatedRoleOf(role)
+          .map(CssRoleNaming::parse)
+          .orElse(null);
+
       permissions.add(new SelfPermissionDto(
           target.cssIntegrationId(),
           target.cssEnvironment(),
@@ -98,12 +115,23 @@ public class SelfPermissionService {
               "Integration %d".formatted(target.cssIntegrationId())),
           tier,
           describe(tier),
-          role));
+          role,
+          delegated == null ? null : delegated.baseRoleName(),
+          delegated == null ? null : cssNameSnapshot.roleDisplayName(
+              target.cssIntegrationId(), target.cssEnvironment(),
+              delegated.baseRoleName()).orElse(null),
+          delegated == null
+              ? List.of()
+              : delegated.scopes().stream().map(ScopeDto::of).toList()));
     }
 
+    // Then by the delegated role, which is the only thing separating two rows
+    // for one application - without it their order is whatever the token
+    // happened to list, and it can differ between two loads of the same screen.
     permissions.sort(Comparator
         .comparing(SelfPermissionDto::applicationName, String.CASE_INSENSITIVE_ORDER)
-        .thenComparing(p -> p.environment() == null ? "" : p.environment()));
+        .thenComparing(p -> p.environment() == null ? "" : p.environment())
+        .thenComparing(p -> p.delegatedRoleName() == null ? "" : p.delegatedRoleName()));
 
     log.debug("Returning {} administrative permission(s) for {}.",
         permissions.size(), requester.userName());

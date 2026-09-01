@@ -38,12 +38,13 @@
 }
 
 /*
-    Narrow, because it holds an application name rather than a sentence. A
-    full-width dropdown over a full-width table reads as part of the table's
-    chrome instead of as the thing that chooses what the table shows.
+    Capped rather than full width: a dropdown as wide as the table beneath it
+    reads as part of the table's chrome instead of as the thing that chooses
+    what the table shows. The ceiling is shared with the other two application
+    pickers - see --fam-application-picker-width.
 */
 .user-history-container .user-history-application {
-  max-width: 24rem;
+  max-width: var(--fam-application-picker-width);
 }
 
 /* The rows choose whose history is shown below, so they read as choosable. */

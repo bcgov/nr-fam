@@ -71,6 +71,7 @@ class CssIntegrationServiceTest {
   @Mock private ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService
       forestClientIntegrationService;
   @Mock private ApiInstanceEnvResolver apiInstanceEnvResolver;
+  @Mock private CssNameSnapshot cssNameSnapshot;
 
   /**
    * Real config rather than a mock: the IDIR alias is the thing most likely to
@@ -737,6 +738,42 @@ class CssIntegrationServiceTest {
         org.mockito.ArgumentCaptor.forClass(List.class);
     verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
     assertThat(captor.getValue()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("names the application in the grant email, not the integration id")
+  void emailNamesTheApplication() {
+    /*
+        The recipient is told what they were given access to. "integration 6583
+        (DEV)" is FAM's internal handle - the person reading the email has no way
+        to turn it into an application, and no reason to have to.
+
+        The lookup is the memoised one the audit trail already uses, so a bulk
+        upload of a thousand rows asks CSS once rather than a thousand times.
+    */
+    when(cssNameSnapshot.applicationName(INTEGRATION, ENV))
+        .thenReturn(java.util.Optional.of("FREP (DEV)"));
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
+
+    verify(accessGrantedEmailService).notifyGranted(any(), eq("FREP (DEV)"), any());
+  }
+
+  @Test
+  @DisplayName("falls back to the integration id when CSS cannot name the application")
+  void emailFallsBackWhenUnnamed() {
+    // Poor wording, but true, and it still identifies the application to an
+    // administrator the recipient forwards it to. A subject line naming nothing
+    // would be worse than one naming it awkwardly.
+    when(cssNameSnapshot.applicationName(INTEGRATION, ENV))
+        .thenReturn(java.util.Optional.empty());
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
+
+    verify(accessGrantedEmailService).notifyGranted(
+        any(), eq("integration " + INTEGRATION + " (DEV)"), any());
   }
 
   @Test

@@ -26,6 +26,7 @@ import {
     TABLE_ROWS_PER_PAGE,
 } from "@/constants/constants";
 import { AdminMgmtApiService, AppActlApiService } from "@/services/ApiServiceFactory";
+import { domainLabel } from "@/utils/UserUtils";
 import { describeApiError } from "@/utils/ApiUtils";
 import { matchesTypedTextBeside } from "@/utils/ComboBoxFilter";
 import "./UserHistory.css";
@@ -269,7 +270,9 @@ export const UserHistory: FC = () => {
                                                                 PLACE_HOLDER}
                                                         </TableCell>
                                                         <TableCell>
-                                                            {user.target_user_type}
+                                                            {domainLabel(
+                                                                user.target_user_type
+                                                            )}
                                                         </TableCell>
                                                         <TableCell>
                                                             {user.email ??

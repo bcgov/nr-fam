@@ -19,6 +19,16 @@
 @use './default-grid';
 @use './tables';
 
+// How wide an application picker gets.
+//
+// Three screens choose an application - Manage permissions, Manage roles and
+// User history - and each had sized its own: 40rem, 32rem and 24rem. Same
+// question, three controls. Named here because a value reached from three
+// stylesheets is exactly the kind that drifts when it is written three times.
+:root {
+  --fam-application-picker-width: 32rem;
+}
+
 .back-link {
   display: inline-flex;
   align-items: center;
