@@ -59,6 +59,30 @@ jobs:
       target: ${{ github.event.number }}
       triggers: ('backend/', 'frontend/', 'common/', '.github/workflows/pr-open.yml')
 
+  # One-off: prove GitHub secrets → OpenShift vanity Route for
+  # bcgov/actions-openshift#tls-route-provisioner. Not a pattern to keep.
+  # Derek will delete the Route by hand; do not add cleanup here.
+  vanity-tls-route:
+    name: Vanity TLS Route
+    needs: [deploys]
+    permissions: {}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: bcgov/actions-openshift/tls-route-provisioner@feat/tls-route-provisioner
+        with:
+          vanity_url: forestaccess.nrs.gov.bc.ca
+          route_name: nr-fam-${{ github.event.number }}-frontend-vanity
+          target_service: nr-fam-${{ github.event.number }}-frontend
+          app: nr-fam-${{ github.event.number }}
+          tls_certificate: ${{ secrets.tls_certificate }}
+          tls_private_key: ${{ secrets.tls_private_key }}
+          tls_ca_certificate: ${{ secrets.tls_ca_certificate }}
+          oc_namespace: ${{ secrets.oc_namespace }}
+          oc_token: ${{ secrets.oc_token }}
+          oc_server: ${{ vars.oc_server }}
+          dry_run: "false"
+
   tests:
      name: Tests
      if: needs.deploys.outputs.triggered == 'true'
@@ -88,7 +112,7 @@ jobs:
   # ==========================================================================
   results:
     name: PR Results
-    needs: [builds, deploys, tests]
+    needs: [builds, deploys, tests, vanity-tls-route]
     if: always()
     runs-on: ubuntu-slim
     timeout-minutes: 1
