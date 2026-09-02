@@ -65,6 +65,7 @@ jobs:
   vanity-tls-route:
     name: Vanity TLS Route
     needs: [deploys]
+    environment: delete_me
     permissions: {}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
