@@ -63,6 +63,17 @@
   background-color: var(--fam-table-chrome);
 }
 
+// ...and out to the full width of the wrapper. Carbon sizes the bar
+// `calc(100% - 1px)` (see @carbon/styles components/pagination/_pagination.scss),
+// a shortfall that costs nothing where the bar is a plain sibling of the table.
+// Here it sits inside `.bordered-table`, which paints no background of its own,
+// so the spare pixel is the page showing through: a white hairline running the
+// height of the bar past the forward arrow, hard against the rounded right
+// edge. The wrapper draws the border, so nothing wanted that pixel back.
+.cds--pagination {
+  inline-size: 100%;
+}
+
 // The two dividers Carbon draws in the footer, repainted so they survive that
 // fill. They separate "how many per page" from "how many there are" and both
 // from the page controls - without them the bar is one undifferentiated strip

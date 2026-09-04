@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.PrivilegeChangeType;
@@ -18,12 +19,14 @@ import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsDto;
 import ca.bc.gov.nrs.fam.dto.PrivilegeDetailsRoleDto;
 import ca.bc.gov.nrs.fam.integration.CssApiService;
+import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,9 +44,19 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PermissionAuditService {
 
+  /**
+   * How many unnamed people are worth a directory call before the screen is made
+   * to wait. Matches {@code AssignmentRowEnrichmentService}, for the same reason:
+   * this runs while somebody looks at a loading table.
+   */
+  private static final int MAX_NAME_LOOKUPS = 25;
+
   private final FamPrivilegeChangeAuditRepository auditRepository;
   private final ObjectMapper objectMapper;
   private final CssApiService cssApiService;
+  private final UserLookupClient userLookupClient;
+  private final ApiInstanceEnvResolver apiInstanceEnvResolver;
+  private final PermissionAuditWriteService auditWriteService;
 
   /**
    * Everyone with audit history in one application, most recently changed first.
@@ -100,7 +113,191 @@ public class PermissionAuditService {
 
     log.debug("Returning {} user(s) with history in integration {} ({}).",
         newestPerUser.size(), cssIntegrationId, cssEnvironment);
-    return List.copyOf(newestPerUser.values());
+    return withResolvedNames(List.copyOf(newestPerUser.values()), cssEnvironment);
+  }
+
+  /**
+   * Names the people the trail could not name, from the directory.
+   *
+   * <p><b>Only this list, never the history below it.</b> The rows of a person's
+   * history are snapshots - what was recorded at the moment of the change, which
+   * is the point of recording them - and resolving those on read would replace
+   * what was true then with what is true now. This list answers a different
+   * question: who are these people, so somebody can pick one. A name is the
+   * right answer to that whenever one can be had.
+   *
+   * <p>Which rows need it is not arbitrary. FAM's own records carry a snapshot,
+   * so they arrive named. Records migrated from the legacy system often do not:
+   * legacy stored identity details for the <em>performer</em> of a change and
+   * nothing for its target, so anybody who only ever had access granted to them
+   * - and never granted any themselves - reached here as a username and a GUID.
+   *
+   * <p><b>The snapshot always wins.</b> A row that carries a name keeps it, even
+   * if the directory would now answer differently. Only the gaps are filled.
+   *
+   * <p>Best effort, on the same reasoning as
+   * {@link AssignmentRowEnrichmentService}: the list is already correct and
+   * complete without names, so a directory that is slow or unreachable should
+   * cost a few blank cells rather than the screen.
+   */
+  private List<PermissionAuditUserDto> withResolvedNames(
+      List<PermissionAuditUserDto> users, String cssEnvironment) {
+
+    List<PermissionAuditUserDto> unnamed = users.stream()
+        .filter(user -> !hasName(user) && user.targetUserGuid() != null)
+        .toList();
+
+    if (unnamed.isEmpty()) {
+      return users;
+    }
+
+    /*
+        First, what FAM already knows about these people from anywhere else.
+
+        A person unnamed in this application's trail is very often named in
+        another's, because FAM snapshots identity every time it records a change
+        - and only legacy rows arrive without one. This costs a single query, it
+        is a contemporaneous record rather than a present-day answer, and it
+        still works for somebody who has since left, where the directory does
+        not. Whatever it cannot answer falls through to the directory below.
+    */
+    Map<String, PrivilegeChangeTargetDto> known = knownIdentities(unnamed);
+    Map<String, PermissionAuditUserDto> resolved = new HashMap<>();
+    for (PermissionAuditUserDto user : unnamed) {
+      PrivilegeChangeTargetDto found = known.get(user.targetUserGuid());
+      if (found != null) {
+        PermissionAuditUserDto named = merged(user, found);
+        resolved.put(user.targetUserGuid(), named);
+        cache(named);
+      }
+    }
+
+    List<PermissionAuditUserDto> stillUnnamed = unnamed.stream()
+        .filter(user -> !resolved.containsKey(user.targetUserGuid()))
+        .toList();
+
+    if (stillUnnamed.isEmpty()) {
+      return replaced(users, resolved);
+    }
+
+    DirectoryEnv directory;
+    try {
+      directory = apiInstanceEnvResolver.resolveDirectory(cssEnvironment);
+    } catch (RuntimeException e) {
+      log.warn("Cannot choose a directory for {}; the list will show usernames only.",
+          cssEnvironment);
+      return replaced(users, resolved);
+    }
+
+    int looked = 0;
+    for (PermissionAuditUserDto user : stillUnnamed) {
+      if (looked++ >= MAX_NAME_LOOKUPS) {
+        log.warn("{} user(s) in this trail have no recorded name; resolved the first {} and "
+            + "left the rest showing their username.", stillUnnamed.size(), MAX_NAME_LOOKUPS);
+        break;
+      }
+      try {
+        named(user, directory).ifPresent(named -> {
+          resolved.put(user.targetUserGuid(), named);
+          /*
+              Written back so the next visit does not pay for the same lookup.
+
+              Only the gap is filled - see fillMissingTargetDetails - so a
+              snapshot the trail already holds is never overwritten by a
+              present-day answer, and re-running changes nothing.
+          */
+          cache(named);
+        });
+      } catch (RuntimeException e) {
+        // One failure is enough to know the rest will fail the same way, and
+        // somebody is waiting for a table to render.
+        log.warn("Could not resolve names from the directory; the list will show usernames "
+            + "only. Reason: {}", e.getMessage());
+        break;
+      }
+    }
+
+    return replaced(users, resolved);
+  }
+
+  /** The list with each resolved person swapped in. */
+  private static List<PermissionAuditUserDto> replaced(
+      List<PermissionAuditUserDto> users, Map<String, PermissionAuditUserDto> resolved) {
+
+    if (resolved.isEmpty()) {
+      return users;
+    }
+    return users.stream()
+        .map(user -> resolved.getOrDefault(user.targetUserGuid(), user))
+        .toList();
+  }
+
+  /** What the trail already holds about these people, keyed by GUID. */
+  private Map<String, PrivilegeChangeTargetDto> knownIdentities(
+      List<PermissionAuditUserDto> unnamed) {
+
+    Map<String, PrivilegeChangeTargetDto> known = new HashMap<>();
+    try {
+      List<String> guids = unnamed.stream()
+          .map(PermissionAuditUserDto::targetUserGuid).distinct().toList();
+      for (Object[] row : auditRepository.findKnownIdentities(guids)) {
+        PrivilegeChangeTargetDto details = readTargetDetails(row[1]);
+        if (row[0] != null && details != null) {
+          known.put(row[0].toString(), details);
+        }
+      }
+    } catch (RuntimeException e) {
+      // Best effort, like everything else here: the directory pass below still
+      // runs, and the list is correct without either.
+      log.warn("Could not read known identities from the trail: {}", e.getMessage());
+    }
+    return known;
+  }
+
+  /** The row, taking a name from what was found and keeping its own username. */
+  private static PermissionAuditUserDto merged(
+      PermissionAuditUserDto user, PrivilegeChangeTargetDto found) {
+
+    return new PermissionAuditUserDto(
+        user.targetUserGuid(), user.targetUserType(),
+        notBlank(user.username()) ? user.username() : found.username(),
+        found.firstName(), found.lastName(), found.email(), user.lastChangeDate());
+  }
+
+  /** Remember it, so the next visit needs neither the query nor the directory. */
+  private void cache(PermissionAuditUserDto user) {
+    auditWriteService.cacheTargetDetails(
+        AuditUser.of(user.targetUserType(), user.targetUserGuid()),
+        new PrivilegeChangeTargetDto(user.targetUserGuid(), user.username(),
+            user.firstName(), user.lastName(), user.email()));
+  }
+
+  /** A row the trail already names needs nothing from the directory. */
+  private static boolean hasName(PermissionAuditUserDto user) {
+    return notBlank(user.firstName()) || notBlank(user.lastName()) || notBlank(user.email());
+  }
+
+  private static boolean notBlank(String value) {
+    return value != null && !value.isBlank();
+  }
+
+  /** The same row, with whatever the directory knows about them filled in. */
+  private Optional<PermissionAuditUserDto> named(
+      PermissionAuditUserDto user, DirectoryEnv directory) {
+
+    if (user.targetUserType() == UserType.IDIR) {
+      return userLookupClient.getIdirDetailByGuid(directory, user.targetUserGuid())
+          .map(found -> new PermissionAuditUserDto(
+              user.targetUserGuid(), user.targetUserType(),
+              notBlank(user.username()) ? user.username() : found.userId(),
+              found.firstName(), found.lastName(), found.email(), user.lastChangeDate()));
+    }
+    return userLookupClient
+        .getBusinessBceid(directory, UserLookupClient.SearchBy.USER_GUID, user.targetUserGuid())
+        .map(found -> new PermissionAuditUserDto(
+            user.targetUserGuid(), user.targetUserType(),
+            notBlank(user.username()) ? user.username() : found.userId(),
+            found.firstName(), found.lastName(), found.email(), user.lastChangeDate()));
   }
 
   /**
