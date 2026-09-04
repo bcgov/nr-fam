@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FIVE_MINUTES } from "@/constants/TimeUnits";
 
 /**
  * Granting from a CSV.
@@ -23,13 +24,19 @@ vi.mock("@/services/ApiServiceFactory", () => ({
             previewCssBulkGrants: (
                 integrationId: number,
                 environment: string,
-                csv: string
-            ) => previewCssBulkGrants(integrationId, environment, csv),
+                csv: string,
+                // Forwarded so the timeout override can be asserted; the
+                // default 10s would cut a real upload off mid-flight.
+                options?: unknown
+            ) =>
+                previewCssBulkGrants(integrationId, environment, csv, options),
             createCssBulkGrants: (
                 integrationId: number,
                 environment: string,
-                csv: string
-            ) => createCssBulkGrants(integrationId, environment, csv),
+                csv: string,
+                options?: unknown
+            ) =>
+                createCssBulkGrants(integrationId, environment, csv, options),
         },
     },
     AppActlApiService: {},
@@ -315,6 +322,33 @@ describe("BulkGrant", () => {
         expect(previewCssBulkGrants.mock.calls[0][2]).toBe(CSV);
         // Nothing granted yet - that is the whole point of the step.
         expect(createCssBulkGrants).not.toHaveBeenCalled();
+    });
+
+    it("gives both bulk calls far longer than the default ten seconds", async () => {
+        /*
+            Both endpoints work a row at a time, several upstream round trips
+            each, so a real file runs well past the ten seconds ApiServiceFactory
+            sets globally. The failure this guards is not a slow screen: the
+            request keeps running on the server after the client gives up, the
+            grants land, and the screen reports a failure for work that
+            succeeded - then invites a re-upload of rows that are already done.
+        */
+        renderPage();
+
+        await upload();
+        await waitFor(() => expect(previewCssBulkGrants).toHaveBeenCalled());
+
+        await userEvent.click(screen.getByRole("button", { name: /^Grant / }));
+        await waitFor(() => expect(createCssBulkGrants).toHaveBeenCalled());
+
+        for (const call of [
+            previewCssBulkGrants.mock.calls[0],
+            createCssBulkGrants.mock.calls[0],
+        ]) {
+            expect(call[3]).toEqual(
+                expect.objectContaining({ timeout: FIVE_MINUTES })
+            );
+        }
     });
 
     it("shows names and role names, not GUIDs and codes", async () => {
