@@ -1,12 +1,10 @@
 package ca.bc.gov.nrs.fam.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
 import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
-import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -103,19 +101,25 @@ class ApiInstanceEnvResolverTest {
   }
 
   @ParameterizedTest(name = "deployment={0}")
-  @ValueSource(strings = {"dev", "test", ""})
-  @DisplayName("refuses the production directory from a lower deployment")
-  void refusesProductionFromALowerDeployment(String deployment) {
+  @ValueSource(strings = {"dev", "test", "prod", ""})
+  @DisplayName("the deployment does not narrow the directory, whatever it is")
+  void deploymentDoesNotNarrowTheDirectory(String deployment) {
     /*
-        Refused rather than quietly answered TEST, which is what resolve() does.
-        A fallback here would substitute a test account's GUID for a real
-        person's and assign it without complaint - the same silent wrong answer,
-        arrived at more politely. A deployment that cannot reach production users
-        should say so.
+        Unlike resolve(), which gates PROD on the deployment.
+
+        An earlier version refused prod from a lower deployment. That broke a
+        legitimate selection: the lower environments run against their own
+        sandbox integrations, and those carry a prod environment of their own -
+        the prod environment of a sandbox application, not of a production one.
+        Administering it is a normal thing to do from a dev laptop.
+
+        What keeps a deployment out of the production directory is whether it
+        holds that instance's credentials. An unconfigured instance says so by
+        name when it is asked - see UserLookupClient - which is a true statement
+        about configuration rather than an invented rule about authority.
     */
-    assertThatThrownBy(() -> resolverFor(deployment).resolveDirectory("prod"))
-        .isInstanceOf(FamHttpException.class)
-        .hasMessageContaining("production");
+    assertThat(resolverFor(deployment).resolveDirectory("prod"))
+        .isEqualTo(DirectoryEnv.PROD);
   }
 
   @ParameterizedTest

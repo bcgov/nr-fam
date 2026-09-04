@@ -4,6 +4,7 @@ import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -58,4 +59,73 @@ public interface FamPrivilegeChangeAuditRepository
       @Param("cssIntegrationId") Integer cssIntegrationId,
       @Param("cssEnvironment") String cssEnvironment);
 
+  /**
+   * The newest snapshot the trail holds of each of these people, from anywhere.
+   *
+   * <p>Not scoped to one application on purpose. FAM snapshots who somebody was
+   * every time it records a change about them, so a person who arrives unnamed
+   * in one application's trail - which is how legacy rows arrive, legacy having
+   * recorded nothing about the target of a change - is very often named in
+   * another's, where FAM granted them something itself.
+   *
+   * <p>Better than asking the directory, for the same reason the trail snapshots
+   * at all: this is what FAM recorded at the time, not what is true today. It
+   * also still answers for somebody who has since left, where the directory
+   * would not.
+   *
+   * <p>Matched on GUID rather than username. A username is unique within a
+   * directory but the same string could exist in both, and this is identity.
+   *
+   * @return rows of {@code [user_guid, change_target_user_details]}, newest per
+   *     person
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (change_target_user_details->>'user_guid')
+             change_target_user_details->>'user_guid',
+             change_target_user_details
+      FROM app_fam.fam_privilege_change_audit
+      WHERE change_target_user_details->>'user_guid' IN (:userGuids)
+        AND jsonb_exists(change_target_user_details, 'email')
+      ORDER BY change_target_user_details->>'user_guid', change_date DESC
+      """, nativeQuery = true)
+  List<Object[]> findKnownIdentities(@Param("userGuids") java.util.Collection<String> userGuids);
+
+  /**
+   * Fill in the identity of somebody the trail could not name.
+   *
+   * <p><b>This writes to an audit table, which deserves a word.</b> It does not
+   * alter a recorded fact: every field describing what happened - who did it,
+   * to whom, which role, when - is untouched. It fills a hole where the record
+   * never held a name at all, which is the state rows migrated from the legacy
+   * system arrive in, because legacy stored identity details for the performer
+   * of a change and nothing for its target.
+   *
+   * <p><b>Only where there is a hole.</b> The {@code jsonb_exists} guard means a
+   * row that already carries an email is never rewritten, so a snapshot taken at
+   * the time of the change always survives a later lookup that disagrees with
+   * it. Re-running is therefore a no-op.
+   *
+   * <p>Every row for that person is filled, not only the one being displayed:
+   * the cost is the same single statement, and it means the answer does not
+   * depend on which row happens to be newest next time.
+   *
+   * <p>{@code update_user} records {@code system} rather than a person, because
+   * no person asked for this - it is FAM caching what it had to look up. That
+   * keeps {@code create_user}, which names who made the change, honest.
+   *
+   * @return how many rows were filled
+   */
+  @Modifying
+  @Query(value = """
+      UPDATE app_fam.fam_privilege_change_audit
+      SET change_target_user_details = CAST(:details AS jsonb),
+          update_user = 'system',
+          update_date = LOCALTIMESTAMP
+      WHERE target_user = :targetUser
+        AND NOT jsonb_exists(
+              COALESCE(change_target_user_details, '{}'::jsonb), 'email')
+      """, nativeQuery = true)
+  int fillMissingTargetDetails(
+      @Param("targetUser") String targetUser,
+      @Param("details") String details);
 }

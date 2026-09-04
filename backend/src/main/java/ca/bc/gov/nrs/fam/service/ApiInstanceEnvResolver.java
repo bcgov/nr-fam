@@ -3,8 +3,6 @@ package ca.bc.gov.nrs.fam.service;
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
 import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
-import ca.bc.gov.nrs.fam.constants.ErrorCode;
-import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,13 +62,21 @@ public class ApiInstanceEnvResolver {
    * Anything else looks a person up in one directory and assigns them in
    * another, which CSS refuses and which reports success on the way out.
    *
-   * <p>The one deployment rule that survives is the production one, and it
-   * refuses rather than falling back. {@link #resolve} may quietly answer TEST
-   * for the Forest Client API because the worst case there is a lookup that
-   * fails; here the worst case is a real person's GUID substituted by a test
-   * account's, which would be assigned without complaint. A lower deployment
-   * asking about production users is a question it should not be able to ask,
-   * and saying so is better than answering it wrongly.
+   * <p><b>No deployment gate, unlike {@link #resolve}.</b> An earlier version
+   * refused {@code prod} from a lower deployment, on the reasoning that a dev
+   * laptop should not reach production users. That was wrong for the reason the
+   * class comment above already gives about {@code resolve}: the lower
+   * environments run against their own sandbox integrations, and those have a
+   * {@code prod} environment of their own - the prod environment of a sandbox
+   * application, not of a production one. Administering it is a legitimate
+   * selection, and refusing it is not the right answer to one.
+   *
+   * <p>What actually keeps a deployment out of the production directory is
+   * whether it holds that instance's credentials, which is the platform's to
+   * decide and not something a mapping function can add to. A deployment with no
+   * PROD instance configured is told exactly that, by name, when it asks - see
+   * {@code UserLookupClient.endpointFor}. That is a truthful answer about
+   * configuration rather than an invented rule about authority.
    *
    * @param cssEnvironment the environment of the application being administered.
    *     Null or unrecognised yields TEST, which is where an unknown environment
@@ -81,11 +87,6 @@ public class ApiInstanceEnvResolver {
         ? "" : cssEnvironment.trim().toLowerCase(Locale.ROOT);
 
     if (PROD.equals(environment)) {
-      if (!isProd(famProperties.deploymentEnvironment())) {
-        throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
-            "This FAM deployment cannot look users up in the production directory. "
-                + "Production applications are administered from the production deployment.");
-      }
       return DirectoryEnv.PROD;
     }
 

@@ -329,14 +329,20 @@ export const UserSearch: FC<Props> = ({
             return;
         }
         if (searchError.code === PERMISSION_REQUIRED_FOR_OPERATION) {
-            // Naming the organisation is the point: a BCeID administrator gets
-            // this when they reach outside their own, and the message is
-            // otherwise indistinguishable from a general refusal.
-            const orgName =
-                authState.famLoginUser?.organization ?? "Unknown organization";
-            setResultMessage(
-                `${searchError.description ?? searchError.message}. Org name: ${orgName}`
-            );
+            /*
+                The organisation is appended only when there is one to name.
+
+                It is there because a BCeID administrator refused for reaching
+                outside their own business is helped by seeing which business
+                that is. When the session carries no organisation - every IDIR
+                caller, and any refusal that has nothing to do with one - it used
+                to append "Org name: Unknown organization", which answers a
+                question nobody asked and made every unrelated refusal read as an
+                organisation problem.
+            */
+            const orgName = authState.famLoginUser?.organization;
+            const reason = searchError.description ?? searchError.message;
+            setResultMessage(orgName ? `${reason}. Org name: ${orgName}` : reason);
             return;
         }
         setResultMessage(searchError.message);
