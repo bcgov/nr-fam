@@ -175,6 +175,19 @@ objects:
   - apiVersion: route.openshift.io/v1
     kind: Route
     metadata:
+      annotations:
+        # HAProxy closes a connection after 30s by default, and /api is proxied
+        # through this Route. Bulk upload works a row at a time - a directory
+        # lookup, a read of what the person already holds, then the assignment -
+        # so a file of any size runs past that.
+        #
+        # The router cutting the connection does not stop the work: the backend
+        # carries on and the grants land, but the answer never reaches the
+        # browser, so the screen reports a failure for rows that succeeded. This
+        # must stay at or above the client-side timeout in pages/BulkGrant
+        # (BULK_TIMEOUT_MS), or the router decides the limit and the client
+        # setting is decoration.
+        haproxy.router.openshift.io/timeout: 5m
       labels:
         app: ${NAME}-${ZONE}
       name: ${NAME}-${ZONE}-${COMPONENT}
