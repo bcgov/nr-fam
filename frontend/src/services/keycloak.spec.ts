@@ -14,7 +14,10 @@ import type { User } from "oidc-client-ts";
 
 const ISSUER = "https://dev.loginproxy.gov.bc.ca/auth/realms/standard";
 const CLIENT_ID = "fam-console-local";
-const APP_ORIGIN = "http://localhost:3000";
+/* Whatever address the browser is on - jsdom's, here. Not a configured value:
+   the client derives it from `window.location`, which is the point of the
+   third test below. */
+const APP_ORIGIN = window.location.origin;
 
 const asEnvEntry = (value: string) => ({ sensitive: false, type: "string", value });
 
@@ -24,7 +27,6 @@ const setEnv = () =>
         JSON.stringify({
             keycloak_issuer_uri: asEnvEntry(ISSUER),
             keycloak_client_id: asEnvEntry(CLIENT_ID),
-            front_end_redirect_base_url: asEnvEntry(APP_ORIGIN),
         })
     );
 
@@ -47,6 +49,36 @@ describe("keycloak OIDC client", () => {
         expect(settings.client_id).toBe(CLIENT_ID);
         expect(settings.redirect_uri).toBe(`${APP_ORIGIN}${AUTH_CALLBACK_PATH}`);
         expect(settings.post_logout_redirect_uri).toBe(APP_ORIGIN);
+    });
+
+    it("returns to the address the browser is on, not one carried in env.json", () => {
+        /*
+            The vanity-DNS case. A deployment answers on more than one name -
+            its route hostname and the friendly one in front of it - and only
+            the browser knows which was used. A configured origin is right for
+            at most one of them, and sending the wrong one is a `redirect_uri`
+            the realm refuses because it is not where the request came from.
+
+            env.json here still carries the stale route hostname, as a deployed
+            ConfigMap written before this change would. It must not win.
+        */
+        const routeHostname = "https://nr-fam-prod.apps.gold.devops.gov.bc.ca";
+        window.localStorage.setItem(
+            "env_data",
+            JSON.stringify({
+                keycloak_issuer_uri: asEnvEntry(ISSUER),
+                keycloak_client_id: asEnvEntry(CLIENT_ID),
+                front_end_redirect_base_url: asEnvEntry(routeHostname),
+            })
+        );
+
+        const settings = getUserManager().settings;
+
+        expect(settings.redirect_uri).toBe(
+            `${window.location.origin}${AUTH_CALLBACK_PATH}`
+        );
+        expect(settings.redirect_uri).not.toContain(routeHostname);
+        expect(settings.post_logout_redirect_uri).not.toContain(routeHostname);
     });
 
     it("uses authorization code flow, which means PKCE for a public browser client", () => {
