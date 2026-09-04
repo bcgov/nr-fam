@@ -18,6 +18,7 @@ import DragDropFileInput from "@/components/DragDropFileInput";
 import { RemoveButton } from "@/components/RemoveButton";
 import { InlineSpinner } from "@/components/InlineSpinner";
 import { PageTitle } from "@/components/PageTitle";
+import { FIVE_MINUTES } from "@/constants/TimeUnits";
 import { StepContainer } from "@/components/StepContainer";
 import { PLACE_HOLDER } from "@/constants/constants";
 import { useSelectedApp } from "@/context/application/useSelectedApp";
@@ -48,6 +49,26 @@ import "./BulkGrant.css";
  * backend: appointing an administrator is not granting access, and doing it by
  * upload would route around the tier rules the administrator screens apply.
  */
+/*
+    Far longer than the 10 second default in ApiServiceFactory, for these two
+    calls only.
+
+    Both endpoints work a row at a time and each row is several round trips to
+    upstream services - a directory lookup to resolve the person, a read of what
+    they already hold, and for the apply, the assignment itself. Twenty-three
+    rows already runs past ten seconds.
+
+    Timing out here does not stop any of that. The request keeps running on the
+    server and the grants land; only the answer is lost, so the screen reports a
+    failure for work that succeeded and invites a re-upload of rows that are
+    already done. Better to wait than to be told the wrong thing.
+
+    Re-uploading is safe - the preview marks rows the person already holds and
+    apply skips them - but the person doing it has no way to know that from a
+    timeout.
+*/
+const BULK_TIMEOUT_MS = FIVE_MINUTES;
+
 export const BulkGrant: FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -84,7 +105,9 @@ export const BulkGrant: FC = () => {
     const previewMutation = useMutation({
         mutationFn: (text: string) =>
             AdminMgmtApiService.cssIntegrationsApi
-                .previewCssBulkGrants(integrationId, environment, text)
+                .previewCssBulkGrants(integrationId, environment, text, {
+                    timeout: BULK_TIMEOUT_MS,
+                })
                 .then((res) => res.data),
         onSuccess: (preview) => setRows(preview.rows),
         onError: (error: unknown) => setUploadError(describeUploadError(error)),
@@ -93,7 +116,9 @@ export const BulkGrant: FC = () => {
     const applyMutation = useMutation({
         mutationFn: () =>
             AdminMgmtApiService.cssIntegrationsApi
-                .createCssBulkGrants(integrationId, environment, csv)
+                .createCssBulkGrants(integrationId, environment, csv, {
+                    timeout: BULK_TIMEOUT_MS,
+                })
                 .then((res) => res.data),
         onSuccess: (outcomes) => {
             setRows(outcomes);
