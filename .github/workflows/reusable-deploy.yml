@@ -334,23 +334,72 @@ jobs:
         include:
           - name: backend
             file: backend/openshift.deploy.yml
-            parameters: -p IMAGE_TAG="${{ inputs.tag }}"
-              -p KEYCLOAK_ISSUER_URI="${{ vars.keycloak_issuer_uri }}"
-              -p FAM_OIDC_CLIENT_ID="${{ vars.keycloak_client_id }}"
-              -p FAM_DEPLOYMENT_ENVIRONMENT="${{ inputs.environment || 'dev' }}"
-              -p CSS_API_URL="${{ vars.css_api_url || 'https://api.loginproxy.gov.bc.ca/api/v1' }}"
-              -p CSS_TOKEN_URL="${{ vars.css_token_url || 'https://loginproxy.gov.bc.ca/auth/realms/standard/protocol/openid-connect/token' }}"
-              -p CSS_OWN_INTEGRATION_ID="${{ vars.css_own_integration_id }}"
-              -p SMTP_HOST="${{ vars.smtp_host }}"
-              -p SMTP_FROM="${{ vars.smtp_from }}"
-              -p FC_API_BASE_URL_TEST="${{ vars.fc_api_base_url_test }}"
-              -p FC_API_BASE_URL_PROD="${{ vars.fc_api_base_url_prod }}"
           - name: frontend
             file: frontend/openshift.deploy.yml
-            parameters: -p IMAGE_TAG="${{ inputs.tag }}"
     outputs:
       triggered: ${{ steps.deploy.outputs.triggered }}
     steps:
+      # -------------------------------------------------------------------
+      # The backend's per-environment -p flags are built HERE, in a step,
+      # rather than in the matrix above. They were in the matrix, and that is
+      # why PROD ran against the TEST realm.
+      #
+      # `vars` IS available inside `strategy`, so the expressions evaluated
+      # and the deploy succeeded. But a matrix is expanded while the job is
+      # being created, before `environment:` is resolved, so environment
+      # scope does not exist yet. An environment-scoped variable read there
+      # does not fail and does not blank - it silently falls back to the
+      # repository-scoped variable of the same name.
+      #
+      # `init` reads the same two variables from a step (see its deployer
+      # call) and got PROD's values, which is why the frontend ConfigMap was
+      # right while the backend Deployment beside it was wrong: the SPA
+      # signed people in against the prod realm, the API validated their
+      # tokens against test, and every call came back 401.
+      #
+      # A step's `env:` is evaluated after the environment is applied, so
+      # what lands here is what the environment actually defines. Anything
+      # environment-scoped belongs in this block, never in the matrix.
+      # -------------------------------------------------------------------
+      - name: Backend parameters
+        id: params
+        if: matrix.name == 'backend'
+        env:
+          KEYCLOAK_ISSUER_URI: ${{ vars.keycloak_issuer_uri }}
+          FAM_OIDC_CLIENT_ID: ${{ vars.keycloak_client_id }}
+          FAM_DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+          CSS_API_URL: ${{ vars.css_api_url || 'https://api.loginproxy.gov.bc.ca/api/v1' }}
+          CSS_TOKEN_URL: ${{ vars.css_token_url || 'https://loginproxy.gov.bc.ca/auth/realms/standard/protocol/openid-connect/token' }}
+          CSS_OWN_INTEGRATION_ID: ${{ vars.css_own_integration_id }}
+          SMTP_HOST: ${{ vars.smtp_host }}
+          SMTP_FROM: ${{ vars.smtp_from }}
+          FC_API_BASE_URL_TEST: ${{ vars.fc_api_base_url_test }}
+          FC_API_BASE_URL_PROD: ${{ vars.fc_api_base_url_prod }}
+        run: |
+          # Fail rather than deploy the wrong realm. An unset variable here
+          # used to mean the repository default; now it means a stop.
+          for required in KEYCLOAK_ISSUER_URI FAM_OIDC_CLIENT_ID; do
+            if [ -z "${!required}" ]; then
+              echo "::error::${required} is not set for the '${{ inputs.environment }}' environment."
+              exit 1
+            fi
+          done
+
+          {
+            echo "value<<PARAMS"
+            echo "-p KEYCLOAK_ISSUER_URI=\"${KEYCLOAK_ISSUER_URI}\"" \
+                 "-p FAM_OIDC_CLIENT_ID=\"${FAM_OIDC_CLIENT_ID}\"" \
+                 "-p FAM_DEPLOYMENT_ENVIRONMENT=\"${FAM_DEPLOYMENT_ENVIRONMENT}\"" \
+                 "-p CSS_API_URL=\"${CSS_API_URL}\"" \
+                 "-p CSS_TOKEN_URL=\"${CSS_TOKEN_URL}\"" \
+                 "-p CSS_OWN_INTEGRATION_ID=\"${CSS_OWN_INTEGRATION_ID}\"" \
+                 "-p SMTP_HOST=\"${SMTP_HOST}\"" \
+                 "-p SMTP_FROM=\"${SMTP_FROM}\"" \
+                 "-p FC_API_BASE_URL_TEST=\"${FC_API_BASE_URL_TEST}\"" \
+                 "-p FC_API_BASE_URL_PROD=\"${FC_API_BASE_URL_PROD}\""
+            echo "PARAMS"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: bcgov/action-deployer-openshift@27a85b7b157bfc9c3c9bf0aca53bcd288d4d2506 # v4.2.1
         id: deploy
         with:
@@ -366,6 +415,7 @@ jobs:
           debug: false
           parameters: -p ZONE="${{ inputs.target }}"
             -p NAME="${{ github.event.repository.name }}"
+            -p IMAGE_TAG="${{ inputs.tag }}"
             -p MIN_REPLICAS="${{ inputs.environment == 'prod' && '3' || '2' }}"
-            ${{ matrix.parameters }}
+            ${{ steps.params.outputs.value }}
           triggers: ${{ inputs.triggers }}
