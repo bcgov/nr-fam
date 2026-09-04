@@ -41,11 +41,6 @@ export class EnvironmentSettings {
         return this.env?.keycloak_client_id.value;
     }
 
-    // App origin the browser lands on after login/logout redirects.
-    getFrontEndRedirectBaseUrl(): string {
-        return this.env?.front_end_redirect_base_url.value;
-    }
-
     /**
      * Base URL of the FAM backend.
      *
