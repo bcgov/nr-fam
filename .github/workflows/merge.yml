@@ -105,6 +105,29 @@ jobs:
       target: prod
       tag: ${{ needs.init.outputs.pr }}
 
+  # Vanity TLS for forestaccess.nrs.gov.bc.ca on the PROD frontend Service.
+  # Always runs (empty PEMs must fail). Sibling of promote/monitor-prod so an
+  # expired cert fails Merge after containers have already rolled.
+  route-tls:
+    name: Route TLS (PROD)
+    needs: [deploy-prod]
+    runs-on: ubuntu-24.04
+    environment: prod
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: bcgov/actions-openshift/route-tls@9d7230d1b1533eb02e98b9bd23fe89825d5c8b41
+        with:
+          hostname: forestaccess.nrs.gov.bc.ca
+          target_service: nr-fam-prod-frontend
+          tls_certificate: ${{ secrets.TLS_CERTIFICATE }}
+          tls_private_key: ${{ secrets.TLS_PRIVATE_KEY }}
+          tls_ca_certificate: ${{ secrets.TLS_CA_CERTIFICATE }}
+          oc_namespace: ${{ secrets.OC_NAMESPACE }}
+          oc_server: ${{ vars.OC_SERVER }}
+          oc_token: ${{ secrets.OC_TOKEN }}
+
   # Sync Sysdig email alerts for PROD. No-ops cleanly if SYSDIG_API_TOKEN is
   # unset or monitoring/alerts/ is empty — adoption is gradual. Alert
   # templates live in monitoring/alerts/ in this repo; add or remove files
