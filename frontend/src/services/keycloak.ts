@@ -49,7 +49,27 @@ const buildSettings = (): UserManagerSettings => {
 
     const authority = env.keycloak_issuer_uri.value;
     const clientId = env.keycloak_client_id.value;
-    const appOrigin = env.front_end_redirect_base_url.value;
+    /*
+        The origin the browser is actually on, rather than one baked in at
+        deploy time.
+
+        This used to read `front_end_redirect_base_url` out of env.json, which
+        the ConfigMap fills in as the OpenShift route hostname. That holds only
+        while the app answers on exactly one name. It stops holding the moment
+        a second one points at the same Route: reaching PROD through its vanity
+        DNS still sent the route hostname as `redirect_uri`, so the realm was
+        handed an address the request had not come from and refused it.
+
+        Off `window.location` the callback returns to wherever the person
+        started - vanity DNS, route hostname, a per-PR deploy, or localhost -
+        and no environment has to be told its own address.
+
+        It is not a way to redirect somewhere else. The realm only honours a
+        `redirect_uri` already registered against the integration, so an
+        unregistered origin is refused there; this decides which of the
+        registered names to come back to, not whether to.
+    */
+    const appOrigin = window.location.origin;
 
     return {
         authority,
