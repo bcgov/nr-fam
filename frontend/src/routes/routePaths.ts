@@ -55,6 +55,24 @@ const managesAccess = (roles: readonly string[]) =>
             role.startsWith(DELEGATED_ADMIN_PREFIX)
     );
 
+/**
+ * Whether FAM has anything at all for these roles.
+ *
+ * <p>The four administrative kinds, and no fifth: FAM admin, application admin,
+ * delegated admin, DevOps admin. Holding none of them means every screen in the
+ * shell would load and then fail to fill itself, which is what used to happen -
+ * a person with no roles landed on Manage permissions and met an error under the
+ * application selector, phrased as though something had gone wrong rather than
+ * as though they were not admitted.
+ *
+ * <p>Wider than {@link managesAccess}, which asks a narrower question: whether
+ * somebody may change who holds what. A DevOps administrator may not, but FAM
+ * still has Manage roles for them, so they are admitted here and not there.
+ */
+export const hasAnyFamRole = (roles: readonly string[]) =>
+    managesAccess(roles) ||
+    roles.some((role) => role.startsWith(DEVOPS_ADMIN_PREFIX));
+
 export const MENU: MenuLeaf[] = [
     {
         id: "manage-permissions",
@@ -66,17 +84,20 @@ export const MENU: MenuLeaf[] = [
 
             A DevOps administrator manages no access, so the application picker
             on that screen is empty for them and every tab under it would be -
-            it is a screen with nothing on it, offered by name. Anyone who
-            administers access still gets it, including somebody who holds
-            nothing at all: an empty table is a fair answer to "what do I
-            administer", where an absent screen is not.
+            it is a screen with nothing on it, offered by name.
+
+            This used to admit somebody holding nothing at all as well, on the
+            reasoning that an empty table answers "what do I administer" and an
+            absent screen does not. It answered the wrong question: they were not
+            asking what they administer, they were being told, in an error under
+            the application selector, that something had gone wrong. Nothing had.
+            They now meet /no-access before the shell renders and never reach
+            this menu - see RequireAnyFamRole.
 
             Presentation only, as everywhere else here - the endpoints answer to
             the token, not to the menu.
         */
-        isVisible: (roles) => managesAccess(roles) || !roles.some(
-            (role) => role.startsWith(DEVOPS_ADMIN_PREFIX)
-        ),
+        isVisible: (roles) => managesAccess(roles),
         subPaths: [
             ROUTES.addAppPermission,
             ROUTES.editAppPermission,
@@ -145,11 +166,16 @@ export const getMenuEntries = (accessRoles: readonly string[]): MenuLeaf[] =>
  * anyway would land them on a screen with nothing on it and no nav entry
  * pointing back at it.
  *
- * <p>Falls back to Manage permissions for somebody the menu offers nothing -
- * which is where they went before, and where the empty-state text lives.
+ * <p>Somebody the menu offers nothing goes to /no-access. They used to land on
+ * Manage permissions and meet an error under the application selector - a screen
+ * reporting a failure, when nothing had failed and they simply had no roles.
  */
-export const homeRouteFor = (accessRoles: readonly string[]): string =>
-    getMenuEntries(accessRoles)[0]?.path ?? ROUTES.managePermissions;
+export const homeRouteFor = (accessRoles: readonly string[]): string => {
+    if (!hasAnyFamRole(accessRoles)) {
+        return ROUTES.noAccess;
+    }
+    return getMenuEntries(accessRoles)[0]?.path ?? ROUTES.managePermissions;
+};
 
 /** Whether a nav entry should read as current, for it or anything under it. */
 export const isMenuItemActive = (item: MenuLeaf, pathname: string): boolean =>

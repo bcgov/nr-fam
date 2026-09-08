@@ -1,7 +1,7 @@
 import type { FC, ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/context/auth/useAuth";
-import { homeRouteFor, ROUTES } from "./routePaths";
+import { hasAnyFamRole, homeRouteFor, ROUTES } from "./routePaths";
 
 /**
  * Route guards, as components rather than navigation hooks.
@@ -30,6 +30,7 @@ const useSettledAuth = () => {
         isDevopsAdmin: authState.accessRoles.some((role) =>
             role.startsWith(DEVOPS_ADMIN_PREFIX)
         ),
+        hasAnyRole: hasAnyFamRole(authState.accessRoles),
         accessRoles: authState.accessRoles,
     };
 };
@@ -41,6 +42,32 @@ export const RequireAuth: FC<{ children: ReactNode }> = ({ children }) => {
         return null;
     }
     return isAuthenticated ? <>{children}</> : <Navigate to={ROUTES.landing} replace />;
+};
+
+/**
+ * Anybody FAM has a screen for.
+ *
+ * <p>The gate on the whole shell, rather than a check on each screen inside it.
+ * The screens differ in which roles they serve, and the guards below draw those
+ * lines; this one draws the outer boundary, which is whether FAM admits this
+ * person at all.
+ *
+ * <p>Without it a signed-in person with no roles reached Manage permissions -
+ * `homeRouteFor` sent them there, and nothing between the session and the screen
+ * asked whether they held anything. The screen loaded, its application selector
+ * came back empty, and the error underneath read as a fault rather than as an
+ * answer. The page they get instead says the true thing and offers the one
+ * action that changes it.
+ */
+export const RequireAnyFamRole: FC<{ children: ReactNode }> = ({ children }) => {
+    const { settled, isAuthenticated, hasAnyRole } = useSettledAuth();
+    if (!settled) {
+        return null;
+    }
+    if (!isAuthenticated) {
+        return <Navigate to={ROUTES.landing} replace />;
+    }
+    return hasAnyRole ? <>{children}</> : <Navigate to={ROUTES.noAccess} replace />;
 };
 
 /**

@@ -78,14 +78,21 @@ describe("Layout", () => {
         ).toBeInTheDocument();
     });
 
-    it("keeps Manage permissions for somebody who administers nothing", () => {
-        // An empty table is a fair answer to "what do I administer"; an absent
-        // screen is not.
+    it("withholds Manage permissions from somebody who administers nothing", () => {
+        /*
+            It used to be offered to them, on the reasoning that an empty table
+            answers "what do I administer" where an absent screen does not. What
+            they actually met was an error under an application selector that
+            could not be filled, which reads as a fault rather than an answer.
+            They are now turned away at the shell - see RequireAnyFamRole - and
+            never see this nav at all; the entry going with them is what keeps
+            the two consistent.
+        */
         renderLayout({ accessRoles: [] });
 
         expect(
-            screen.getByTestId("side-nav-link-manage-permissions")
-        ).toBeInTheDocument();
+            screen.queryByTestId("side-nav-link-manage-permissions")
+        ).not.toBeInTheDocument();
     });
 
     it("offers User history to a FAM administrator", () => {
@@ -94,14 +101,29 @@ describe("Layout", () => {
         expect(screen.getByTestId("side-nav-link-user-history")).toBeInTheDocument();
     });
 
-    it("withholds User history from everyone else", () => {
+    it("offers User history to every other tier that administers access", () => {
         /*
-            The per-application history is reachable by anyone who administers
-            that application. This screen asks the trail about a person across
-            every application at once, which administering one of them does not
-            entitle somebody to do.
+            This asserted the opposite until the fixture was corrected, and
+            passed only because "APP_ADMIN" and "DELEGATED_ADMIN" are not role
+            names - a real one carries the integration and environment, so
+            neither matched its prefix and the case being exercised was really
+            the empty one. The screen asks about one application at a time and
+            shows what has happened to access the caller already manages, so
+            everyone who administers access is offered it. See routePaths.spec,
+            which had this right.
         */
-        renderLayout({ accessRoles: ["APP_ADMIN", "DELEGATED_ADMIN"] });
+        renderLayout({
+            accessRoles: ["APP_ADMIN_6538_DEV", "DELEGATED_ADMIN_6538_DEV"],
+        });
+
+        expect(
+            screen.getByTestId("side-nav-link-user-history")
+        ).toBeInTheDocument();
+    });
+
+    it("withholds User history from a DevOps-only administrator", () => {
+        // They administer no access, so every application picker is empty.
+        renderLayout({ accessRoles: ["DEVOPS_ADMIN_6538_DEV"] });
 
         expect(
             screen.queryByTestId("side-nav-link-user-history")
@@ -111,7 +133,9 @@ describe("Layout", () => {
     it("withholds Manage roles from everyone else", () => {
         // Presentation only - the route guard turns them away and the endpoint
         // refuses them regardless. This asserts they are not invited.
-        renderLayout({ accessRoles: ["APP_ADMIN", "DELEGATED_ADMIN"] });
+        renderLayout({
+            accessRoles: ["APP_ADMIN_6538_DEV", "DELEGATED_ADMIN_6538_DEV"],
+        });
 
         expect(
             screen.queryByTestId("side-nav-link-manage-roles")

@@ -1,35 +1,20 @@
-.no-access-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 2rem;
-}
+/*
+    The page borrows Landing.css wholesale - see index.tsx for why. What is left
+    here is the one difference between the two screens.
 
-.no-access-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2rem;
-  max-width: 32rem;
-}
-
-.no-access-message {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.no-access-title {
-  font-size: 1.75rem;
+    The landing page's subtitle is a product name ("Forests Access Management")
+    and is styled to carry weight. This one is a sentence about the person
+    reading it, and at that size it shouts. Toned down to read as prose, and
+    given a measure so a long display name does not run the full column width.
+*/
+#no-access-subtitle {
+  max-width: 34rem;
+  font-size: 1.125rem;
   font-weight: 400;
-  line-height: 1.28;
-  margin: 0;
+  line-height: 1.5;
+  color: var(--cds-text-secondary, #525252);
 }
 
-.no-access-body {
-  font-size: 1rem;
-  line-height: 1.5;
-  margin: 0;
-  color: var(--cds-text-secondary, #525252);
+#no-access-desc {
+  max-width: 34rem;
 }

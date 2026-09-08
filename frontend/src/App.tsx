@@ -22,7 +22,12 @@ import { UserPermissionHistory } from "@/pages/UserPermissionHistory";
 import { UserHistory } from "@/pages/UserHistory";
 import { RequireGrantTarget } from "@/pages/RequireGrantTarget";
 import { NoAccess } from "@/pages/NoAccess";
-import { RequireAuth, RequireFamAdmin, RequireRoleManager } from "@/routes/guards";
+import {
+    RequireAnyFamRole,
+    RequireAuth,
+    RequireFamAdmin,
+    RequireRoleManager,
+} from "@/routes/guards";
 import { RedirectIfSignedIn } from "@/routes/guards";
 import { homeRouteFor, ROUTES } from "@/routes/routePaths";
 
@@ -80,14 +85,21 @@ const HomeRedirect: FC = () => {
 const ProtectedLayout: FC = () => {
     const { authState } = useAuth();
 
+    /*
+        RequireAnyFamRole rather than RequireAuth: a session is not enough to be
+        inside the shell. Somebody holding no FAM role has nothing to see on any
+        screen in here, and putting the check on the layout covers all of them at
+        once - the alternative is remembering it on each new route, which is the
+        kind of thing that gets forgotten exactly once.
+    */
     return (
-        <RequireAuth>
+        <RequireAnyFamRole>
             <Layout accessRoles={authState.accessRoles}>
                 <div id="protected-layout-container">
                     <Outlet />
                 </div>
             </Layout>
-        </RequireAuth>
+        </RequireAnyFamRole>
     );
 };
 

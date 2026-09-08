@@ -23,9 +23,13 @@ describe("getMenuEntries", () => {
         ).toContain("manage-permissions");
     });
 
-    it("keeps it for somebody who administers nothing", () => {
-        // An empty table is a fair answer to "what do I administer".
-        expect(ids([])).toContain("manage-permissions");
+    it("withholds it from somebody who administers nothing", () => {
+        // It used to hand them Manage permissions, where an empty selector
+        // reported a failure that had not happened. They no longer reach the
+        // menu at all - RequireAnyFamRole sends them to /no-access before the
+        // shell renders - so what is left here is only that nothing invites
+        // them back to that screen.
+        expect(ids([])).not.toContain("manage-permissions");
     });
 });
 
@@ -36,10 +40,18 @@ describe("homeRouteFor", () => {
         expect(homeRouteFor(["DEVOPS_ADMIN_6538_DEV"])).toBe(ROUTES.manageRoles);
     });
 
-    it("starts everybody else on Manage permissions", () => {
+    it("starts every other administrator on Manage permissions", () => {
         expect(homeRouteFor(["FAM_ADMIN"])).toBe(ROUTES.managePermissions);
         expect(homeRouteFor(["APP_ADMIN_6538_DEV"])).toBe(ROUTES.managePermissions);
-        expect(homeRouteFor([])).toBe(ROUTES.managePermissions);
+        expect(homeRouteFor(["DELEGATED_ADMIN_6538_DEV"])).toBe(
+            ROUTES.managePermissions
+        );
+    });
+
+    it("sends somebody with no role to the page that says so", () => {
+        // Not to a screen that will load and then fail in front of them.
+        expect(homeRouteFor([])).toBe(ROUTES.noAccess);
+        expect(homeRouteFor(["SOME_APPLICATION_ROLE"])).toBe(ROUTES.noAccess);
     });
 });
 

@@ -6,6 +6,7 @@ import { AuthContext, type AuthContextValue } from "@/context/auth/AuthContext";
 import type { AuthState } from "@/types/AuthTypes";
 import {
     RedirectIfSignedIn,
+    RequireAnyFamRole,
     RequireAuth,
     RequireFamAdmin,
     RequireRoleManager,
@@ -145,13 +146,86 @@ describe("RedirectIfSignedIn", () => {
         expect(screen.getByText("protected content")).toBeInTheDocument();
     });
 
-    it("sends a signed-in user on to manage permissions", () => {
+    it("sends a signed-in administrator on to manage permissions", () => {
         renderGuarded(
-            { isAuthenticated: true },
+            { isAuthenticated: true, accessRoles: ["FAM_ADMIN"] },
             <RedirectIfSignedIn>{PROTECTED}</RedirectIfSignedIn>
         );
 
         expect(screen.getByText("manage permissions page")).toBeInTheDocument();
+    });
+
+    it("sends a signed-in user with no role to the no-access page", () => {
+        // Not to Manage permissions, which used to load and then report an
+        // error under an application selector it could not fill.
+        renderGuarded(
+            { isAuthenticated: true, accessRoles: [] },
+            <RedirectIfSignedIn>{PROTECTED}</RedirectIfSignedIn>
+        );
+
+        expect(screen.getByText("no access page")).toBeInTheDocument();
+    });
+});
+
+describe("RequireAnyFamRole", () => {
+    /*
+        The gate on the whole shell. Each of the four administrative kinds is
+        admitted; anything else is not, whatever else the token carries.
+    */
+    it.each([
+        ["a FAM administrator", "FAM_ADMIN"],
+        ["an application administrator", "APP_ADMIN_6538_DEV"],
+        ["a delegated administrator", "DELEGATED_ADMIN_6538_DEV"],
+        ["a delegated administrator of one role", "DELEGATED_ADMIN_6538_DEV__READER"],
+        ["a DevOps administrator", "DEVOPS_ADMIN_6538_DEV"],
+    ])("lets %s through", (_who, role) => {
+        renderGuarded(
+            { isAuthenticated: true, accessRoles: [role] },
+            <RequireAnyFamRole>{PROTECTED}</RequireAnyFamRole>
+        );
+
+        expect(screen.getByText("protected content")).toBeInTheDocument();
+    });
+
+    it("turns away a signed-in user holding no FAM role", () => {
+        renderGuarded(
+            { isAuthenticated: true, accessRoles: [] },
+            <RequireAnyFamRole>{PROTECTED}</RequireAnyFamRole>
+        );
+
+        expect(screen.getByText("no access page")).toBeInTheDocument();
+        expect(screen.queryByText("protected content")).not.toBeInTheDocument();
+    });
+
+    it("turns away somebody carrying only an application's own role", () => {
+        // A downstream application's role is not authority over FAM.
+        renderGuarded(
+            { isAuthenticated: true, accessRoles: ["REPT_VIEWER"] },
+            <RequireAnyFamRole>{PROTECTED}</RequireAnyFamRole>
+        );
+
+        expect(screen.getByText("no access page")).toBeInTheDocument();
+    });
+
+    it("sends a signed-out visitor to the landing page, not to no-access", () => {
+        // No session is a different answer from a session with nothing in it.
+        renderGuarded(
+            { isAuthenticated: false },
+            <RequireAnyFamRole>{PROTECTED}</RequireAnyFamRole>
+        );
+
+        expect(screen.getByText("landing page")).toBeInTheDocument();
+    });
+
+    it("decides nothing until the session has been judged", () => {
+        // The window that once sent an administrator to /no-access on refresh.
+        renderGuarded(
+            { isAuthenticated: true, isAuthRestored: false, accessRoles: [] },
+            <RequireAnyFamRole>{PROTECTED}</RequireAnyFamRole>
+        );
+
+        expect(screen.queryByText("no access page")).not.toBeInTheDocument();
+        expect(screen.queryByText("protected content")).not.toBeInTheDocument();
     });
 });
 
