@@ -29,7 +29,6 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -388,39 +387,6 @@ public class PermissionAuditWriteService {
       return PrivilegeDetailsScopeType.REGION;
     }
     return PrivilegeDetailsScopeType.CLIENT;
-  }
-
-  /**
-   * Remember who somebody is, once the trail has had to look them up.
-   *
-   * <p>Called from the read path when a person in the history list carries no
-   * name - which is how rows migrated from the legacy system arrive, since
-   * legacy recorded identity details for the performer of a change and nothing
-   * for its target. The lookup that fills the gap costs a directory call, and
-   * without this it would cost one on every visit to the screen, forever.
-   *
-   * <p><b>Its own transaction.</b> The caller reads in a read-only one, and a
-   * cache write must not enlist in - or fail - somebody's page load. Failures
-   * are swallowed for the same reason: the list has already been answered
-   * correctly by the time this runs, and the only cost of it not working is
-   * looking the same person up again next time.
-   *
-   * <p>The statement fills only rows that have no name; see
-   * {@code fillMissingTargetDetails} for why that guard is what makes this
-   * acceptable against an audit table.
-   */
-  @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public void cacheTargetDetails(String targetUser, PrivilegeChangeTargetDto details) {
-    if (targetUser == null || details == null) {
-      return;
-    }
-    try {
-      int filled = auditRepository.fillMissingTargetDetails(targetUser, toJson(details));
-      log.debug("Cached the identity of {} onto {} audit row(s).", targetUser, filled);
-    } catch (RuntimeException e) {
-      log.warn("Could not cache the identity of a user onto the trail; "
-          + "it will be looked up again next time. Reason: {}", e.getMessage());
-    }
   }
 
   private String toJson(Object value) {

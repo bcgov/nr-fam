@@ -4,10 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.fam.constants.PrivilegeChangeType;
@@ -16,11 +12,7 @@ import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.dto.PermissionAuditHistoryDto;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeAudit;
 import ca.bc.gov.nrs.fam.entity.FamPrivilegeChangeType;
-import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
-import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
-import ca.bc.gov.nrs.fam.dto.PrivilegeChangeTargetDto;
 import ca.bc.gov.nrs.fam.integration.CssApiService;
-import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -56,9 +48,6 @@ class PermissionAuditServiceTest {
 
   @Mock private FamPrivilegeChangeAuditRepository auditRepository;
   @Mock private CssApiService cssApiService;
-  @Mock private UserLookupClient userLookupClient;
-  @Mock private ApiInstanceEnvResolver apiInstanceEnvResolver;
-  @Mock private PermissionAuditWriteService auditWriteService;
 
   private PermissionAuditService service;
 
@@ -69,8 +58,7 @@ class PermissionAuditServiceTest {
     ObjectMapper mapper = new ObjectMapper()
         .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
     service = new PermissionAuditService(
-        auditRepository, mapper, cssApiService, userLookupClient, apiInstanceEnvResolver,
-        auditWriteService);
+        auditRepository, mapper, cssApiService);
   }
 
   private void trailHas(String privilegeDetailsJson) {
@@ -316,145 +304,6 @@ class PermissionAuditServiceTest {
       assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
           .extracting(user -> user.targetUserType())
           .containsExactly(UserType.BCEID, UserType.IDIR);
-    }
-
-    @Test
-    @DisplayName("names somebody the trail could not name, from the directory")
-    void namesTheUnnamedFromTheDirectory() {
-      /*
-          Legacy recorded identity details for the performer of a change and
-          nothing for its target, so anybody who only ever had access granted to
-          them arrived here as a username and a GUID. The list answers "who are
-          these people" rather than "what did the record say at the time", so a
-          name is the right answer to it wherever one can be had.
-      */
-      when(apiInstanceEnvResolver.resolveDirectory(ENV)).thenReturn(DirectoryEnv.DEV);
-      when(userLookupClient.getIdirDetailByGuid(DirectoryEnv.DEV, "ABC123"))
-          .thenReturn(java.util.Optional.of(new UserLookupIdirUserDto(
-              true, "BTURNER", "ABC123", "Bob", "Turner", "bob@gov.bc.ca")));
-
-      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
-          .thenReturn(List.<Object[]>of(
-              row("IDIR\\ABC123", LocalDateTime.now(),
-                  "{\"user_guid\":\"ABC123\",\"username\":\"BTURNER\"}")));
-
-      assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
-          .singleElement()
-          .satisfies(user -> {
-            assertThat(user.firstName()).isEqualTo("Bob");
-            assertThat(user.email()).isEqualTo("bob@gov.bc.ca");
-            assertThat(user.username()).isEqualTo("BTURNER");
-          });
-    }
-
-    @Test
-    @DisplayName("takes a name from another application's trail before asking the directory")
-    void prefersWhatTheTrailAlreadyKnows() {
-      /*
-          FAM snapshots identity every time it records a change, so a person
-          unnamed in one application is often named in another. That record is
-          contemporaneous rather than a present-day answer, costs one query
-          instead of a call per person, and still answers for somebody who has
-          since left - which the directory would not.
-      */
-      when(auditRepository.findKnownIdentities(anyCollection()))
-          .thenReturn(List.<Object[]>of(new Object[]{"ABC123",
-              "{\"user_guid\":\"ABC123\",\"username\":\"BTURNER\","
-              + "\"first_name\":\"Bob\",\"last_name\":\"Turner\","
-              + "\"email\":\"bob@gov.bc.ca\"}"}));
-      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
-          .thenReturn(List.<Object[]>of(
-              row("IDIR\\ABC123", LocalDateTime.now(),
-                  "{\"user_guid\":\"ABC123\",\"username\":\"BTURNER\"}")));
-
-      assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
-          .singleElement()
-          .satisfies(user -> assertThat(user.email()).isEqualTo("bob@gov.bc.ca"));
-
-      // The directory is never troubled for somebody the trail can already name.
-      verifyNoInteractions(userLookupClient);
-      verify(auditWriteService).cacheTargetDetails(eq("IDIR\\ABC123"), any());
-    }
-
-    @Test
-    @DisplayName("writes a looked-up name back, so the next visit does not pay for it")
-    void cachesWhatItLookedUp() {
-      /*
-          The lookup costs a directory call. Without writing it back it would
-          cost one on every visit to this screen, for the same person, forever.
-          The statement fills only rows that carry no name, so nothing recorded
-          at the time of a change is disturbed.
-      */
-      when(apiInstanceEnvResolver.resolveDirectory(ENV)).thenReturn(DirectoryEnv.DEV);
-      when(userLookupClient.getIdirDetailByGuid(DirectoryEnv.DEV, "ABC123"))
-          .thenReturn(java.util.Optional.of(new UserLookupIdirUserDto(
-              true, "BTURNER", "ABC123", "Bob", "Turner", "bob@gov.bc.ca")));
-      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
-          .thenReturn(List.<Object[]>of(
-              row("IDIR\\ABC123", LocalDateTime.now(),
-                  "{\"user_guid\":\"ABC123\",\"username\":\"BTURNER\"}")));
-
-      service.getUsersWithHistory(INTEGRATION, ENV);
-
-      org.mockito.ArgumentCaptor<PrivilegeChangeTargetDto> captor =
-          org.mockito.ArgumentCaptor.forClass(PrivilegeChangeTargetDto.class);
-      verify(auditWriteService).cacheTargetDetails(eq("IDIR\\ABC123"), captor.capture());
-      assertThat(captor.getValue().email()).isEqualTo("bob@gov.bc.ca");
-      assertThat(captor.getValue().firstName()).isEqualTo("Bob");
-    }
-
-    @Test
-    @DisplayName("writes nothing back for somebody the trail already names")
-    void cachesNothingWhenAlreadyNamed() {
-      when(apiInstanceEnvResolver.resolveDirectory(ENV)).thenReturn(DirectoryEnv.DEV);
-      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
-          .thenReturn(List.<Object[]>of(
-              row("IDIR\\ABC123", LocalDateTime.now(), details("JSMITH", "Jane", "Smith"))));
-
-      service.getUsersWithHistory(INTEGRATION, ENV);
-
-      verifyNoInteractions(auditWriteService);
-    }
-
-    @Test
-    @DisplayName("leaves a recorded name alone, even when the directory disagrees")
-    void theSnapshotWins() {
-      /*
-          The whole point of snapshotting is that a person renamed since still
-          reads as they did at the time. Only the gaps are filled - a row that
-          carries a name is never re-resolved.
-      */
-      when(apiInstanceEnvResolver.resolveDirectory(ENV)).thenReturn(DirectoryEnv.DEV);
-      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
-          .thenReturn(List.<Object[]>of(
-              row("IDIR\\ABC123", LocalDateTime.now(), details("JSMITH", "Jane", "Smith"))));
-
-      assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
-          .singleElement()
-          .satisfies(user -> assertThat(user.firstName()).isEqualTo("Jane"));
-
-      verifyNoInteractions(userLookupClient);
-    }
-
-    @Test
-    @DisplayName("shows the list without names when the directory cannot be reached")
-    void aDirectoryOutageCostsNamesNotTheScreen() {
-      // The list is already correct and complete without them.
-      when(apiInstanceEnvResolver.resolveDirectory(ENV)).thenReturn(DirectoryEnv.DEV);
-      when(userLookupClient.getIdirDetailByGuid(any(), anyString()))
-          .thenThrow(new RuntimeException("directory unreachable"));
-
-      when(auditRepository.findTargetUsersForApplication(INTEGRATION, ENV))
-          .thenReturn(List.<Object[]>of(
-              row("IDIR\\ABC123", LocalDateTime.now(),
-                  "{\"user_guid\":\"ABC123\",\"username\":\"BTURNER\"}")));
-
-      assertThat(service.getUsersWithHistory(INTEGRATION, ENV))
-          .singleElement()
-          .satisfies(user -> {
-            assertThat(user.username()).isEqualTo("BTURNER");
-            assertThat(user.firstName()).isNull();
-          });
     }
 
     @Test
