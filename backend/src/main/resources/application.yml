@@ -109,7 +109,7 @@ spring:
           # whichever realm happened to be current when it was written, and a
           # wrong realm fails as "invalid token" rather than as configuration.
           # Supplied by KEYCLOAK_ISSUER_URI in every environment, and by
-          # application-local.yml for local work.
+          # application-local.yml for local development.
           issuer-uri: ${KEYCLOAK_ISSUER_URI:}
           # Derived from the issuer unless overridden - they are always the same
           # realm, and letting them drift apart is its own failure mode.
