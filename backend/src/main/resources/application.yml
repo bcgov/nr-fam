@@ -108,7 +108,7 @@ spring:
           # No default realm. A baked-in issuer is worse than none: it points at
           # whichever realm happened to be current when it was written, and a
           # wrong realm fails as "invalid token" rather than as configuration.
-          # Supplied by KEYCLOAK_ISSUER_URI in every environment, and by
+          # Supplied by KEYCLOAK_ISSUER_URI in every environment, and
           # application-local.yml for local development.
           issuer-uri: ${KEYCLOAK_ISSUER_URI:}
           # Derived from the issuer unless overridden - they are always the same
