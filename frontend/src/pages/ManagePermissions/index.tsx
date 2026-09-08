@@ -400,18 +400,32 @@ export const ManagePermissions: FC = () => {
                                             icon={Enterprise}
                                             description={`Who can grant access to ${appName}, and which roles they can grant`}
                                             actions={
-                                                <Button
-                                                    kind="primary"
-                                                    size="md"
-                                                    renderIcon={Add}
-                                                    onClick={() =>
-                                                        goTo(
-                                                            ROUTES.addDelegatedAdmin
-                                                        )
-                                                    }
-                                                >
-                                                    Add delegated admin
-                                                </Button>
+                                                <>
+                                                    <Button
+                                                        kind="tertiary"
+                                                        size="md"
+                                                        renderIcon={Add}
+                                                        onClick={() =>
+                                                            goTo(
+                                                                ROUTES.bulkGrantDelegatedAdmins
+                                                            )
+                                                        }
+                                                    >
+                                                        Bulk upload
+                                                    </Button>
+                                                    <Button
+                                                        kind="primary"
+                                                        size="md"
+                                                        renderIcon={Add}
+                                                        onClick={() =>
+                                                            goTo(
+                                                                ROUTES.addDelegatedAdmin
+                                                            )
+                                                        }
+                                                    >
+                                                        Add delegated admin
+                                                    </Button>
+                                                </>
                                             }
                                         >
                                             <AdministratorsTable
@@ -436,18 +450,32 @@ export const ManagePermissions: FC = () => {
                                             icon={HelpDesk}
                                             description={`Who can grant any role in ${appName}, and appoint delegated admins`}
                                             actions={
-                                                <Button
-                                                    kind="primary"
-                                                    size="md"
-                                                    renderIcon={Add}
-                                                    onClick={() =>
-                                                        goTo(
-                                                            ROUTES.addApplicationAdmin
-                                                        )
-                                                    }
-                                                >
-                                                    Add application admin
-                                                </Button>
+                                                <>
+                                                    <Button
+                                                        kind="tertiary"
+                                                        size="md"
+                                                        renderIcon={Add}
+                                                        onClick={() =>
+                                                            goTo(
+                                                                ROUTES.bulkGrantApplicationAdmins
+                                                            )
+                                                        }
+                                                    >
+                                                        Bulk upload
+                                                    </Button>
+                                                    <Button
+                                                        kind="primary"
+                                                        size="md"
+                                                        renderIcon={Add}
+                                                        onClick={() =>
+                                                            goTo(
+                                                                ROUTES.addApplicationAdmin
+                                                            )
+                                                        }
+                                                    >
+                                                        Add application admin
+                                                    </Button>
+                                                </>
                                             }
                                         >
                                             <AdministratorsTable

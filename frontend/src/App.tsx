@@ -239,6 +239,32 @@ export const App: FC = () => (
                                 }
                             />
                             {/*
+                                The same screen, loading a different thing. The
+                                kind decides the columns, the wording and the
+                                endpoint - see pages/BulkGrant/bulkUtils.
+
+                                Behind RequireFamAdmin as well as the target
+                                guard: appointing an administrator is not the
+                                same authority as granting access, and these
+                                mirror the single-appointment screens above.
+                            */}
+                            <Route
+                                path={ROUTES.bulkGrantDelegatedAdmins}
+                                element={
+                                    <RequireGrantTarget>
+                                        <BulkGrant kind="delegatedAdmins" />
+                                    </RequireGrantTarget>
+                                }
+                            />
+                            <Route
+                                path={ROUTES.bulkGrantApplicationAdmins}
+                                element={
+                                    <RequireGrantTarget>
+                                        <BulkGrant kind="applicationAdmins" />
+                                    </RequireGrantTarget>
+                                }
+                            />
+                            {/*
                                 Not FAM administrators alone any more: a DevOps
                                 administrator manages the roles of the
                                 applications they were appointed for, and the

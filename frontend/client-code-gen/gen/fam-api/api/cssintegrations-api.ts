@@ -203,6 +203,58 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
         },
         /**
          * 
+         * @summary Appoint every valid row of a bulk administrator CSV
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {string} body 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssBulkAdmins: async (integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('createCssBulkAdmins', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('createCssBulkAdmins', 'environment', environment)
+            // verify required parameter 'tier' is not null or undefined
+            assertParamExists('createCssBulkAdmins', 'tier', tier)
+            // verify required parameter 'body' is not null or undefined
+            assertParamExists('createCssBulkAdmins', 'body', body)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/bulk-admins/{tier}`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)))
+                .replace(`{${"tier"}}`, encodeURIComponent(String(tier)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'text/csv';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(body, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Grant every valid row of a bulk grant CSV
          * @param {number} integrationId 
          * @param {string} environment 
@@ -876,6 +928,58 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
         },
         /**
          * 
+         * @summary Validate a bulk administrator CSV and resolve its users and roles
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {string} body 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        previewCssBulkAdmins: async (integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('previewCssBulkAdmins', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('previewCssBulkAdmins', 'environment', environment)
+            // verify required parameter 'tier' is not null or undefined
+            assertParamExists('previewCssBulkAdmins', 'tier', tier)
+            // verify required parameter 'body' is not null or undefined
+            assertParamExists('previewCssBulkAdmins', 'body', body)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/bulk-admins/{tier}/preview`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)))
+                .replace(`{${"tier"}}`, encodeURIComponent(String(tier)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'text/csv';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(body, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Validate a bulk grant CSV and resolve its users and roles
          * @param {number} integrationId 
          * @param {string} environment 
@@ -974,6 +1078,22 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createCssApplicationRoleAllEnvironments(integrationId, cssRoleCreateRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssApplicationRoleAllEnvironments']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Appoint every valid row of a bulk administrator CSV
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {string} body 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CssBulkGrantRowDto>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createCssBulkAdmins(integrationId, environment, tier, body, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssBulkAdmins']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1194,6 +1314,22 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Validate a bulk administrator CSV and resolve its users and roles
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {string} body 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async previewCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssBulkGrantPreviewDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.previewCssBulkAdmins(integrationId, environment, tier, body, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.previewCssBulkAdmins']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @summary Validate a bulk grant CSV and resolve its users and roles
          * @param {number} integrationId 
          * @param {string} environment 
@@ -1251,6 +1387,19 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
          */
         createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: any): AxiosPromise<CssRoleBulkCreateResultDto> {
             return localVarFp.createCssApplicationRoleAllEnvironments(integrationId, cssRoleCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Appoint every valid row of a bulk administrator CSV
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {string} body 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: any): AxiosPromise<Array<CssBulkGrantRowDto>> {
+            return localVarFp.createCssBulkAdmins(integrationId, environment, tier, body, options).then((request) => request(axios, basePath));
         },
         /**
          * 
@@ -1425,6 +1574,19 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
         },
         /**
          * 
+         * @summary Validate a bulk administrator CSV and resolve its users and roles
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {AdminRoleAuthGroup} tier 
+         * @param {string} body 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        previewCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: any): AxiosPromise<CssBulkGrantPreviewDto> {
+            return localVarFp.previewCssBulkAdmins(integrationId, environment, tier, body, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @summary Validate a bulk grant CSV and resolve its users and roles
          * @param {number} integrationId 
          * @param {string} environment 
@@ -1478,6 +1640,19 @@ export interface CSSIntegrationsApiInterface {
      * @memberof CSSIntegrationsApiInterface
      */
     createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleBulkCreateResultDto>;
+
+    /**
+     * 
+     * @summary Appoint every valid row of a bulk administrator CSV
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {AdminRoleAuthGroup} tier 
+     * @param {string} body 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssBulkGrantRowDto>>;
 
     /**
      * 
@@ -1652,6 +1827,19 @@ export interface CSSIntegrationsApiInterface {
 
     /**
      * 
+     * @summary Validate a bulk administrator CSV and resolve its users and roles
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {AdminRoleAuthGroup} tier 
+     * @param {string} body 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    previewCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): AxiosPromise<CssBulkGrantPreviewDto>;
+
+    /**
+     * 
      * @summary Validate a bulk grant CSV and resolve its users and roles
      * @param {number} integrationId 
      * @param {string} environment 
@@ -1710,6 +1898,21 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
      */
     public createCssApplicationRoleAllEnvironments(integrationId: number, cssRoleCreateRequest: CssRoleCreateRequest, options?: RawAxiosRequestConfig) {
         return CSSIntegrationsApiFp(this.configuration).createCssApplicationRoleAllEnvironments(integrationId, cssRoleCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Appoint every valid row of a bulk administrator CSV
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {AdminRoleAuthGroup} tier 
+     * @param {string} body 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).createCssBulkAdmins(integrationId, environment, tier, body, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1911,6 +2114,21 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
      */
     public getCssUserRoleAssignments(integrationId: number, environment: string, options?: RawAxiosRequestConfig) {
         return CSSIntegrationsApiFp(this.configuration).getCssUserRoleAssignments(integrationId, environment, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Validate a bulk administrator CSV and resolve its users and roles
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {AdminRoleAuthGroup} tier 
+     * @param {string} body 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public previewCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).previewCssBulkAdmins(integrationId, environment, tier, body, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
