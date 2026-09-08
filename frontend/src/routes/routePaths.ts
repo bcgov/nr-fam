@@ -18,6 +18,8 @@ export const ROUTES = {
     addApplicationAdmin: "/manage-permissions/add-application-admin",
     addDevopsAdmin: "/manage-permissions/add-devops-admin",
     bulkGrant: "/manage-permissions/bulk-upload",
+    bulkGrantDelegatedAdmins: "/manage-permissions/bulk-upload-delegated-admins",
+    bulkGrantApplicationAdmins: "/manage-permissions/bulk-upload-application-admins",
     manageRoles: "/manage-roles",
     permissionHistory: "/permission-history",
     userHistory: "/user-history",
@@ -105,6 +107,8 @@ export const MENU: MenuLeaf[] = [
             ROUTES.addApplicationAdmin,
             ROUTES.addDevopsAdmin,
             ROUTES.bulkGrant,
+            ROUTES.bulkGrantDelegatedAdmins,
+            ROUTES.bulkGrantApplicationAdmins,
         ],
     },
     {

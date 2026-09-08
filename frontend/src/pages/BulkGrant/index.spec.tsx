@@ -640,7 +640,7 @@ describe("BulkGrant", () => {
             await upload();
 
             expect(
-                await screen.findByRole("button", { name: "Grant 1 permission(s)" })
+                await screen.findByRole("button", { name: "Grant 1 permission" })
             ).toBeInTheDocument();
         });
     });
@@ -662,7 +662,7 @@ describe("BulkGrant", () => {
         await upload();
 
         expect(
-            await screen.findByRole("button", { name: "Grant 1 permission(s)" })
+            await screen.findByRole("button", { name: "Grant 1 permission" })
         ).toBeInTheDocument();
     });
 
@@ -672,7 +672,7 @@ describe("BulkGrant", () => {
         await upload();
 
         expect(
-            await screen.findByRole("button", { name: "Grant 0 permission(s)" })
+            await screen.findByRole("button", { name: "Grant 0 permissions" })
         ).toBeDisabled();
     });
 
@@ -681,7 +681,7 @@ describe("BulkGrant", () => {
         await upload();
 
         await userEvent.click(
-            await screen.findByRole("button", { name: "Grant 1 permission(s)" })
+            await screen.findByRole("button", { name: "Grant 1 permission" })
         );
 
         await waitFor(() => expect(createCssBulkGrants).toHaveBeenCalled());
@@ -743,7 +743,7 @@ describe("BulkGrant", () => {
         renderPage();
         await upload();
         await userEvent.click(
-            await screen.findByRole("button", { name: "Grant 1 permission(s)" })
+            await screen.findByRole("button", { name: "Grant 1 permission" })
         );
 
         // "Ready" was a promise; "Granted" is a report, and the heading says so.

@@ -491,6 +491,123 @@
         }
       }
     },
+    "/css-applications/{integrationId}/{environment}/bulk-admins/{tier}" : {
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Appoint every valid row of a bulk administrator CSV",
+        "operationId" : "create_css_bulk_admins",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "tier",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/AdminRoleAuthGroup"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "text/csv" : {
+              "schema" : {
+                "type" : "string"
+              }
+            },
+            "text/plain" : {
+              "schema" : {
+                "type" : "string"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/CssBulkGrantRowDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/{environment}/bulk-admins/{tier}/preview" : {
+      "post" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Validate a bulk administrator CSV and resolve its users and roles",
+        "operationId" : "preview_css_bulk_admins",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "tier",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/AdminRoleAuthGroup"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "text/csv" : {
+              "schema" : {
+                "type" : "string"
+              }
+            },
+            "text/plain" : {
+              "schema" : {
+                "type" : "string"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssBulkGrantPreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/css-applications/{integrationId}/{environment}/application-admins" : {
       "post" : {
         "tags" : [ "CSS Integrations" ],
@@ -1539,6 +1656,10 @@
         },
         "required" : [ "error_count", "rows", "valid_count" ]
       },
+      "AdminRoleAuthGroup" : {
+        "type" : "string",
+        "enum" : [ "FAM_ADMIN", "APP_ADMIN", "DELEGATED_ADMIN", "DEVOPS_ADMIN" ]
+      },
       "CssRoleBulkCreateResultDto" : {
         "properties" : {
           "role_code" : {
@@ -1925,10 +2046,6 @@
           }
         },
         "required" : [ "member_count", "role_name" ]
-      },
-      "AdminRoleAuthGroup" : {
-        "type" : "string",
-        "enum" : [ "FAM_ADMIN", "APP_ADMIN", "DELEGATED_ADMIN", "DEVOPS_ADMIN" ]
       },
       "CssAdministratorRowDto" : {
         "properties" : {

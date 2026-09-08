@@ -2,6 +2,9 @@ package ca.bc.gov.nrs.fam.controller;
 
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
+import ca.bc.gov.nrs.fam.constants.BulkUploadKind;
+import ca.bc.gov.nrs.fam.constants.ErrorCode;
+import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorRowDto;
 import ca.bc.gov.nrs.fam.dto.CssApplicationOptionDto;
@@ -446,6 +449,78 @@ public class CssIntegrationController {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
     return bulkGrantService.apply(integrationId, environment, csv, requester);
+  }
+
+  /**
+   * What a bulk administrator upload would appoint, without appointing it.
+   *
+   * <p>Same file, same preview, a different act: {@code DELEGATED_ADMIN} reads
+   * every column and appoints somebody to grant the role each row names,
+   * {@code APP_ADMIN} reads the first two and appoints for the application
+   * itself.
+   *
+   * <p>No DevOps tier. It is appointed for an application rather than for access
+   * within one, and nothing produces a list of them to load.
+   */
+  @PostMapping(value = "/{integrationId}/{environment}/bulk-admins/{tier}/preview",
+      consumes = {"text/csv", "text/plain"})
+  @Operation(operationId = "preview_css_bulk_admins",
+      summary = "Validate a bulk administrator CSV and resolve its users and roles")
+  public CssBulkGrantPreviewDto previewCssBulkAdmins(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @PathVariable AdminRoleAuthGroup tier,
+      @RequestBody String csv,
+      Requester requester) {
+
+    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+    return bulkGrantService.preview(
+        bulkKindOf(tier), integrationId, environment, csv, requester);
+  }
+
+  /**
+   * Apply a bulk administrator upload.
+   *
+   * <p>Re-validates rather than trusting a previewed payload back from the
+   * browser, and reports one outcome per row - the rows are unrelated people, so
+   * one refusal does not stop the rest.
+   */
+  @PostMapping(value = "/{integrationId}/{environment}/bulk-admins/{tier}",
+      consumes = {"text/csv", "text/plain"})
+  @Operation(operationId = "create_css_bulk_admins",
+      summary = "Appoint every valid row of a bulk administrator CSV")
+  public List<CssBulkGrantRowDto> createCssBulkAdmins(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @PathVariable AdminRoleAuthGroup tier,
+      @RequestBody String csv,
+      Requester requester) {
+
+    authorizationService.requireApplicationAccess(requester, integrationId, environment);
+    return bulkGrantService.apply(
+        bulkKindOf(tier), integrationId, environment, csv, requester);
+  }
+
+  /**
+   * The upload kind one administrator tier is loaded as.
+   *
+   * <p>DevOps is refused here rather than silently treated as one of the other
+   * two: the endpoint takes the tier enum, which has three values, and only two
+   * of them are things this loads.
+   */
+  private static BulkUploadKind bulkKindOf(AdminRoleAuthGroup tier) {
+    return switch (tier) {
+      case APP_ADMIN -> BulkUploadKind.APP_ADMINS;
+      case DELEGATED_ADMIN -> BulkUploadKind.DELEGATED_ADMINS;
+      case DEVOPS_ADMIN -> throw FamHttpException.badRequest(
+          ErrorCode.INVALID_REQUEST_PARAMETER,
+          "DevOps administrators are appointed one at a time, not by upload.");
+      // Not a tier of any one application - FAM_ADMIN is authority over FAM
+      // itself, so there is no application to load a file against.
+      case FAM_ADMIN -> throw FamHttpException.badRequest(
+          ErrorCode.INVALID_REQUEST_PARAMETER,
+          "FAM administrators are not appointed per application.");
+    };
   }
 
   /**

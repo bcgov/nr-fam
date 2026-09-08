@@ -1,5 +1,7 @@
 package ca.bc.gov.nrs.fam.service;
 
+import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
+import ca.bc.gov.nrs.fam.constants.BulkUploadKind;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.integration.ForestClientIntegrationService;
@@ -8,8 +10,10 @@ import ca.bc.gov.nrs.fam.constants.FamConstants;
 import ca.bc.gov.nrs.fam.constants.District;
 import ca.bc.gov.nrs.fam.constants.Region;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantPreviewDto;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantRowDto;
+import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssRoleOptionDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest;
@@ -121,8 +125,16 @@ public class BulkGrantService {
   /** What the upload would do. Writes nothing. */
   public CssBulkGrantPreviewDto preview(
       int integrationId, String environment, String csv, Requester requester) {
+    return preview(BulkUploadKind.USERS, integrationId, environment, csv, requester);
+  }
 
-    return CssBulkGrantPreviewDto.of(validate(integrationId, environment, csv, requester));
+  /** As {@link #preview}, for a file of administrators rather than of users. */
+  public CssBulkGrantPreviewDto preview(
+      BulkUploadKind kind, int integrationId, String environment, String csv,
+      Requester requester) {
+
+    return CssBulkGrantPreviewDto.of(
+        validate(kind, integrationId, environment, csv, requester));
   }
 
   /**
@@ -139,8 +151,15 @@ public class BulkGrantService {
    */
   public List<CssBulkGrantRowDto> apply(
       int integrationId, String environment, String csv, Requester requester) {
+    return apply(BulkUploadKind.USERS, integrationId, environment, csv, requester);
+  }
 
-    List<CssBulkGrantRowDto> rows = validate(integrationId, environment, csv, requester);
+  /** As {@link #apply}, for a file of administrators rather than of users. */
+  public List<CssBulkGrantRowDto> apply(
+      BulkUploadKind kind, int integrationId, String environment, String csv,
+      Requester requester) {
+
+    List<CssBulkGrantRowDto> rows = validate(kind, integrationId, environment, csv, requester);
     List<CssBulkGrantRowDto> outcomes = new ArrayList<>();
 
     for (CssBulkGrantRowDto row : rows) {
@@ -148,18 +167,26 @@ public class BulkGrantService {
         outcomes.add(row);
         continue;
       }
-      outcomes.add(grantOne(integrationId, environment, row, requester));
+      outcomes.add(grantOne(kind, integrationId, environment, row, requester));
     }
 
     long granted = outcomes.stream().filter(CssBulkGrantRowDto::valid).count();
-    log.info("Bulk grant on integration {} ({}): {} of {} row(s) granted by {}.",
-        integrationId, environment, granted, outcomes.size(), requester.userName());
+    log.info("Bulk {} on integration {} ({}): {} of {} row(s) applied by {}.",
+        kind, integrationId, environment, granted, outcomes.size(), requester.userName());
 
     return outcomes;
   }
 
   private CssBulkGrantRowDto grantOne(
-      int integrationId, String environment, CssBulkGrantRowDto row, Requester requester) {
+      BulkUploadKind kind, int integrationId, String environment, CssBulkGrantRowDto row,
+      Requester requester) {
+
+    if (kind == BulkUploadKind.APP_ADMINS) {
+      return appointAppAdmin(integrationId, environment, row, requester);
+    }
+    if (kind == BulkUploadKind.DELEGATED_ADMINS) {
+      return appointDelegate(integrationId, environment, row, requester);
+    }
 
     try {
       List<CssUserRoleAssignmentResult> results = cssIntegrationService.assignUserRoles(
@@ -194,6 +221,69 @@ public class BulkGrantService {
   }
 
   /**
+   * Appoint one row as an application administrator.
+   *
+   * <p>Delegates to the single-appointment path rather than assigning the role
+   * here. That path carries the tier rules, the self-appointment guard and the
+   * audit write, and a second implementation of it would be a second place for
+   * those to drift.
+   */
+  private CssBulkGrantRowDto appointAppAdmin(
+      int integrationId, String environment, CssBulkGrantRowDto row, Requester requester) {
+
+    try {
+      CssUserRoleAssignmentResult result = cssIntegrationService.appointApplicationAdmin(
+          integrationId, environment,
+          new CssAdministratorAppointRequest(row.userGuid(), row.userType()),
+          requester);
+
+      return result.assigned() ? row : withError(row, result.errorMessage() == null
+          ? "The appointment could not be made." : result.errorMessage());
+
+    } catch (FamHttpException e) {
+      return withError(row, e.getDescription());
+    } catch (RuntimeException e) {
+      log.warn("Bulk application-admin row {} failed: {}", row.lineNumber(), e.getMessage());
+      return withError(row, e.getMessage());
+    }
+  }
+
+  /**
+   * Appoint one row as a delegated administrator of the role it names.
+   *
+   * <p>One row is one delegation, so the scope columns carry a single value each
+   * - the same shape the users file uses, and for the same reason: a delegation
+   * names exactly one concrete role, and a row that named several would be
+   * unreadable line by line.
+   */
+  private CssBulkGrantRowDto appointDelegate(
+      int integrationId, String environment, CssBulkGrantRowDto row, Requester requester) {
+
+    try {
+      List<CssUserRoleAssignmentResult> results = cssIntegrationService.appointDelegatedAdmin(
+          integrationId, environment,
+          new CssDelegatedAdminRequest(
+              row.userGuid(), row.userType(), row.roleCode(), scopesOf(row)),
+          requester);
+
+      Optional<CssUserRoleAssignmentResult> failure =
+          results.stream().filter(result -> !result.assigned()).findFirst();
+
+      if (failure.isPresent()) {
+        return withError(row, failure.get().errorMessage() == null
+            ? "The delegation could not be made." : failure.get().errorMessage());
+      }
+      return row;
+
+    } catch (FamHttpException e) {
+      return withError(row, e.getDescription());
+    } catch (RuntimeException e) {
+      log.warn("Bulk delegated-admin row {} failed: {}", row.lineNumber(), e.getMessage());
+      return withError(row, e.getMessage());
+    }
+  }
+
+  /**
    * The scopes one validated row grants for.
    *
    * <p>One value per dimension, because one row is one grant. The grant path
@@ -221,12 +311,20 @@ public class BulkGrantService {
 
   private List<CssBulkGrantRowDto> validate(
       int integrationId, String environment, String csv, Requester requester) {
+    return validate(BulkUploadKind.USERS, integrationId, environment, csv, requester);
+  }
+
+  private List<CssBulkGrantRowDto> validate(
+      BulkUploadKind kind, int integrationId, String environment, String csv,
+      Requester requester) {
 
     List<ParsedRow> parsed = parse(csv);
 
     if (parsed.isEmpty()) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
-          "The file has no rows. Expected two columns: a username and a role.");
+          kind.needsRole()
+              ? "The file has no rows. Expected two columns: a username and a role."
+              : "The file has no rows. Expected two columns: a username and a user type.");
     }
     if (parsed.size() > maxRows) {
       throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
@@ -235,7 +333,8 @@ public class BulkGrantService {
     }
 
     // One read of the application's roles for the whole file, rather than per row.
-    Map<String, CssRoleOptionDto> roles = cssIntegrationService
+    // Skipped for an application-admin file, which names no role at all.
+    Map<String, CssRoleOptionDto> roles = !kind.needsRole() ? Map.of() : cssIntegrationService
         .getRoles(integrationId, environment).stream()
         .collect(Collectors.toMap(
             role -> role.name().toUpperCase(Locale.ROOT),
@@ -272,9 +371,22 @@ public class BulkGrantService {
     */
     Map<String, Set<String>> heldRoles = new HashMap<>();
 
+    /*
+        Who already holds the appointment, for an administrator file.
+
+        One listing for the whole file rather than a per-person read of FAM's own
+        integration: the appointments live there rather than on the application
+        being administered, so `heldRoles` above - which reads the application -
+        would answer a different question and answer it wrongly.
+
+        Keyed GUID first, then the concrete role for a delegation. An application
+        administrator has no role to name, so the key is the GUID alone.
+    */
+    Set<String> appointed = appointmentsAlreadyHeld(kind, integrationId, environment);
+
     for (ParsedRow row : parsed) {
-      rows.add(validateRow(integrationId, environment, row, roles, clients, seen,
-          resolvedUsers, heldRoles, requester));
+      rows.add(validateRow(kind, integrationId, environment, row, roles, clients, seen,
+          resolvedUsers, heldRoles, appointed, requester));
     }
 
     log.debug("Validated {} row(s) with {} directory lookup(s).",
@@ -282,19 +394,140 @@ public class BulkGrantService {
     return rows;
   }
 
-  private CssBulkGrantRowDto validateRow(
+  /**
+   * One row of an application-admin file.
+   *
+   * <p>Short by nature: the tier is the whole appointment, so there is no role to
+   * resolve, no scope to check and no per-role grantability question. What is
+   * left is who they are, whether FAM will have them, and whether they are
+   * already appointed.
+   */
+  private CssBulkGrantRowDto validateAppAdminRow(
       int integrationId, String environment, ParsedRow row,
+      Map<String, Resolved> resolvedUsers, Set<String> appointed, Requester requester) {
+
+    /*
+        Looked up in the IDIR directory and nowhere else.
+
+        The tier is IDIR-only, so searching both and rejecting afterwards would
+        spend a slow BCeID lookup to reach a refusal already known - and would
+        let a BCeID username that happens to match resolve to a person the file
+        cannot be asking for. Asking the one directory that can answer makes
+        "no IDIR account named that" the natural result rather than a check
+        bolted on after.
+    */
+    Resolved resolved;
+    try {
+      resolved = resolvedUsers.computeIfAbsent(
+          row.userName().toUpperCase(Locale.ROOT) + "|IDIR",
+          key -> resolve(apiInstanceEnvResolver.resolveDirectory(environment),
+              row.userName(), UserType.IDIR));
+    } catch (FamHttpException e) {
+      return invalid(row, "", "", "", e.getDescription());
+    }
+    if (resolved == null) {
+      return invalid(row, "", "", "",
+          "No IDIR account named %s exists. Application administrators must be "
+              .formatted(row.userName())
+              + "IDIR accounts.");
+    }
+
+    /*
+        Belt and braces on the tier rule, which the single-appointment path also
+        enforces. The lookup above should make this unreachable; it stays because
+        the guarantee is the tier's, not the directory call's, and a later change
+        to how resolution works must not quietly take it away.
+    */
+    if (resolved.userType() != UserType.IDIR) {
+      return invalid(row, "", "", "",
+          "Application administrators must be IDIR accounts.");
+    }
+
+    CssBulkGrantRowDto candidate = new CssBulkGrantRowDto(
+        row.lineNumber(), resolved.userGuid(), null, resolved.userType(),
+        resolved.userName(), resolved.firstName(), resolved.lastName(),
+        resolved.email(), resolved.organization(), null,
+        null, null, null, null, null, null,
+        true, false, null);
+
+    if (appointed.contains(appointmentKey(resolved.userGuid(), null))) {
+      return candidate.asAlreadyGranted();
+    }
+
+    try {
+      authorizationService.forbidSelfGrant(requester, resolved.userGuid());
+      authorizationService.requireDelegatedAdminManagement(
+          requester, integrationId, environment);
+      targetOrganizationGuard.requireSameOrganization(
+          requester, apiInstanceEnvResolver.resolveDirectory(environment),
+          resolved.userType(), resolved.userGuid());
+    } catch (FamHttpException e) {
+      return withError(candidate, e.getDescription());
+    }
+
+    return candidate;
+  }
+
+  /**
+   * The appointments this application already has, as comparison keys.
+   *
+   * <p>Empty for a users file, which asks a different question and answers it
+   * per person against the application's own roles.
+   */
+  private Set<String> appointmentsAlreadyHeld(
+      BulkUploadKind kind, int integrationId, String environment) {
+
+    if (kind == BulkUploadKind.USERS) {
+      return Set.of();
+    }
+    AdminRoleAuthGroup tier = kind == BulkUploadKind.APP_ADMINS
+        ? AdminRoleAuthGroup.APP_ADMIN
+        : AdminRoleAuthGroup.DELEGATED_ADMIN;
+
+    return cssIntegrationService.getAdministrators(integrationId, environment, tier).stream()
+        .filter(existing -> existing.userGuid() != null)
+        .map(existing -> appointmentKey(
+            existing.userGuid(),
+            kind == BulkUploadKind.APP_ADMINS ? null : existing.delegatedRoleName()))
+        .collect(Collectors.toSet());
+  }
+
+  /** GUID, plus the concrete role for a delegation. Upper-cased on both sides. */
+  private static String appointmentKey(String userGuid, String roleName) {
+    return userGuid.toUpperCase(Locale.ROOT)
+        + (roleName == null ? "" : "|" + roleName.toUpperCase(Locale.ROOT));
+  }
+
+  private CssBulkGrantRowDto validateRow(
+      BulkUploadKind kind, int integrationId, String environment, ParsedRow row,
       Map<String, CssRoleOptionDto> roles, Map<String, ForestClient> clients,
       Set<String> seen, Map<String, Resolved> resolvedUsers,
-      Map<String, Set<String>> heldRoles, Requester requester) {
+      Map<String, Set<String>> heldRoles, Set<String> appointed, Requester requester) {
 
     String district = row.district().toUpperCase(Locale.ROOT);
     String region = row.region().toUpperCase(Locale.ROOT);
     String clientNumber = padClientNumber(row.forestClient());
 
-    if (row.userName().isEmpty() || row.roleCode().isEmpty()) {
+    if (row.userName().isEmpty()) {
+      return invalid(row, district, region, clientNumber, "A username is required.");
+    }
+    if (kind.needsRole() && row.roleCode().isEmpty()) {
       return invalid(row, district, region, clientNumber,
           "Both a username and a role are required.");
+    }
+    /*
+        An application administrator is appointed for the application, not for a
+        role in it, and the tier is IDIR-only - so there is nothing for any of
+        the other columns to mean. Refused rather than ignored: a file carrying
+        them was written against a different template, and a file whose second
+        column says BCEID is asking for something FAM does not do.
+    */
+    if (!kind.needsRole()
+        && !(row.userType().isEmpty() && row.roleCode().isEmpty() && district.isEmpty()
+             && region.isEmpty() && clientNumber.isEmpty())) {
+      return invalid(row, district, region, clientNumber,
+          "An application admin file has one column: a username. "
+              + "Application admins are always IDIR accounts.");
     }
 
     // The key includes the scope: the same person may legitimately get the same
@@ -315,6 +548,11 @@ public class BulkGrantService {
           "%s is an administrative role. Appoint administrators from the "
               .formatted(row.roleCode())
               + "Delegated admins or Application admins tab, not by upload.");
+    }
+
+    if (!kind.needsRole()) {
+      return validateAppAdminRow(
+          integrationId, environment, row, resolvedUsers, appointed, requester);
     }
 
     CssRoleOptionDto role = roles.get(row.roleCode().toUpperCase(Locale.ROOT));
@@ -490,21 +728,34 @@ public class BulkGrantService {
     String wouldAssign = CssRoleNaming.buildScopedRoleName(role.name(), scopesFor(
         district, region, clientNumber));
 
-    Set<String> held = heldRoles.computeIfAbsent(
-        resolved.userGuid().toUpperCase(Locale.ROOT),
-        guid -> cssIntegrationService.rolesHeldBy(
-            integrationId, environment, resolved.userGuid(), resolved.userType()));
+    if (kind == BulkUploadKind.DELEGATED_ADMINS) {
+      // The delegation lives on FAM's own integration, against the concrete role
+      // it authorises - not on the application, which is what heldRoles reads.
+      if (appointed.contains(appointmentKey(resolved.userGuid(), wouldAssign))) {
+        return candidate.asAlreadyGranted();
+      }
+    } else {
+      Set<String> held = heldRoles.computeIfAbsent(
+          resolved.userGuid().toUpperCase(Locale.ROOT),
+          guid -> cssIntegrationService.rolesHeldBy(
+              integrationId, environment, resolved.userGuid(), resolved.userType()));
 
-    if (held.contains(wouldAssign)) {
-      return candidate.asAlreadyGranted();
+      if (held.contains(wouldAssign)) {
+        return candidate.asAlreadyGranted();
+      }
     }
 
     // The same per-row rules the single grant path applies, checked now so the
     // confirmation is honest rather than discovered halfway through applying.
     try {
       authorizationService.forbidSelfGrant(requester, resolved.userGuid());
-      authorizationService.requireGrantableRoles(
-          requester, integrationId, environment, List.of(role.name()));
+      if (kind == BulkUploadKind.DELEGATED_ADMINS) {
+        authorizationService.requireDelegatedAdminManagement(
+            requester, integrationId, environment);
+      } else {
+        authorizationService.requireGrantableRoles(
+            requester, integrationId, environment, List.of(role.name()));
+      }
       // A Business BCeID uploader may only grant within their own organisation.
       // The apply step enforces this anyway, inside the grant path - checking it
       // here too is what keeps the confirmation honest, rather than showing a row

@@ -16,7 +16,10 @@ import static org.mockito.Mockito.when;
 import ca.bc.gov.nrs.fam.constants.EmailSendingStatus;
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.constants.UserType;
+import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
 import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
+import ca.bc.gov.nrs.fam.constants.BulkUploadKind;
+import ca.bc.gov.nrs.fam.dto.CssAdministratorRowDto;
 import ca.bc.gov.nrs.fam.dto.CssScopeSelection;
 import ca.bc.gov.nrs.fam.constants.District;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantRowDto;
@@ -34,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -923,5 +927,181 @@ class BulkGrantServiceTest {
     verify(cssIntegrationService, org.mockito.Mockito.atLeastOnce())
         .getRoles(INTEGRATION, ENV);
     verify(userLookupClient, org.mockito.Mockito.atLeastOnce()).getIdirDetail(any(), eq(USERNAME));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Administrator uploads - the same file, a different act
+  // ---------------------------------------------------------------------------
+
+  @Nested
+  @DisplayName("Bulk administrator uploads")
+  class AdministratorUploads {
+
+    private List<CssBulkGrantRowDto> previewAs(BulkUploadKind kind, String csv) {
+      return service.preview(kind, INTEGRATION, ENV, csv, UPLOADER).rows();
+    }
+
+    @Test
+    @DisplayName("an application admin file is one column, and names no role")
+    void appAdminFileTakesOneColumn() {
+      // The tier is the whole appointment, so there is nothing for a role
+      // column to mean - and nothing for a user type column either.
+      assertThat(previewAs(BulkUploadKind.APP_ADMINS, USERNAME))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.valid()).isTrue();
+            assertThat(row.roleCode()).isNull();
+            assertThat(row.userName()).isEqualTo("JANES");
+            assertThat(row.userType()).isEqualTo(UserType.IDIR);
+          });
+    }
+
+    @Test
+    @DisplayName("an application admin file refuses a row carrying a user type")
+    void appAdminFileRefusesAUserType() {
+      /*
+          Even when it says IDIR. The column was dropped, so a file that still
+          carries it was written against the old template - and the same file
+          saying BCEID would be asking for something the tier does not allow.
+          Refusing both is one rule; accepting the harmless spelling would be
+          two, and the second would have to be explained.
+      */
+      assertThat(previewAs(BulkUploadKind.APP_ADMINS, USERNAME + ",IDIR"))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.valid()).isFalse();
+            assertThat(row.error()).contains("one column");
+          });
+    }
+
+    @Test
+    @DisplayName("an application admin file refuses a row carrying a role")
+    void appAdminFileRefusesARole() {
+      /*
+          Refused rather than ignored. A file with a role column was written
+          against the users template, and silently dropping the column would
+          appoint somebody to administer the whole application when the file
+          appears to ask for one role.
+      */
+      assertThat(previewAs(BulkUploadKind.APP_ADMINS, USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.valid()).isFalse();
+            assertThat(row.error()).contains("one column");
+          });
+    }
+
+    @Test
+    @DisplayName("a username that is not an IDIR account is refused, and says why")
+    void appAdminsAreIdirOnly() {
+      /*
+          A Business BCeID account of the same name exists here and must not be
+          reached. The lookup asks the IDIR directory alone, so the BCeID stub
+          below is never consulted - which is the point: searching both would
+          resolve this row to a person the file cannot be asking for.
+      */
+      when(userLookupClient.getIdirDetail(any(), eq(USERNAME))).thenReturn(Optional.empty());
+
+      assertThat(previewAs(BulkUploadKind.APP_ADMINS, USERNAME))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.valid()).isFalse();
+            assertThat(row.error()).contains("IDIR");
+          });
+
+      verify(userLookupClient, org.mockito.Mockito.never())
+          .getBusinessBceid(any(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("somebody already appointed is shown and skipped, not appointed again")
+    void alreadyAnAppAdmin() {
+      when(cssIntegrationService.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.APP_ADMIN))
+          .thenReturn(List.of(administrator(GUID, null)));
+
+      assertThat(previewAs(BulkUploadKind.APP_ADMINS, USERNAME))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.alreadyGranted()).isTrue();
+            assertThat(row.valid()).isFalse();
+          });
+    }
+
+    @Test
+    @DisplayName("a delegated admin file reads every column, as a users file does")
+    void delegatedAdminFileTakesEveryColumn() {
+      // A delegation authorises exactly one concrete role, so the columns and
+      // their meaning are the same - what differs is what is done with them.
+      assertThat(previewAs(
+          BulkUploadKind.DELEGATED_ADMINS, USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.valid()).isTrue();
+            assertThat(row.roleCode()).isEqualTo("FSPTS_VIEW_ALL");
+          });
+    }
+
+    @Test
+    @DisplayName("an existing delegation of the same role is shown and skipped")
+    void alreadyDelegatedTheSameRole() {
+      /*
+          Compared against FAM's own integration, where delegations live -
+          not against the application, which is what the users path reads. The
+          two answer different questions and the wrong one answers wrongly.
+      */
+      when(cssIntegrationService.getAdministrators(
+          INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+          .thenReturn(List.of(administrator(GUID, "FSPTS_VIEW_ALL")));
+
+      assertThat(previewAs(
+          BulkUploadKind.DELEGATED_ADMINS, USERNAME + ",IDIR,FSPTS_VIEW_ALL"))
+          .singleElement()
+          .satisfies(row -> assertThat(row.alreadyGranted()).isTrue());
+    }
+
+    @Test
+    @DisplayName("a delegation of a different role still goes ahead")
+    void adifferentRoleIsADifferentDelegation() {
+      when(cssIntegrationService.getRoles(INTEGRATION, ENV)).thenReturn(List.of(
+          role("FSPTS_VIEW_ALL", false, false), role("FSPTS_EDIT", false, false)));
+      when(cssIntegrationService.getAdministrators(
+          INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+          .thenReturn(List.of(administrator(GUID, "FSPTS_VIEW_ALL")));
+
+      assertThat(previewAs(BulkUploadKind.DELEGATED_ADMINS, USERNAME + ",IDIR,FSPTS_EDIT"))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.alreadyGranted()).isFalse();
+            assertThat(row.valid()).isTrue();
+          });
+    }
+
+    @Test
+    @DisplayName("applying appoints through the single-appointment path")
+    void applyDelegatesToTheAppointmentPath() {
+      // Not a second implementation of appointing: that path carries the tier
+      // rules, the self-appointment guard and the audit write.
+      when(cssIntegrationService.appointApplicationAdmin(anyInt(), anyString(), any(), any()))
+          .thenReturn(new CssUserRoleAssignmentResult(
+              "APP_ADMIN_54321_DEV", false, true, null, EmailSendingStatus.NOT_REQUIRED));
+
+      assertThat(service.apply(
+          BulkUploadKind.APP_ADMINS, INTEGRATION, ENV, USERNAME, UPLOADER))
+          .singleElement()
+          .satisfies(row -> assertThat(row.valid()).isTrue());
+
+      verify(cssIntegrationService).appointApplicationAdmin(
+          eq(INTEGRATION), eq(ENV), any(), eq(UPLOADER));
+      verify(cssIntegrationService, org.mockito.Mockito.never())
+          .assignUserRoles(anyInt(), anyString(), any(), any());
+    }
+
+    private CssAdministratorRowDto administrator(String userGuid, String delegatedRoleName) {
+      return new CssAdministratorRowDto(
+          "JANES", userGuid, "IDIR", "Jane", "Smith", "jane@gov.bc.ca",
+          delegatedRoleName == null
+              ? AdminRoleAuthGroup.APP_ADMIN : AdminRoleAuthGroup.DELEGATED_ADMIN,
+          "ROLE", delegatedRoleName, delegatedRoleName, List.of());
+    }
   }
 }

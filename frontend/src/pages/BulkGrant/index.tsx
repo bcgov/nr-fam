@@ -10,7 +10,7 @@ import {
     TableRow,
 } from "@carbon/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CssBulkGrantRowDto } from "fam-api";
+import type { AdminRoleAuthGroup, CssBulkGrantRowDto } from "fam-api";
 import { useEffect, useRef, useState, type FC } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chip } from "@/components/Chip";
@@ -28,8 +28,9 @@ import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import {
     describeUploadError,
+    BULK_COPY,
     downloadTemplateCsv,
-    EXAMPLE_CSV,
+    type BulkKind,
     fullName,
 } from "@/pages/BulkGrant/bulkUtils";
 import { useGrantTarget } from "../grantTarget";
@@ -69,7 +70,20 @@ import "./BulkGrant.css";
 */
 const BULK_TIMEOUT_MS = FIVE_MINUTES;
 
-export const BulkGrant: FC = () => {
+export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
+    const copy = BULK_COPY[kind];
+
+    /*
+        Null for a users file, and the administrator tier otherwise. One value
+        rather than a boolean plus a lookup: it is what the endpoint takes, and
+        it is what decides which endpoint that is.
+    */
+    const tier: AdminRoleAuthGroup | null =
+        kind === "delegatedAdmins"
+            ? "DELEGATED_ADMIN"
+            : kind === "applicationAdmins"
+              ? "APP_ADMIN"
+              : null;
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { integrationId, environment } = useGrantTarget();
@@ -102,24 +116,47 @@ export const BulkGrant: FC = () => {
     const alreadyRows = rows.filter((row) => row.already_granted);
     const errorRows = rows.filter((row) => !row.valid && !row.already_granted);
 
+    const api = AdminMgmtApiService.cssIntegrationsApi;
+    const options = { timeout: BULK_TIMEOUT_MS };
+
     const previewMutation = useMutation({
         mutationFn: (text: string) =>
-            AdminMgmtApiService.cssIntegrationsApi
-                .previewCssBulkGrants(integrationId, environment, text, {
-                    timeout: BULK_TIMEOUT_MS,
-                })
-                .then((res) => res.data),
+            (tier
+                ? api.previewCssBulkAdmins(
+                      integrationId,
+                      environment,
+                      tier,
+                      text,
+                      options
+                  )
+                : api.previewCssBulkGrants(
+                      integrationId,
+                      environment,
+                      text,
+                      options
+                  )
+            ).then((res) => res.data),
         onSuccess: (preview) => setRows(preview.rows),
         onError: (error: unknown) => setUploadError(describeUploadError(error)),
     });
 
     const applyMutation = useMutation({
         mutationFn: () =>
-            AdminMgmtApiService.cssIntegrationsApi
-                .createCssBulkGrants(integrationId, environment, csv, {
-                    timeout: BULK_TIMEOUT_MS,
-                })
-                .then((res) => res.data),
+            (tier
+                ? api.createCssBulkAdmins(
+                      integrationId,
+                      environment,
+                      tier,
+                      csv,
+                      options
+                  )
+                : api.createCssBulkGrants(
+                      integrationId,
+                      environment,
+                      csv,
+                      options
+                  )
+            ).then((res) => res.data),
         onSuccess: (outcomes) => {
             setRows(outcomes);
             setApplied(true);
@@ -280,8 +317,8 @@ export const BulkGrant: FC = () => {
     return (
         <div className="bulk-grant-container">
             <PageTitle
-                title="Bulk upload permissions"
-                subtitle={`Grant roles to many users in ${applicationName}`}
+                title={copy.title}
+                subtitle={`${copy.description} ${applicationName}.`}
             />
 
             {/*
@@ -303,13 +340,13 @@ export const BulkGrant: FC = () => {
                     <button
                         type="button"
                         className="template-link"
-                        onClick={downloadTemplateCsv}
+                        onClick={() => downloadTemplateCsv(kind)}
                     >
                         Download the template
                     </button>
                     .
                 </p>
-                <pre className="example">{EXAMPLE_CSV}</pre>
+                <pre className="example">{copy.example}</pre>
             </section>
 
             {/*
@@ -601,7 +638,7 @@ export const BulkGrant: FC = () => {
                                                 }
                                                 onClick={() => applyMutation.mutate()}
                                             >
-                                                {`Grant ${validRows.length} permission(s)`}
+                                                {copy.action(validRows.length)}
                                             </Button>
                                         </>
                                     )}
