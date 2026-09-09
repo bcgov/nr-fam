@@ -886,7 +886,7 @@ public class CssIntegrationService {
     // Legacy's enforce_self_grant_guard. Without it an application administrator
     // could delegate themselves roles, which is pointless at best and, once the
     // tiers diverge further, a way to keep authority after losing the higher one.
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
 
     // A Business BCeID administrator may only appoint within their own
     // organisation, the same rule the grant path applies.
@@ -972,7 +972,7 @@ public class CssIntegrationService {
 
     authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
     requireIdirAdministrator(request.userType(), "an application administrator");
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
     targetOrganizationGuard.requireSameOrganization(
         requester, apiInstanceEnvResolver.resolveDirectory(environment),
         request.userType(), request.userGuid());
@@ -1019,7 +1019,7 @@ public class CssIntegrationService {
     // Removing yourself is refused for the same reason appointing yourself is:
     // an administrator who can drop their own tier mid-session leaves the screen
     // in a state that disagrees with their token until they sign in again.
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
 
     String roleName = FamAdminRole.appAdmin(integrationId, environment);
     cssApiService.removeUserRole(ownIntegrationId(), environment,
@@ -1079,7 +1079,7 @@ public class CssIntegrationService {
 
     authorizationService.requireDevopsAdminManagement(requester);
     requireIdirAdministrator(request.userType(), "a DevOps administrator");
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
     targetOrganizationGuard.requireSameOrganization(
         requester, apiInstanceEnvResolver.resolveDirectory(environment),
         request.userType(), request.userGuid());
@@ -1125,7 +1125,7 @@ public class CssIntegrationService {
     // Removing yourself is refused for the same reason appointing yourself is:
     // dropping your own tier mid-session leaves the screen disagreeing with the
     // token until the next sign-in.
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
 
     String roleName = FamAdminRole.devopsAdmin(integrationId, environment);
     cssApiService.removeUserRole(ownIntegrationId(), environment,
@@ -1151,7 +1151,7 @@ public class CssIntegrationService {
       Requester requester) {
 
     authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
     targetOrganizationGuard.requireSameOrganization(
         requester, apiInstanceEnvResolver.resolveDirectory(environment),
         request.userType(), request.userGuid());
@@ -1707,7 +1707,7 @@ public class CssIntegrationService {
       int integrationId, String environment, CssUserRoleAssignmentRequest request,
       Requester requester) {
 
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
 
     // A Business BCeID administrator may only grant within their own
     // organisation. Checked here rather than in the controller for the same
@@ -1886,7 +1886,7 @@ public class CssIntegrationService {
       int integrationId, String environment, CssUserRoleRevokeRequest request,
       Requester requester) {
 
-    authorizationService.forbidSelfGrant(requester, request.userGuid());
+    authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
     targetOrganizationGuard.requireSameOrganization(
         requester, apiInstanceEnvResolver.resolveDirectory(environment),
         request.userType(), request.userGuid());

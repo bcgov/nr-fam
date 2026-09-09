@@ -595,7 +595,7 @@ class BulkGrantServiceTest {
   void refusesSelfGrant() {
     org.mockito.Mockito.doThrow(FamHttpException.forbidden("self_grant_prohibited",
             "You cannot change your own permissions. Ask another administrator to do it for you."))
-        .when(authorizationService).forbidSelfGrant(any(), anyString());
+        .when(authorizationService).forbidSelfGrant(any(), anyString(), anyString());
 
     // The row carries the reason, not just a refusal: it is the one line the
     // uploader reads to learn why that person was skipped.

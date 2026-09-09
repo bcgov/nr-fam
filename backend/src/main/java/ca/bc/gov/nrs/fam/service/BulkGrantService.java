@@ -455,7 +455,7 @@ public class BulkGrantService {
     }
 
     try {
-      authorizationService.forbidSelfGrant(requester, resolved.userGuid());
+      authorizationService.forbidSelfGrant(requester, resolved.userGuid(), environment);
       authorizationService.requireDelegatedAdminManagement(
           requester, integrationId, environment);
       targetOrganizationGuard.requireSameOrganization(
@@ -748,7 +748,7 @@ public class BulkGrantService {
     // The same per-row rules the single grant path applies, checked now so the
     // confirmation is honest rather than discovered halfway through applying.
     try {
-      authorizationService.forbidSelfGrant(requester, resolved.userGuid());
+      authorizationService.forbidSelfGrant(requester, resolved.userGuid(), environment);
       if (kind == BulkUploadKind.DELEGATED_ADMINS) {
         authorizationService.requireDelegatedAdminManagement(
             requester, integrationId, environment);

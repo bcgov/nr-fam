@@ -12,6 +12,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpStatus;
 
@@ -177,11 +179,55 @@ class AuthorizationServiceTest {
   @Test
   @DisplayName("refuses a grant the requester is making to themselves")
   void refusesSelfGrant() {
-    // Unconditional: the old exemption for app admins on DEV/TEST of another
-    // application depended on FAM knowing application environments from its own
-    // tables, which it no longer does.
+    // The form with no environment stays unconditional: a change that belongs
+    // to no one environment cannot be exempted by one.
     assertThatThrownBy(() -> service.forbidSelfGrant(withRoles("X_ADMIN"), "aaaa"))
         .isInstanceOf(FamHttpException.class);
+  }
+
+  @ParameterizedTest(name = "in {0}")
+  @ValueSource(strings = {"dev", "test", "DEV", "Test", " dev "})
+  @DisplayName("stands aside below production, where self-granting is how people test")
+  void allowsSelfGrantBelowProduction(String environment) {
+    /*
+        Restored deliberately. Upstream had this exemption; it was dropped here
+        only because FAM read an application's environment from its own tables
+        and no longer had them. Under CSS the environment is a parameter of
+        every one of these calls, so the rule can be what it was meant to be.
+    */
+    assertThatCode(() ->
+        service.forbidSelfGrant(withRoles("X_ADMIN"), "aaaa", environment))
+        .doesNotThrowAnyException();
+  }
+
+  @ParameterizedTest(name = "in {0}")
+  @ValueSource(strings = {"prod", "PROD", " Prod "})
+  @DisplayName("still refuses in production, which is what the rule is for")
+  void refusesSelfGrantInProduction(String environment) {
+    assertThatThrownBy(() ->
+        service.forbidSelfGrant(withRoles("X_ADMIN"), "aaaa", environment))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(strings = {"  ", "staging", "development", "uat"})
+  @DisplayName("an unrecognised environment is treated as production")
+  void unrecognisedEnvironmentIsProduction(String environment) {
+    // Guessing wrong towards permissive is the expensive direction: a typo in
+    // an environment string must not switch a protection off.
+    assertThatThrownBy(() ->
+        service.forbidSelfGrant(withRoles("X_ADMIN"), "aaaa", environment))
+        .isInstanceOf(FamHttpException.class);
+  }
+
+  @Test
+  @DisplayName("below production it still allows a grant to somebody else")
+  void belowProductionIsNotAFreeForAll() {
+    // The exemption is about who the target is, not about what may be granted:
+    // every other rule still runs.
+    assertThatCode(() -> service.forbidSelfGrant(withRoles("X_ADMIN"), "BBBB", "dev"))
+        .doesNotThrowAnyException();
   }
 
   @Test

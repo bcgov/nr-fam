@@ -17,7 +17,11 @@ import { InlineSpinner } from "@/components/InlineSpinner";
 import { PageTitle } from "@/components/PageTitle";
 import { StepContainer } from "@/components/StepContainer";
 import { TableSkeleton } from "@/components/TableSkeleton";
-import { groupByRole } from "@/components/PermissionsTable/utils";
+import type { CssUserRoleRowDto } from "fam-api";
+import {
+    groupByRole,
+    type PermissionGroup,
+} from "@/components/PermissionsTable/utils";
 import { toRevokeRequest } from "@/components/PermissionsTable/utils";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
@@ -117,16 +121,33 @@ export const EditAppPermission: FC = () => {
             AppActlApiService.regionsApi.getRegions().then((res) => res.data),
     });
 
-    /** The grant being edited, found again by the key that grouped it. */
-    const group = useMemo(() => {
+    /*
+        Everything this person holds in this application, keyed by role.
+
+        Not only the grant that was clicked. The screen edits what somebody
+        holds here, so a role they hold and a role they do not are both things
+        it can change - and the row that was clicked decides which application
+        and person, not which roles are in scope.
+    */
+    const heldByRole = useMemo(() => {
         const rows = (assignmentsQuery.data ?? []).filter(
-            (row) =>
-                (row.user_guid ?? row.username) === userGuid &&
-                row.role_name === roleName &&
-                (row.expires_on ?? "") === heldExpiry
+            (row) => (row.user_guid ?? row.username) === userGuid
         );
-        return rows.length > 0 ? groupByRole(rows)[0] : null;
-    }, [assignmentsQuery.data, userGuid, roleName, heldExpiry]);
+        const byRole = new Map<string, PermissionGroup>();
+        for (const grouped of groupByRole(rows)) {
+            const name = grouped.assignments[0]?.role_name;
+            if (name) {
+                byRole.set(name, grouped);
+            }
+        }
+        return byRole;
+    }, [assignmentsQuery.data, userGuid]);
+
+    /** The grant that was clicked, which is what names the person and the expiry. */
+    const group = useMemo(
+        () => heldByRole.get(roleName) ?? null,
+        [heldByRole, roleName]
+    );
 
     const roleOptions: CssRoleOptionDto[] = useMemo(
         () => rolesQuery.data ?? [],
@@ -220,29 +241,26 @@ export const EditAppPermission: FC = () => {
         if (loaded || !group || roleOptions.length === 0) {
             return;
         }
-        const role = roleOptions.find((one) => one.name === roleName);
-        if (!role) {
+        const seeded = roleOptions
+            .filter((role) => heldByRole.has(role.name))
+            .map((role) =>
+                toSelection(
+                    heldByRole.get(role.name) as PermissionGroup,
+                    role,
+                    districtsQuery.data ?? [],
+                    regionsQuery.data ?? []
+                )
+            );
+        if (seeded.length === 0) {
             return;
         }
-        setRoles(
-            withResolvedNames(
-                [
-                    toSelection(
-                        group,
-                        role,
-                        districtsQuery.data ?? [],
-                        regionsQuery.data ?? []
-                    ),
-                ],
-                knownNames
-            )
-        );
+        setRoles(withResolvedNames(seeded, knownNames));
         setLoaded(true);
     }, [
         loaded,
         group,
+        heldByRole,
         roleOptions,
-        roleName,
         districtsQuery.data,
         regionsQuery.data,
         knownNames,
@@ -263,6 +281,28 @@ export const EditAppPermission: FC = () => {
         setRoles((current) => withResolvedNames(current, knownNames));
     }, [knownNames]);
 
+    /*
+        Ticking a role selects it with no scopes chosen yet; unticking drops it.
+
+        Unticking a role they hold is a revoke, which the save works out by
+        comparing this list against `heldByRole` - the state here is what the
+        person should end up with, not a list of operations.
+    */
+    const toggleRole = (role: CssRoleOptionDto) =>
+        setRoles((current) =>
+            current.some((one) => one.role.name === role.name)
+                ? current.filter((one) => one.role.name !== role.name)
+                : [
+                      ...current,
+                      {
+                          role,
+                          districts: [],
+                          regions: [],
+                          forestClients: [],
+                      },
+                  ]
+        );
+
     const updateSelection = (
         name: string,
         patch: Partial<Omit<RoleScopeSelection, "role">>
@@ -273,52 +313,103 @@ export const EditAppPermission: FC = () => {
             )
         );
 
-    const selection = roles[0] ?? null;
     const target = group?.assignments[0] ?? null;
 
     const saveMutation = useMutation({
         mutationFn: async () => {
-            if (!group || !selection) {
+            if (!target) {
                 return;
             }
-            const wanted = toScopeSelections(
-                selection.role,
-                selection.districts,
-                selection.forestClients,
-                selection.regions
-            );
-
-            // One combination per grant. An unscoped role has exactly one, with
-            // nothing in it.
-            const combinations = expand(wanted);
-            const diff = diffScopes(group, combinations);
 
             /*
-                An expiry change moves no combination, so the diff alone says
-                nothing has happened - and the form would report success over a
-                date that was never applied.
+                Per role, not once for the page.
 
-                Re-granting is what changes it: a role has one expiry marker, and
-                the grant path replaces any earlier one for the same role. So
-                when the date has moved, every combination the person keeps is
-                re-issued rather than only the new ones.
+                The expiry field applies to everything selected - it is one
+                date for this person's access here - but "has it changed" is a
+                question about each role's own expiry. Asking it once, against
+                the clicked row's date, re-granted every other role at that date
+                whether or not it had one, silently moving an expiry nobody
+                looked at and writing a GRANT audit row for access that did not
+                change.
             */
-            const expiryChanged = (expiresOn || "") !== heldExpiry;
-            const toGrant = plannedGrants(diff, combinations, expiryChanged);
+            const expiryChangedFor = (roleName: string) =>
+                (expiresOn || "") !==
+                (heldByRole.get(roleName)?.assignments[0]?.expires_on ?? "");
 
-            for (const combination of toGrant) {
+            const userType =
+                target.domain === "BCEID" ? UserType.BceidBus : UserType.Idir;
+
+            /*
+                Worked out per role, then applied in one pass.
+
+                Every grant goes before every revoke, for the whole save rather
+                than per role. If the two halves cannot both succeed the person
+                is better left holding too much - which the table shows and
+                somebody can act on - than too little, which locks them out of
+                work with nothing on screen to say why. Doing it role by role
+                would put a revoke of one role before the grant of another and
+                lose that guarantee.
+            */
+            const grants: {
+                roleName: string;
+                combination: { type: string; value: string }[];
+            }[] = [];
+            const revokes: CssUserRoleRowDto[] = [];
+
+            for (const selection of roles) {
+                const combinations = expand(
+                    toScopeSelections(
+                        selection.role,
+                        selection.districts,
+                        selection.forestClients,
+                        selection.regions
+                    )
+                );
+                const held = heldByRole.get(selection.role.name);
+
+                if (!held) {
+                    // Newly ticked: nothing to diff against, so all of it is new.
+                    combinations.forEach((combination) =>
+                        grants.push({
+                            roleName: selection.role.name,
+                            combination,
+                        })
+                    );
+                    continue;
+                }
+
+                const diff = diffScopes(held, combinations);
+                plannedGrants(
+                    diff,
+                    combinations,
+                    expiryChangedFor(selection.role.name)
+                ).forEach(
+                    (combination) =>
+                        grants.push({
+                            roleName: selection.role.name,
+                            combination,
+                        })
+                );
+                revokes.push(...diff.removed);
+            }
+
+            // Unticked entirely: every assignment of that role goes.
+            for (const [name, held] of heldByRole) {
+                if (!roles.some((one) => one.role.name === name)) {
+                    revokes.push(...held.assignments);
+                }
+            }
+
+            for (const grant of grants) {
                 await AdminMgmtApiService.cssIntegrationsApi.createCssUserRoleAssignment(
                     integrationId,
                     environment,
                     {
                         user_guid: userGuid,
-                        user_type:
-                            target?.domain === "BCEID"
-                                ? UserType.BceidBus
-                                : UserType.Idir,
-                        role_name: roleName,
-                        target_user_email: target?.email ?? undefined,
-                        scopes: combination.map((scope) => ({
+                        user_type: userType,
+                        role_name: grant.roleName,
+                        target_user_email: target.email ?? undefined,
+                        scopes: grant.combination.map((scope) => ({
                             type: scope.type,
                             values: [scope.value],
                         })),
@@ -327,7 +418,7 @@ export const EditAppPermission: FC = () => {
                 );
             }
 
-            for (const assignment of diff.removed) {
+            for (const assignment of revokes) {
                 await AdminMgmtApiService.cssIntegrationsApi.deleteCssUserRoleAssignment(
                     integrationId,
                     environment,
@@ -335,7 +426,14 @@ export const EditAppPermission: FC = () => {
                 );
             }
 
-            return { ...diff, expiryChanged };
+            return {
+                added: grants.map((one) => one.combination),
+                removed: revokes,
+                // For the toast: whether any selected role's date moved.
+                expiryChanged: roles.some((one) =>
+                    expiryChangedFor(one.role.name)
+                ),
+            };
         },
         onSuccess: (diff) => {
             setSubmitError(null);
@@ -349,9 +447,8 @@ export const EditAppPermission: FC = () => {
             permissionToast.succeeded(
                 nothingHappened ? "Nothing to change" : "Permission updated",
                 nothingHappened
-                    ? `${roleLabel(selection!.role)} is unchanged for ${target?.username}.`
-                    : `${roleLabel(selection!.role)} for ${target?.username} in ` +
-                      `${applicationName}: ` +
+                    ? `Nothing changed for ${target?.username} in ${applicationName}.`
+                    : `${target?.username} in ${applicationName}: ` +
                       [
                           added ? `${added} added` : null,
                           removed ? `${removed} removed` : null,
@@ -403,7 +500,7 @@ export const EditAppPermission: FC = () => {
         );
     }
 
-    if (!group || !selection) {
+    if (!group) {
         return (
             <div className="add-app-permission-container">
                 <PageTitle
@@ -463,11 +560,9 @@ export const EditAppPermission: FC = () => {
                     ) : null}
 
                     <RoleMultiSelectTable
-                        roleOptions={roleOptions.filter(
-                            (one) => one.name === roleName
-                        )}
+                        roleOptions={roleOptions}
                         selections={roles}
-                        onToggle={() => undefined}
+                        onToggle={toggleRole}
                         environment={environment}
                         onDistrictsChange={(name, districts) =>
                             updateSelection(name, { districts })
@@ -493,6 +588,17 @@ export const EditAppPermission: FC = () => {
                         className="expiry-step"
                         divider
                     >
+                    {/*
+                        One date for every role selected above, so it is said
+                        out loud. A role already at this date is left alone
+                        rather than re-granted, which is why saving with the
+                        field untouched changes nothing.
+                    */}
+                    {roles.length > 1 ? (
+                        <p className="expiry-applies-to-all">
+                            Applies to all {roles.length} selected roles.
+                        </p>
+                    ) : null}
                     <ExpiryDateField
                         value={expiresOn}
                         onChange={setExpiresOn}
