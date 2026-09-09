@@ -36,6 +36,14 @@ class CssIntegrationControllerTest {
 
   @Mock private CssIntegrationService cssIntegrationService;
   @Mock private AuthorizationService authorizationService;
+  /*
+      The roster is named from the directory before it is returned, so these two
+      are on the path of every administrator read - see
+      AssignmentRowEnrichmentService, and the bug where a bulk-appointed
+      administrator showed as <guid>@azureidir with no name.
+  */
+  @Mock private ca.bc.gov.nrs.fam.service.AssignmentRowEnrichmentService enrichmentService;
+  @Mock private ca.bc.gov.nrs.fam.service.ApiInstanceEnvResolver apiInstanceEnvResolver;
   @InjectMocks private CssIntegrationController controller;
 
   private final Requester requester = Requester.builder().userName("JSMITH").build();
