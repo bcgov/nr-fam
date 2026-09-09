@@ -35,6 +35,7 @@ import {
 } from "../grantTarget";
 import { hasErrors, NO_ERRORS, validateGrantForm } from "../AddAppPermission/validation";
 import "./AddDelegatedAdmin.css";
+import { allowsSelfGrant } from "@/utils/UserUtils";
 
 /**
  * Appoint a delegated administrator.
@@ -267,6 +268,14 @@ export const AddDelegatedAdmin: FC = () => {
             <form onSubmit={onSubmit}>
                 <StepContainer title="Select a user" divider>
                     <UserSearch
+                        /*
+                            Below production, granting to yourself is how
+                            somebody tests the application they are building.
+                            The environment is the application's, not this
+                            FAM's - see allowsSelfGrant, and the same rule on
+                            the backend.
+                        */
+                        allowSelfSelection={allowsSelfGrant(environment)}
                         environment={environment}
                         multiUserMode={false}
                         // One at a time, so a multi-select would be misleading.

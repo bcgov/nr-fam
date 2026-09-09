@@ -388,7 +388,7 @@ describe("EditAppPermission", () => {
         await waitFor(() => expect(scopePanel()).not.toBeNull());
 
         await userEvent.click(screen.getByRole("combobox", { name: "Region" }));
-        await userEvent.click(await screen.findByText("Cariboo"));
+        await userEvent.click(await screen.findByText("Cariboo (CARIBOO)"));
         await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
         await waitFor(() =>
@@ -440,7 +440,7 @@ describe("EditAppPermission", () => {
         await waitFor(() => expect(scopePanel()).not.toBeNull());
 
         await userEvent.click(screen.getByRole("combobox", { name: "Region" }));
-        await userEvent.click(await screen.findByText("Cariboo"));
+        await userEvent.click(await screen.findByText("Cariboo (CARIBOO)"));
         await userEvent.click(
             within(scopePanel()).getByRole("button", { name: /Remove Skeena/ })
         );

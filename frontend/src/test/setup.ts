@@ -37,3 +37,16 @@ if (typeof window !== "undefined" && !window.matchMedia) {
             dispatchEvent: () => false,
         }) as MediaQueryList;
 }
+
+/*
+    jsdom implements no layout, so it has no scrollIntoView.
+
+    Carbon's ComboBox calls it whenever Downshift moves the highlight, which
+    happens as soon as typing narrows a list - so a test that types into a
+    picker throws where the browser would simply scroll. Stubbed rather than
+    worked around in each test: it is the environment that is missing the
+    method, not the component that is misusing it.
+*/
+if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+}

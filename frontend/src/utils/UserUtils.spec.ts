@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { domainLabel, formatFullName } from "./UserUtils";
+import { domainLabel, formatFullName,
+    allowsSelfGrant,
+} from "./UserUtils";
 
 /**
  * Composing a name from what CSS reports.
@@ -96,4 +98,36 @@ describe("domainLabel", () => {
         expect(domainLabel(null)).toBe("");
         expect(domainLabel(undefined)).toBe("");
     });
+});
+
+describe("allowsSelfGrant", () => {
+    /*
+        The environment is the APPLICATION's - the CSS integration's dev, test
+        or prod - not the FAM deployment the browser is talking to. A production
+        FAM administers dev, test and prod applications alike, and it is the one
+        being changed that decides.
+    */
+    it.each(["dev", "test", "DEV", "Test", " dev "])(
+        "allows it in %s, where granting yourself a role is how you test",
+        (environment) => {
+            expect(allowsSelfGrant(environment)).toBe(true);
+        }
+    );
+
+    it.each(["prod", "PROD", " Prod "])(
+        "refuses it in %s, which is what the rule is for",
+        (environment) => {
+            expect(allowsSelfGrant(environment)).toBe(false);
+        }
+    );
+
+    it.each([undefined, null, "", "  ", "staging", "development", "uat"])(
+        "treats %s as production",
+        (environment) => {
+            // Guessing wrong towards permissive is the expensive direction: a
+            // typo in an environment string must not switch a protection off.
+            // The backend applies the same rule the same way.
+            expect(allowsSelfGrant(environment)).toBe(false);
+        }
+    );
 });

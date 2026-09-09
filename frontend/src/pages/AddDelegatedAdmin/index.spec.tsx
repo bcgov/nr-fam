@@ -164,7 +164,15 @@ const tickRole = async (label: string) => {
  */
 const pickScope = async (noun: "District" | "Region", name: string) => {
     await userEvent.click(screen.getByRole("combobox", { name: noun }));
-    await userEvent.click(await screen.findByText(name));
+    /*
+        Options read "Name (CODE)". Matched on the name with a code in brackets
+        after it rather than on the name alone, so this helper also pins the
+        code being there - it is what the CSV and the audit trail carry, and
+        what somebody comparing this screen against a spreadsheet reads.
+    */
+    await userEvent.click(
+        await screen.findByText(new RegExp(`^${name} \\([A-Z0-9_-]+\\)$`))
+    );
 };
 
 /** The open scope panel inside a role's own row. */
