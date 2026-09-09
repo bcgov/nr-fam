@@ -172,6 +172,169 @@ describe("EditAppPermission", () => {
         getDistricts.mockReset().mockResolvedValue({ data: [] });
     });
 
+    describe("every role the application has", () => {
+        /*
+            The page used to filter the table down to the single role that was
+            clicked, so an application with two roles showed one row with a
+            ticked box and nothing to change. It edits what somebody holds here,
+            which includes the roles they do not hold yet.
+        */
+        const UNSCOPED_A = {
+            name: "REPT_ADMIN",
+            display_name: "Administrator",
+            role_type_district: false,
+            role_type_region: false,
+            role_type_client: false,
+        };
+        const UNSCOPED_B = {
+            name: "REPT_VIEWER",
+            display_name: "Viewer",
+            role_type_district: false,
+            role_type_region: false,
+            role_type_client: false,
+        };
+        const holdsAdmin = {
+            username: "JSMITH",
+            user_guid: "B2",
+            domain: "IDIR",
+            first_name: "Jane",
+            last_name: "Smith",
+            email: "jane@gov.bc.ca",
+            role_name: "REPT_ADMIN",
+            role_display_name: "Administrator",
+            scopes: [],
+        };
+        const UNSCOPED_QUERY =
+            "?integrationId=6538&environment=dev&userGuid=B2&roleName=REPT_ADMIN&expiresOn=";
+
+        beforeEach(() => {
+            getCssApplicationRoles
+                .mockReset()
+                .mockResolvedValue({ data: [UNSCOPED_A, UNSCOPED_B] });
+            getCssUserRoleAssignments
+                .mockReset()
+                .mockResolvedValue({ data: [holdsAdmin] });
+        });
+
+        it("lists them all, with the held ones ticked", async () => {
+            renderPage(UNSCOPED_QUERY);
+
+            const admin = await screen.findByRole("checkbox", {
+                name: /Administrator/,
+            });
+            const viewer = screen.getByRole("checkbox", { name: /Viewer/ });
+
+            expect(admin).toBeChecked();
+            expect(viewer).not.toBeChecked();
+        });
+
+        it("grants a role that is ticked", async () => {
+            renderPage(UNSCOPED_QUERY);
+
+            await userEvent.click(
+                await screen.findByRole("checkbox", { name: /Viewer/ })
+            );
+            await userEvent.click(
+                screen.getByRole("button", { name: "Save changes" })
+            );
+
+            await waitFor(() =>
+                expect(createCssUserRoleAssignment).toHaveBeenCalledTimes(1)
+            );
+            expect(createCssUserRoleAssignment.mock.calls[0][2]).toMatchObject({
+                role_name: "REPT_VIEWER",
+                user_guid: "B2",
+            });
+            // Administrator is untouched - it was not part of the change.
+            expect(deleteCssUserRoleAssignment).not.toHaveBeenCalled();
+        });
+
+        it("revokes a role that is unticked", async () => {
+            // Holding both, so unticking one leaves a selection - the
+            // empty-selection case is its own rule, tested below.
+            getCssUserRoleAssignments.mockResolvedValue({
+                data: [
+                    holdsAdmin,
+                    {
+                        ...holdsAdmin,
+                        role_name: "REPT_VIEWER",
+                        role_display_name: "Viewer",
+                    },
+                ],
+            });
+            renderPage(UNSCOPED_QUERY);
+
+            await waitFor(() =>
+                expect(
+                    screen.getByRole("checkbox", { name: /Viewer/ })
+                ).toBeChecked()
+            );
+            await userEvent.click(
+                screen.getByRole("checkbox", { name: /Viewer/ })
+            );
+            await userEvent.click(
+                screen.getByRole("button", { name: "Save changes" })
+            );
+
+            await waitFor(() =>
+                expect(deleteCssUserRoleAssignment).toHaveBeenCalledTimes(1)
+            );
+            expect(createCssUserRoleAssignment).not.toHaveBeenCalled();
+        });
+
+        it("will not strip every role, which is what Remove is for", async () => {
+            /*
+                Unticking the last one asks for all of this person's access in
+                the application to go. That is a deliberate act with its own
+                control on the permissions table, and a Save that did it quietly
+                is a worse door to leave open than one that says no.
+            */
+            renderPage(UNSCOPED_QUERY);
+
+            await userEvent.click(
+                await screen.findByRole("checkbox", { name: /Administrator/ })
+            );
+            await userEvent.click(
+                screen.getByRole("button", { name: "Save changes" })
+            );
+
+            expect(
+                await screen.findByText("Please select at least one role")
+            ).toBeInTheDocument();
+            expect(deleteCssUserRoleAssignment).not.toHaveBeenCalled();
+            expect(createCssUserRoleAssignment).not.toHaveBeenCalled();
+        });
+
+        it("grants before it revokes, so a failure leaves too much rather than too little", async () => {
+            // Swapping one role for another. If the halves cannot both succeed
+            // the person keeps access somebody can see and remove, rather than
+            // losing access with nothing on screen to say why.
+            const order: string[] = [];
+            createCssUserRoleAssignment.mockImplementation(async () => {
+                order.push("grant");
+                return { data: [] };
+            });
+            deleteCssUserRoleAssignment.mockImplementation(async () => {
+                order.push("revoke");
+                return { data: {} };
+            });
+
+            renderPage(UNSCOPED_QUERY);
+
+            await userEvent.click(
+                await screen.findByRole("checkbox", { name: /Viewer/ })
+            );
+            await userEvent.click(
+                screen.getByRole("checkbox", { name: /Administrator/ })
+            );
+            await userEvent.click(
+                screen.getByRole("button", { name: "Save changes" })
+            );
+
+            await waitFor(() => expect(order).toEqual(["grant", "revoke"]));
+        });
+    });
+
     it("says who is being edited instead of asking", async () => {
         // The row that was clicked already answered it, and a search box would
         // invite changing the answer - which is a different operation.

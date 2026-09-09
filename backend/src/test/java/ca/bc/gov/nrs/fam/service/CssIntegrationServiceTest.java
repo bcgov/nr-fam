@@ -607,9 +607,22 @@ class CssIntegrationServiceTest {
       .build();
 
   private static Requester requesterWithGuid(String guid) {
+    return requesterWithGuid(guid, ENV);
+  }
+
+  /*
+      The self-grant rule is production-only - below it, granting yourself a
+      role is how somebody tests the application they are building. So the
+      refusal tests run against PROD, and the requester has to administer PROD
+      too: with a dev role against a prod call the authorisation check refuses
+      first, and the test would pass without ever reaching the rule it is about.
+  */
+  private static final String PROD = "prod";
+
+  private static Requester requesterWithGuid(String guid, String environment) {
     return Requester.builder()
         .userName("JSMITH").userGuid(guid)
-        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
+        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, environment)))
         .build();
   }
 
@@ -618,10 +631,10 @@ class CssIntegrationServiceTest {
   void refusesSelfGrant() {
     // Nothing should reach CSS: the grant is rejected before any role is created
     // or assigned.
-    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899");
+    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899", PROD);
 
     assertThatThrownBy(() -> service.assignUserRoles(
-        INTEGRATION, ENV, request("DISTRICT", List.of("DCC")), self))
+        INTEGRATION, PROD, request("DISTRICT", List.of("DCC")), self))
         .isInstanceOf(FamHttpException.class);
 
     verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
@@ -634,10 +647,10 @@ class CssIntegrationServiceTest {
   @DisplayName("matches self-grant regardless of GUID casing")
   void refusesSelfGrantRegardlessOfCasing() {
     // FAM stores GUIDs upper case; a lower-cased one is the same person.
-    Requester self = requesterWithGuid("aabbccddeeff00112233445566778899");
+    Requester self = requesterWithGuid("aabbccddeeff00112233445566778899", PROD);
 
     assertThatThrownBy(() -> service.assignUserRoles(
-        INTEGRATION, ENV, request(null, List.of()), self))
+        INTEGRATION, PROD, request(null, List.of()), self))
         .isInstanceOf(FamHttpException.class);
   }
 
@@ -1001,10 +1014,10 @@ class CssIntegrationServiceTest {
   @DisplayName("refuses a requester revoking their own access")
   void refusesSelfRevoke() {
     // Removing access is not the safer direction, so it is not the looser one.
-    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899");
+    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899", PROD);
 
     assertThatThrownBy(() ->
-        service.revokeUserRole(INTEGRATION, ENV, revokeRequest(null, null), self))
+        service.revokeUserRole(INTEGRATION, PROD, revokeRequest(null, null), self))
         .isInstanceOf(FamHttpException.class);
 
     verify(cssApiService, never()).removeUserRole(anyInt(), anyString(), anyString(), anyString());
@@ -2122,13 +2135,10 @@ class CssIntegrationServiceTest {
   @Test
   @DisplayName("refuses to appoint yourself")
   void appointRefusesSelf() {
-    Requester self = Requester.builder()
-        .userName("JSMITH").userGuid("AABBCCDDEEFF00112233445566778899")
-        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
-        .build();
+    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899", PROD);
 
     assertThatThrownBy(() -> service.appointDelegatedAdmin(
-        INTEGRATION, ENV, appointment(null, List.of()), self))
+        INTEGRATION, PROD, appointment(null, List.of()), self))
         .isInstanceOf(FamHttpException.class);
 
     verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
@@ -2289,13 +2299,10 @@ class CssIntegrationServiceTest {
   @Test
   @DisplayName("refuses to appoint yourself as an application administrator")
   void appointAdminRefusesSelf() {
-    Requester self = Requester.builder()
-        .userName("JSMITH").userGuid("AABBCCDDEEFF00112233445566778899")
-        .accessRoles(List.of(FamAdminRole.appAdmin(INTEGRATION, ENV)))
-        .build();
+    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899", PROD);
 
     assertThatThrownBy(() -> service.appointApplicationAdmin(
-        INTEGRATION, ENV, appointAdmin(), self))
+        INTEGRATION, PROD, appointAdmin(), self))
         .isInstanceOf(FamHttpException.class);
 
     verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
@@ -2760,11 +2767,13 @@ class CssIntegrationServiceTest {
     }
 
     @Test
-    @DisplayName("refuses to appoint the caller themselves")
+    @DisplayName("puts a self-appointment through the rule, environment and all")
     void refusesSelfAppointment() {
+      // The environment is part of the question now: the rule applies in
+      // production and stands aside below it.
       service.appointDevopsAdmin(INTEGRATION, ENV, appoint, famAdmin);
 
-      verify(authorizationService).forbidSelfGrant(famAdmin, "TARGETGUID");
+      verify(authorizationService).forbidSelfGrant(famAdmin, "TARGETGUID", ENV);
     }
 
     @Test

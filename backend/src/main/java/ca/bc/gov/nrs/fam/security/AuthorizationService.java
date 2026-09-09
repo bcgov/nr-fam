@@ -280,15 +280,33 @@ public class AuthorizationService {
   /**
    * Refuse a grant the requester is making to themselves.
    *
-   * <p>Upstream had two variants of this, one of which allowed an application
-   * admin to self-grant on DEV or TEST of a <em>different</em> application. That
-   * exemption depended on FAM knowing an application's environment and the
-   * requester's admin grants from its own tables, neither of which it does now,
-   * so this is the unconditional form: a requester may never grant to themselves.
+   * <p><b>Production only.</b> Upstream allowed an application admin to
+   * self-grant on DEV or TEST; that exemption was dropped here because FAM read
+   * an application's environment from its own tables and no longer had them.
+   * Under CSS the environment is a parameter of every one of these calls, so the
+   * exemption is expressible again and is back: below production, granting
+   * yourself a role is how somebody tests the application they are building, and
+   * refusing it only means two people doing one person's work.
    *
-   * <p>Not currently wired to the CSS assignment endpoint. Doing so needs the
-   * target user's GUID compared against the requester's, which the CSS grant
-   * request carries - see {@code CssUserRoleAssignmentRequest.userGuid}.
+   * <p>What it protects is production, where the same act is somebody quietly
+   * widening their own access with nobody else involved. That is the case the
+   * rule exists for, and it is unchanged.
+   *
+   * @param environment the environment of the application being changed. An
+   *     unrecognised value is treated as production - guessing wrong towards
+   *     permissive is the expensive direction.
+   */
+  public void forbidSelfGrant(Requester requester, String targetUserGuid, String environment) {
+    if (!isProduction(environment)) {
+      return;
+    }
+    forbidSelfGrant(requester, targetUserGuid);
+  }
+
+  /**
+   * The unconditional form, for a change that belongs to no one environment.
+   *
+   * <p>Prefer the overload above wherever an environment is in hand.
    */
   public void forbidSelfGrant(Requester requester, String targetUserGuid) {
     if (requester.userGuid() != null && requester.userGuid().equalsIgnoreCase(targetUserGuid)) {
@@ -304,5 +322,17 @@ public class AuthorizationService {
           "You cannot change your own permissions. Ask another administrator "
               + "to do it for you.");
     }
+  }
+
+  /**
+   * Whether this is the environment the self-grant rule guards.
+   *
+   * <p>Anything not recognisably dev or test counts as production. A typo in an
+   * environment string must not switch a protection off.
+   */
+  private static boolean isProduction(String environment) {
+    String value = environment == null
+        ? "" : environment.trim().toLowerCase(java.util.Locale.ROOT);
+    return !("dev".equals(value) || "test".equals(value));
   }
 }
