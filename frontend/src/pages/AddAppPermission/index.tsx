@@ -36,6 +36,7 @@ import {
 import { useGrantTarget, useGrantTargetName } from "../grantTarget";
 import { hasErrors, NO_ERRORS, validateGrantForm } from "./validation";
 import "./AddAppPermission.css";
+import { allowsSelfGrant } from "@/utils/UserUtils";
 
 /**
  * Grant a CSS role to one or more users.
@@ -243,6 +244,14 @@ export const AddAppPermission: FC = () => {
             <form onSubmit={onSubmit}>
                 <StepContainer title="Select users" divider>
                     <UserSearch
+                        /*
+                            Below production, granting to yourself is how
+                            somebody tests the application they are building.
+                            The environment is the application's, not this
+                            FAM's - see allowsSelfGrant, and the same rule on
+                            the backend.
+                        */
+                        allowSelfSelection={allowsSelfGrant(environment)}
                         environment={environment}
                         multiUserMode
                         onSelectionChange={setUsers}

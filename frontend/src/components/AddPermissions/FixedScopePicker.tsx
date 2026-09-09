@@ -106,12 +106,43 @@ export const FixedScopePicker = <T,>({
                 key={clearCount}
                 id={`${noun.toLowerCase()}-picker`}
                 className="fixed-scope-picker__input"
+                /*
+                    Floats the open list out of the row it sits in.
+
+                    These pickers live inside a table cell, and Carbon renders
+                    the list inline. Two ancestors clip it: the data table's own
+                    content wrapper is `overflow: auto`, and the bordered table
+                    wrapper is `overflow: hidden` - so the list was cut off at
+                    the bottom of the row instead of covering what follows.
+                    z-index alone cannot fix that; a clipped element stays
+                    clipped however high it is stacked.
+
+                    autoAlign portals the list and positions it against the
+                    viewport, which escapes both. It also flips the list above
+                    the field near the bottom of the window, where a long list
+                    used to run off screen.
+                */
+                autoAlign
                 titleText={noun}
                 placeholder={
                     options.length === 0 ? emptyMessage : `Choose a ${noun.toLowerCase()}`
                 }
                 items={offered}
-                itemToString={(item: T | null) => (item ? nameOf(item) : "")}
+                /*
+                    Name first, then the code in brackets.
+
+                    The code is what the CSV and the audit trail carry, and what
+                    somebody comparing this screen against a spreadsheet is
+                    reading. The name alone made them guess which "Cariboo" was
+                    which. The table below shows the two in separate columns; in
+                    a one-line option they have to share it.
+
+                    It is also what the typed filter matches on, so a code can
+                    now be typed straight in - see matchesTypedText.
+                */
+                itemToString={(item: T | null) =>
+                    item ? `${nameOf(item)} (${codeOf(item)})` : ""
+                }
                 // Carbon shows the whole list otherwise - see matchesTypedText.
                 shouldFilterItem={matchesTypedText}
                 selectedItem={null}

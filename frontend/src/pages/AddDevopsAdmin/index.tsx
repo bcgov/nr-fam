@@ -19,6 +19,7 @@ import {
     useManagePermissionsReturn,
 } from "../grantTarget";
 import "@/pages/AddApplicationAdmin/AddApplicationAdmin.css";
+import { allowsSelfGrant } from "@/utils/UserUtils";
 
 /**
  * Appoint a DevOps administrator.
@@ -136,6 +137,14 @@ export const AddDevopsAdmin: FC = () => {
                         than showing a list of one.
                     */}
                     <UserSearch
+                        /*
+                            Below production, granting to yourself is how
+                            somebody tests the application they are building.
+                            The environment is the application's, not this
+                            FAM's - see allowsSelfGrant, and the same rule on
+                            the backend.
+                        */
+                        allowSelfSelection={allowsSelfGrant(environment)}
                         environment={environment}
                         multiUserMode={false}
                         availableDomains={[UserType.Idir]}

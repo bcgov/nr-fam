@@ -101,3 +101,22 @@ export const domainLabel = (domain?: string | null): string => {
             return domain ?? "";
     }
 };
+
+/**
+ * Whether granting to yourself is allowed in this application environment.
+ *
+ * <p>The environment is the **application's** - the CSS integration's dev, test
+ * or prod - not the FAM deployment the browser is talking to. A production FAM
+ * administers dev, test and prod applications alike, and it is the application
+ * being changed that decides: granting yourself a role in a dev application is
+ * how somebody tests the thing they are building, whichever FAM they did it
+ * from.
+ *
+ * <p>Anything unrecognised counts as production. A typo in an environment string
+ * must not switch a protection off, and the backend applies the same rule the
+ * same way - see AuthorizationService.forbidSelfGrant.
+ */
+export const allowsSelfGrant = (environment?: string | null): boolean => {
+    const value = environment?.trim().toLowerCase();
+    return value === "dev" || value === "test";
+};

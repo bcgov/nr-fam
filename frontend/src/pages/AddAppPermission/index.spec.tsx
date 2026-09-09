@@ -98,7 +98,7 @@ const IDIR_RESULT = {
     ],
 };
 
-const renderPage = () => {
+const renderPage = (environment = "dev") => {
     const auth: AuthContextValue = {
         authState: {
             isAuthenticated: true,
@@ -119,7 +119,7 @@ const renderPage = () => {
             <AuthContext.Provider value={auth}>
                 <MemoryRouter
                     initialEntries={[
-                        "/manage-permissions/add-app-permission?integrationId=6538&environment=dev",
+                        `/manage-permissions/add-app-permission?integrationId=6538&environment=${environment}`,
                     ]}
                 >
                     <NotificationProvider>
@@ -171,7 +171,15 @@ const tickRole = async (label: string) => {
  */
 const pickScope = async (noun: "District" | "Region", name: string) => {
     await userEvent.click(screen.getByRole("combobox", { name: noun }));
-    await userEvent.click(await screen.findByText(name));
+    /*
+        Options read "Name (CODE)". Matched on the name with a code in brackets
+        after it rather than on the name alone, so this helper also pins the
+        code being there - it is what the CSV and the audit trail carry, and
+        what somebody comparing this screen against a spreadsheet reads.
+    */
+    await userEvent.click(
+        await screen.findByText(new RegExp(`^${name} \\([A-Z0-9_-]+\\)$`))
+    );
 };
 
 /**
@@ -687,6 +695,88 @@ describe("AddAppPermission", () => {
                 .querySelector(".role-multi-select-table")!
                 .querySelector("table")!;
             expect(table.className).not.toContain("zebra");
+        });
+    });
+
+    describe("the scope pickers", () => {
+        it("offers each option as its name and its code", async () => {
+            /*
+                The code is what the CSV and the audit trail carry, and what
+                somebody comparing this screen against a spreadsheet is reading.
+                The name alone made them guess which "Cariboo" was which - there
+                is a district and a region of that name, with different codes.
+            */
+            renderPage();
+            await chooseUser();
+            await tickRole("Editor");
+
+            await userEvent.click(
+                screen.getByRole("combobox", { name: "District" })
+            );
+
+            expect(
+                await screen.findByText("Cariboo (DCC)")
+            ).toBeInTheDocument();
+        });
+
+        it("filters on the code as well as the name", async () => {
+            // Falls out of the option text, and is the reason to want it: the
+            // code is what somebody has in front of them when they type.
+            renderPage();
+            await chooseUser();
+            await tickRole("Editor");
+
+            await userEvent.type(
+                screen.getByRole("combobox", { name: "District" }),
+                "DCC"
+            );
+
+            expect(
+                await screen.findByText("Cariboo (DCC)")
+            ).toBeInTheDocument();
+        });
+    });
+
+    describe("granting to yourself", () => {
+        /*
+            Allowed below production and refused in it - decided by the APPLICATION's
+            environment, not by which FAM is running. A production FAM administers
+            dev, test and prod applications alike, and granting yourself a role in a
+            dev application is how somebody tests the thing they are building.
+
+            The signed-in user here is ADMINUSER; searching for that username is the
+            case the rule is about.
+        */
+        it("lets you search for yourself in a dev application", async () => {
+            renderPage("dev");
+
+            await userEvent.type(screen.getByRole("textbox"), "ADMINUSER");
+            await userEvent.click(
+                screen.getByRole("button", { name: "Search users" })
+            );
+
+            expect(
+                screen.queryByText("You cannot grant permissions to yourself.")
+            ).not.toBeInTheDocument();
+            // The search actually ran rather than being stopped before the request.
+            await waitFor(() => expect(searchIdirUsers).toHaveBeenCalled());
+        });
+
+        it("refuses in a production application", async () => {
+            renderPage("prod");
+
+            await userEvent.type(screen.getByRole("textbox"), "ADMINUSER");
+            await userEvent.click(
+                screen.getByRole("button", { name: "Search users" })
+            );
+
+            expect(
+                await screen.findByText(
+                    "You cannot grant permissions to yourself."
+                )
+            ).toBeInTheDocument();
+            // Caught before the request, so nothing was asked of the directory.
+            expect(searchIdirUsers).not.toHaveBeenCalled();
         });
     });
 });
