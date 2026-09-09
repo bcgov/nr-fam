@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.dto.ScopeDto;
+import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
+import ca.bc.gov.nrs.fam.dto.CssAdministratorRowDto;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.exception.UpstreamException;
@@ -20,6 +22,7 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -214,5 +217,89 @@ class AssignmentRowEnrichmentServiceTest {
 
     assertThat(service.withResolvedNames(DirectoryEnv.TEST, rows)).hasSize(40);
     verify(userLookupClient, times(25)).getIdirDetailByGuid(any(), anyString());
+  }
+
+  // ---------------------------------------------------------------------------
+  // The administrator listings, which had no enrichment at all
+  // ---------------------------------------------------------------------------
+
+  @Nested
+  @DisplayName("Administrator rows")
+  class AdministratorRows {
+
+    /** An administrator appointed by somebody else, who has never signed in. */
+    private CssAdministratorRowDto unnamedAdmin(String guid) {
+      return new CssAdministratorRowDto(
+          guid.toLowerCase() + "@azureidir", guid, "IDIR", null, null, null,
+          AdminRoleAuthGroup.APP_ADMIN, "APP_ADMIN_6538_DEV", null, null, List.of());
+    }
+
+    @Test
+    @DisplayName("names an administrator CSS could only identify by GUID")
+    void namesAnUnnamedAdministrator() {
+      /*
+          The bug this fixes. CSS learns a person's name when they sign in, and
+          an administrator has no particular reason to have signed into the
+          application they administer - a bulk upload makes that the normal case.
+          The roster showed `<guid>@azureidir` with empty name and email.
+      */
+      directoryKnows(GUID, "JSMITH", "Jane", "Smith");
+
+      assertThat(service.withResolvedAdminNames(
+          DirectoryEnv.TEST, List.of(unnamedAdmin(GUID))))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.username()).isEqualTo("JSMITH");
+            assertThat(row.firstName()).isEqualTo("Jane");
+            assertThat(row.lastName()).isEqualTo("Smith");
+            assertThat(row.email()).isEqualTo("jsmith@gov.bc.ca");
+          });
+    }
+
+    @Test
+    @DisplayName("carries the appointment through untouched")
+    void keepsWhatTheAppointmentIs() {
+      // The row is rebuilt to correct the name on it. Losing the tier or the
+      // delegated role would turn a naming fix into a data loss.
+      directoryKnows(GUID, "JSMITH", "Jane", "Smith");
+
+      CssAdministratorRowDto delegated = new CssAdministratorRowDto(
+          GUID.toLowerCase() + "@azureidir", GUID, "IDIR", null, null, null,
+          AdminRoleAuthGroup.DELEGATED_ADMIN, "DELEGATED_ADMIN_6538_DEV__EDITOR",
+          "EDITOR", "Editor", List.of());
+
+      assertThat(service.withResolvedAdminNames(DirectoryEnv.TEST, List.of(delegated)))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.tier()).isEqualTo(AdminRoleAuthGroup.DELEGATED_ADMIN);
+            assertThat(row.roleName()).isEqualTo("DELEGATED_ADMIN_6538_DEV__EDITOR");
+            assertThat(row.delegatedRoleName()).isEqualTo("EDITOR");
+            assertThat(row.delegatedRoleDisplayName()).isEqualTo("Editor");
+          });
+    }
+
+    @Test
+    @DisplayName("leaves an administrator CSS already named alone")
+    void leavesNamedAdministratorsAlone() {
+      // CSS is the more current source for somebody who has signed in, and a
+      // lookup per row would cost a directory call to change nothing.
+      CssAdministratorRowDto named = new CssAdministratorRowDto(
+          "OLIBERCH", "BBBB2222", "IDIR", "Olga", "Liberchuk", "olga@gov.bc.ca",
+          AdminRoleAuthGroup.APP_ADMIN, "APP_ADMIN_6538_DEV", null, null, List.of());
+
+      assertThat(service.withResolvedAdminNames(DirectoryEnv.TEST, List.of(named)))
+          .containsExactly(named);
+      verify(userLookupClient, never()).getIdirDetailByGuid(any(), any());
+    }
+
+    @Test
+    @DisplayName("a directory outage costs the names, not the roster")
+    void anOutageCostsNamesOnly() {
+      when(userLookupClient.getIdirDetailByGuid(any(), any()))
+          .thenThrow(new RuntimeException("directory unreachable"));
+
+      assertThat(service.withResolvedAdminNames(
+          DirectoryEnv.TEST, List.of(unnamedAdmin(GUID)))).hasSize(1);
+    }
   }
 }

@@ -18,6 +18,7 @@ import DragDropFileInput from "@/components/DragDropFileInput";
 import { RemoveButton } from "@/components/RemoveButton";
 import { InlineSpinner } from "@/components/InlineSpinner";
 import { PageTitle } from "@/components/PageTitle";
+import { domainLabel } from "@/utils/UserUtils";
 import { FIVE_MINUTES } from "@/constants/TimeUnits";
 import { StepContainer } from "@/components/StepContainer";
 import { PLACE_HOLDER } from "@/constants/constants";
@@ -78,6 +79,18 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
         rather than a boolean plus a lookup: it is what the endpoint takes, and
         it is what decides which endpoint that is.
     */
+    /*
+        An application admin file names no role, carries no scope, and is
+        IDIR-only - so Role, District, Region, Organization and Business are all
+        empty down every row. Dropped rather than shown blank: a column of dashes
+        reads as data that failed to arrive, when in truth there was never
+        anything to put there.
+
+        Business is the BCeID user's own company, which an IDIR row can never
+        have; the other four are about the grant, which this kind does not make.
+    */
+    const showsRoleColumns = kind !== "applicationAdmins";
+
     const tier: AdminRoleAuthGroup | null =
         kind === "delegatedAdmins"
             ? "DELEGATED_ADMIN"
@@ -430,22 +443,40 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                     <TableHeader>User</TableHeader>
                                                     <TableHeader>Username</TableHeader>
                                                     <TableHeader>Domain</TableHeader>
-                                                    {/*
-                                                        "Business", not
-                                                        "Organization": this is
-                                                        the BCeID user's own
-                                                        company, and the column
-                                                        three along is the
-                                                        organisation the role is
-                                                        granted for. Two columns
-                                                        of that name would be a
-                                                        guess every time.
-                                                    */}
-                                                    <TableHeader>Business</TableHeader>
-                                                    <TableHeader>Role</TableHeader>
-                                                    <TableHeader>District</TableHeader>
-                                                    <TableHeader>Region</TableHeader>
-                                                    <TableHeader>Organization</TableHeader>
+                                                    {showsRoleColumns ? (
+                                                        <>
+                                                            {/*
+                                                                "Business", not
+                                                                "Organization":
+                                                                this is the
+                                                                BCeID user's own
+                                                                company, and the
+                                                                column three
+                                                                along is the
+                                                                organisation the
+                                                                role is granted
+                                                                for. Two columns
+                                                                of that name
+                                                                would be a guess
+                                                                every time.
+                                                            */}
+                                                            <TableHeader>
+                                                                Business
+                                                            </TableHeader>
+                                                            <TableHeader>
+                                                                Role
+                                                            </TableHeader>
+                                                            <TableHeader>
+                                                                District
+                                                            </TableHeader>
+                                                            <TableHeader>
+                                                                Region
+                                                            </TableHeader>
+                                                            <TableHeader>
+                                                                Organization
+                                                            </TableHeader>
+                                                        </>
+                                                    ) : null}
                                                     <TableHeader>
                                                         {applied ? "Outcome" : "Status"}
                                                     </TableHeader>
@@ -481,59 +512,66 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                             {row.user_name ?? PLACE_HOLDER}
                                                         </TableCell>
                                                         <TableCell>
-                                                            {row.user_type ?? PLACE_HOLDER}
+                                                            {domainLabel(
+                                                                row.user_type
+                                                            ) || PLACE_HOLDER}
                                                         </TableCell>
-                                                        <TableCell>
-                                                            {row.organization ?? PLACE_HOLDER}
-                                                        </TableCell>
-                                                        {/*
-                                                            The role as a pill,
-                                                            reading as its name -
-                                                            the same way it reads
-                                                            in the permissions
-                                                            table it is about to
-                                                            appear in.
+                                                        {showsRoleColumns ? (
+                                                            <>
+                                                                <TableCell>
+                                                                    {row.organization ??
+                                                                        PLACE_HOLDER}
+                                                                </TableCell>
+                                                            {/*
+                                                                The role as a pill,
+                                                                reading as its name -
+                                                                the same way it reads
+                                                                in the permissions
+                                                                table it is about to
+                                                                appear in.
 
-                                                            A row that will not
-                                                            grant shows the code
-                                                            as plain text: there
-                                                            may be no such role,
-                                                            so there is no name
-                                                            to give it, and a
-                                                            pill would dress up
-                                                            something that is not
-                                                            going to happen.
-                                                        */}
-                                                        <TableCell>
-                                                            {row.valid || row.already_granted ? (
-                                                                <Chip
-                                                                    label={
-                                                                        row.role_display_name ??
-                                                                        row.role_code
-                                                                    }
-                                                                />
-                                                            ) : (
-                                                                row.role_code
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {scopeCell(
-                                                                row.district,
-                                                                row.district_name
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {scopeCell(
-                                                                row.region,
-                                                                row.region_name
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {scopeCell(
-                                                                row.forest_client_number,
-                                                                row.forest_client_name
-                                                            )}
-                                                        </TableCell>
+                                                                A row that will not
+                                                                grant shows the code
+                                                                as plain text: there
+                                                                may be no such role,
+                                                                so there is no name
+                                                                to give it, and a
+                                                                pill would dress up
+                                                                something that is not
+                                                                going to happen.
+                                                            */}
+                                                            <TableCell>
+                                                                {row.valid || row.already_granted ? (
+                                                                    <Chip
+                                                                        label={
+                                                                            row.role_display_name ??
+                                                                            row.role_code
+                                                                        }
+                                                                    />
+                                                                ) : (
+                                                                    row.role_code
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {scopeCell(
+                                                                    row.district,
+                                                                    row.district_name
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {scopeCell(
+                                                                    row.region,
+                                                                    row.region_name
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {scopeCell(
+                                                                    row.forest_client_number,
+                                                                    row.forest_client_name
+                                                                )}
+                                                            </TableCell>
+                                                            </>
+                                                        ) : null}
                                                         {/*
                                                             A status is one word
                                                             and reads as a pill.

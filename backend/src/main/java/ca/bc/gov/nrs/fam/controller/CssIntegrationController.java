@@ -23,6 +23,8 @@ import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleManagementApplicationDto;
 import ca.bc.gov.nrs.fam.security.AuthorizationService;
 import ca.bc.gov.nrs.fam.security.Requester;
+import ca.bc.gov.nrs.fam.service.ApiInstanceEnvResolver;
+import ca.bc.gov.nrs.fam.service.AssignmentRowEnrichmentService;
 import ca.bc.gov.nrs.fam.service.BulkGrantService;
 import ca.bc.gov.nrs.fam.service.CssIntegrationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -59,6 +61,8 @@ public class CssIntegrationController {
   private final CssIntegrationService cssIntegrationService;
   private final AuthorizationService authorizationService;
   private final BulkGrantService bulkGrantService;
+  private final AssignmentRowEnrichmentService enrichmentService;
+  private final ApiInstanceEnvResolver apiInstanceEnvResolver;
 
   /**
    * Applications available to administer, sourced from CSS integrations.
@@ -233,7 +237,18 @@ public class CssIntegrationController {
       authorizationService.requireDelegatedAdminManagement(
           requester, integrationId, environment);
     }
-    return cssIntegrationService.getAdministrators(integrationId, environment, tier);
+    /*
+        Named from the directory, as the permissions table already is.
+
+        CSS only knows a person's name once they have signed in, and an
+        administrator has no particular reason to have signed into the
+        application they administer - a bulk upload makes that the normal case
+        rather than the rare one. Without this the roster showed
+        `<guid>@azureidir` with empty name and email columns.
+    */
+    return enrichmentService.withResolvedAdminNames(
+        apiInstanceEnvResolver.resolveDirectory(environment),
+        cssIntegrationService.getAdministrators(integrationId, environment, tier));
   }
 
   /**

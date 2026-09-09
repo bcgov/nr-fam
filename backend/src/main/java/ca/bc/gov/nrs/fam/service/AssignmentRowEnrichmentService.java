@@ -1,5 +1,6 @@
 package ca.bc.gov.nrs.fam.service;
 
+import ca.bc.gov.nrs.fam.dto.CssAdministratorRowDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
@@ -79,6 +80,60 @@ public class AssignmentRowEnrichmentService {
       return rows;
     }
 
+    Map<String, UserLookupIdirUserDto> resolved = lookUp(directory, unresolved);
+    if (resolved.isEmpty()) {
+      return rows;
+    }
+
+    return rows.stream().map(row -> apply(row, resolved)).toList();
+  }
+
+  /**
+   * The same names, on the administrator listings.
+   *
+   * <p>Those tables had no enrichment at all, and an administrator appointed by
+   * somebody else - rather than by signing in - showed as
+   * {@code <guid>@azureidir} with empty name and email columns. A bulk upload
+   * makes that the normal case rather than the rare one: it appoints people who
+   * have no reason to have signed into the application they now administer.
+   *
+   * <p>Separate method rather than a shared row interface: the two DTOs are
+   * records with different shapes and no common ancestor, and inventing one to
+   * share six lines of mapping would be the more expensive change.
+   */
+  public List<CssAdministratorRowDto> withResolvedAdminNames(
+      DirectoryEnv directory, List<CssAdministratorRowDto> rows) {
+
+    if (!userLookupClient.isConfigured(directory)) {
+      return rows;
+    }
+
+    Set<String> unresolved = new LinkedHashSet<>();
+    for (CssAdministratorRowDto row : rows) {
+      adminGuidNeedingLookup(row).ifPresent(unresolved::add);
+    }
+
+    if (unresolved.isEmpty()) {
+      return rows;
+    }
+
+    Map<String, UserLookupIdirUserDto> resolved = lookUp(directory, unresolved);
+    if (resolved.isEmpty()) {
+      return rows;
+    }
+
+    return rows.stream().map(row -> applyToAdmin(row, resolved)).toList();
+  }
+
+  /**
+   * Resolve a set of GUIDs against the directory, capped and best-effort.
+   *
+   * <p>Shared by both listings so the cap, the logging and the give-up-on-first-
+   * failure rule cannot drift between them.
+   */
+  private Map<String, UserLookupIdirUserDto> lookUp(
+      DirectoryEnv directory, Set<String> unresolved) {
+
     List<String> toLookUp = new ArrayList<>(unresolved);
     if (toLookUp.size() > MAX_LOOKUPS) {
       log.warn("{} users in this listing have no name in CSS; resolving the first {} against "
@@ -101,14 +156,45 @@ public class AssignmentRowEnrichmentService {
       }
     }
 
-    if (resolved.isEmpty()) {
-      return rows;
-    }
-
     log.debug("Resolved {} of {} unnamed user(s) against the directory.",
         resolved.size(), unresolved.size());
+    return resolved;
+  }
 
-    return rows.stream().map(row -> apply(row, resolved)).toList();
+  /** As {@link #guidNeedingLookup}, for an administrator row. */
+  private static Optional<String> adminGuidNeedingLookup(CssAdministratorRowDto row) {
+    if (!IDIR_DOMAIN.equals(row.domain())
+        || notBlank(row.firstName()) || notBlank(row.lastName())) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(row.userGuid()).filter(guid -> !guid.isBlank());
+  }
+
+  private static CssAdministratorRowDto applyToAdmin(
+      CssAdministratorRowDto row, Map<String, UserLookupIdirUserDto> resolved) {
+
+    UserLookupIdirUserDto user = adminGuidNeedingLookup(row)
+        .map(resolved::get)
+        .orElse(null);
+
+    if (user == null) {
+      return row;
+    }
+
+    return new CssAdministratorRowDto(
+        notBlank(user.userId()) ? user.userId() : row.username(),
+        row.userGuid(),
+        row.domain(),
+        user.firstName(),
+        user.lastName(),
+        user.email(),
+        // Everything about the appointment itself is carried through untouched -
+        // this rebuilds a row to correct the name on it, nothing more.
+        row.tier(),
+        row.roleName(),
+        row.delegatedRoleName(),
+        row.delegatedRoleDisplayName(),
+        row.scopes());
   }
 
   /**

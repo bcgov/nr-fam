@@ -16,6 +16,8 @@ import { FIVE_MINUTES } from "@/constants/TimeUnits";
 
 const previewCssBulkGrants = vi.fn();
 const createCssBulkGrants = vi.fn();
+const previewCssBulkAdmins = vi.fn();
+const createCssBulkAdmins = vi.fn();
 const navigate = vi.fn();
 
 vi.mock("@/services/ApiServiceFactory", () => ({
@@ -37,6 +39,34 @@ vi.mock("@/services/ApiServiceFactory", () => ({
                 options?: unknown
             ) =>
                 createCssBulkGrants(integrationId, environment, csv, options),
+            previewCssBulkAdmins: (
+                integrationId: number,
+                environment: string,
+                tier: string,
+                csv: string,
+                options?: unknown
+            ) =>
+                previewCssBulkAdmins(
+                    integrationId,
+                    environment,
+                    tier,
+                    csv,
+                    options
+                ),
+            createCssBulkAdmins: (
+                integrationId: number,
+                environment: string,
+                tier: string,
+                csv: string,
+                options?: unknown
+            ) =>
+                createCssBulkAdmins(
+                    integrationId,
+                    environment,
+                    tier,
+                    csv,
+                    options
+                ),
         },
     },
     AppActlApiService: {},
@@ -86,7 +116,7 @@ const BAD_ROW = {
 
 const CSV = "username,user_type,role,district,organization\nJSMITH,IDIR,FREP_EDITOR,DCC,\n";
 
-const renderPage = () => {
+const renderPage = (kind?: "delegatedAdmins" | "applicationAdmins") => {
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -103,7 +133,7 @@ const renderPage = () => {
                         <Routes>
                             <Route
                                 path="/manage-permissions/bulk-upload"
-                                element={<BulkGrant />}
+                                element={<BulkGrant kind={kind} />}
                             />
                         </Routes>
                     </SelectedAppProvider>
@@ -322,6 +352,93 @@ describe("BulkGrant", () => {
         expect(previewCssBulkGrants.mock.calls[0][2]).toBe(CSV);
         // Nothing granted yet - that is the whole point of the step.
         expect(createCssBulkGrants).not.toHaveBeenCalled();
+    });
+
+    it("names the domain rather than showing its code", async () => {
+        /*
+            "BCEID" is what the wire carries and not what anyone calls it. The
+            same label the permissions and history tables use, so a person
+            reading two screens sees one name for one thing.
+        */
+        previewCssBulkGrants.mockResolvedValue({
+            data: {
+                rows: [
+                    { ...GOOD_ROW, user_type: "BCEID", user_name: "ACMECO" },
+                ],
+            },
+        });
+        renderPage();
+
+        await upload();
+
+        expect(await screen.findByText("Business BCeID")).toBeInTheDocument();
+        expect(screen.queryByText("BCEID")).not.toBeInTheDocument();
+    });
+
+    it("drops the role and scope columns for an application admin file", async () => {
+        /*
+            They are empty down every row for this kind - the tier is the whole
+            appointment - and a column of dashes reads as data that failed to
+            arrive rather than as data that never existed.
+        */
+        previewCssBulkAdmins.mockResolvedValue({
+            data: {
+                rows: [
+                    {
+                        line_number: 2,
+                        user_guid: "AAAA1111",
+                        user_name: "JSMITH",
+                        user_type: "IDIR",
+                        first_name: "Jane",
+                        last_name: "Smith",
+                        valid: true,
+                    },
+                ],
+            },
+        });
+        renderPage("applicationAdmins");
+
+        await upload("username\nJSMITH\n");
+
+        // The columns that still mean something.
+        expect(
+            await screen.findByRole("columnheader", { name: "Username" })
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole("columnheader", { name: "Domain" })
+        ).toBeInTheDocument();
+
+        for (const gone of [
+            "Business",
+            "Role",
+            "District",
+            "Region",
+            "Organization",
+        ]) {
+            expect(
+                screen.queryByRole("columnheader", { name: gone })
+            ).not.toBeInTheDocument();
+        }
+    });
+
+    it("keeps the role and scope columns for a permissions file", async () => {
+        // The same table, and the reason the check above is about the kind
+        // rather than about the table.
+        renderPage();
+
+        await upload();
+
+        for (const kept of [
+            "Business",
+            "Role",
+            "District",
+            "Region",
+            "Organization",
+        ]) {
+            expect(
+                await screen.findByRole("columnheader", { name: kept })
+            ).toBeInTheDocument();
+        }
     });
 
     it("gives both bulk calls far longer than the default ten seconds", async () => {
