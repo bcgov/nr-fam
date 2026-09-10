@@ -10,6 +10,7 @@ import { groupScopeText, scopeChipLabel, needsScopeDetail, groupByRole, formatEx
     newlyGrantedKeys,
     permissionsTableHeaders,
     toCsv,
+    expandToGrants,
 } from "./utils";
 
 const row = (overrides: Partial<CssUserRoleRowDto> = {}): CssUserRoleRowDto =>
@@ -100,6 +101,70 @@ describe("toCsv", () => {
         ]).split("\r\n");
 
         expect(lines[1]).toContain('"DCC"');
+    });
+});
+
+describe("expandToGrants", () => {
+    /*
+        The bug this exists for: a person holding one role in three districts is
+        one table row and three grants. The export took the row, and a collapsed
+        row carries only the FIRST assignment's scopes - so the file named one
+        district and silently dropped the other two. It looked complete.
+    */
+    // `label` is optional on ScopeDto, and absent is what an unlabelled scope
+    // actually looks like coming back from the API.
+    const scoped = (district: string): CssUserRoleRowDto =>
+        row({ scopes: [{ type: "DISTRICT", value: district }] });
+
+    it("gives back every grant behind a collapsed row", () => {
+        const assignments = [scoped("DCC"), scoped("DKA"), scoped("DSQ")];
+
+        const expanded = expandToGrants([
+            {
+                ...assignments[0],
+                group: { assignments, combinations: assignments.map((a) => a.scopes ?? []) },
+            },
+        ]);
+
+        expect(expanded).toHaveLength(3);
+        expect(expanded.map((one) => one.scopes?.[0]?.value)).toEqual([
+            "DCC",
+            "DKA",
+            "DSQ",
+        ]);
+    });
+
+    it("passes a row with no group through untouched", () => {
+        // An unscoped grant is a row and a grant at once; a filtered table is a
+        // mixture of both, so this has to be safe on either.
+        const plain = row();
+
+        expect(expandToGrants([plain])).toEqual([plain]);
+    });
+
+    it("puts one line per district in the file, not one per person", () => {
+        const assignments = [scoped("DCC"), scoped("DKA")];
+
+        const lines = toCsv(
+            expandToGrants([
+                {
+                    ...assignments[0],
+                    group: {
+                        assignments,
+                        combinations: assignments.map((a) => a.scopes ?? []),
+                    },
+                },
+            ])
+        ).split("\r\n");
+
+        // A heading and two grants.
+        expect(lines).toHaveLength(3);
+        expect(lines[1]).toContain("DCC");
+        expect(lines[2]).toContain("DKA");
+        // Each line names the person, which is what makes it usable in a
+        // spreadsheet and re-loadable by the bulk uploader.
+        expect(lines[1]).toContain("JSMITH");
+        expect(lines[2]).toContain("JSMITH");
     });
 });
 

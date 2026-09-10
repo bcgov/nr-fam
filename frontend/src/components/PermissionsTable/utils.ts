@@ -128,10 +128,24 @@ export const permissionsTableHeaders = [
 ];
 
 /**
- * One CSV row per table row, in the order the columns are shown.
+ * One CSV row per <b>grant</b>, which is not the same as one per table row.
  *
- * Quoting is not optional: a role name can carry a comma through its scope, and
- * a name can carry one directly ("Smith, Jane"). Embedded quotes are
+ * <p>The table collapses a person's grants of one role into a single row - six
+ * districts read better as one line with six values than as six lines repeating
+ * the same name. A file does not have that problem, and having it is worse: a
+ * spreadsheet cannot filter, sort or count a column holding "Cariboo, Kamloops,
+ * Skeena", and this is a file people open in a spreadsheet.
+ *
+ * <p>It also used to be wrong rather than merely coarse. A collapsed row carries
+ * the <em>first</em> assignment's scopes, so the export named one district and
+ * silently dropped the other five - a file that looked complete and was not.
+ * See {@link expandToGrants}.
+ *
+ * <p>One line per grant is also the shape the bulk uploader reads, so a file
+ * exported here can be edited and loaded back rather than reshaped by hand.
+ *
+ * <p>Quoting is not optional: a role name can carry a comma through its scope,
+ * and a name can carry one directly ("Smith, Jane"). Embedded quotes are
  * doubled, which is how RFC 4180 escapes them and what a spreadsheet expects.
  */
 export const toCsv = (rows: CssUserRoleRowDto[]): string => {
@@ -158,6 +172,22 @@ export const toCsv = (rows: CssUserRoleRowDto[]): string => {
     return [permissionsTableHeaders.map(cell).join(","), ...lines].join("\r\n");
 };
 
+/**
+ * Every underlying grant behind a set of table rows.
+ *
+ * <p>A row the table has collapsed carries its group; one it has not is a grant
+ * already. Rows without a group pass through untouched, so this is safe to call
+ * on either - and on a mixture, which is what a filtered table is.
+ */
+export const expandToGrants = (
+    rows: (CssUserRoleRowDto & { group?: PermissionGroup })[]
+): CssUserRoleRowDto[] =>
+    rows.flatMap((row) =>
+        row.group && row.group.assignments.length > 0
+            ? row.group.assignments
+            : [row]
+    );
+
 /** A filename a person can find again: the application, then today's date. */
 export const csvFileName = (appName: string, today: Date): string => {
     const stamp = today.toISOString().slice(0, 10);
@@ -174,12 +204,12 @@ export const csvFileName = (appName: string, today: Date): string => {
  * Kept apart from {@link toCsv} so the content can be tested without a DOM.
  */
 export const downloadPermissionsCsv = (
-    rows: CssUserRoleRowDto[],
+    rows: (CssUserRoleRowDto & { group?: PermissionGroup })[],
     appName: string
 ): void => {
     // The BOM is what makes Excel read the file as UTF-8 rather than as the
     // local codepage, which otherwise mangles any accented name.
-    const blob = new Blob(["﻿", toCsv(rows)], {
+    const blob = new Blob(["﻿", toCsv(expandToGrants(rows))], {
         type: "text/csv;charset=utf-8;",
     });
 
