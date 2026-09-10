@@ -54,6 +54,7 @@ export const scopeText = (row: CssUserRoleRowDto): string =>
 export const roleLabel = (row: CssUserRoleRowDto): string =>
     row.role_display_name || row.role_name;
 import type { AppPermissionGrantSummary } from "@/pages/AddAppPermission/grantUtils";
+import { formatFullName } from "@/utils/UserUtils";
 import { wasGranted } from "@/pages/ManagePermissions/utils";
 import { PLACE_HOLDER } from "@/constants/constants";
 
@@ -156,7 +157,16 @@ export const toCsv = (rows: CssUserRoleRowDto[]): string => {
         [
             row.username,
             row.domain,
-            [row.first_name, row.last_name].filter(Boolean).join(" "),
+            /*
+                The same name the table shows, not a raw join.
+
+                A Business BCeID account carries its username inside the name
+                CSS returns, so joining first and last produced
+                "Avisha Sodhi ASodhi" in the file while the table beside it read
+                "Avisha Sodhi". formatFullName drops that trailing repeat; the
+                export skipped it and disagreed with the screen it came from.
+            */
+            formatFullName(row.first_name, row.last_name, row.username),
             row.email,
             scopeText(row),
             // What the table shows, so the file matches what was exported from.
