@@ -119,6 +119,70 @@ describe("CssPermissionsTable", () => {
         deleteCssUserRoleAssignment.mockReset().mockResolvedValue({ data: {} });
     });
 
+    it("writes one CSV line per district when a role is held for several", async () => {
+        /*
+            The table collapses those into one row on purpose; the file must not.
+            A collapsed row carries only the first assignment's scopes, so an
+            export built from rows named one district and dropped the rest - a
+            file that looked complete and was not.
+        */
+        getCssUserRoleAssignments.mockResolvedValue({
+            data: [
+                {
+                    username: "JSMITH",
+                    user_guid: "B2",
+                    domain: "IDIR",
+                    first_name: "Jane",
+                    last_name: "Smith",
+                    email: "jane@gov.bc.ca",
+                    role_name: "FREP_EDITOR",
+                    role_display_name: "Editor",
+                    scopes: [{ type: "DISTRICT", value: "DCC" }],
+                },
+                {
+                    username: "JSMITH",
+                    user_guid: "B2",
+                    domain: "IDIR",
+                    first_name: "Jane",
+                    last_name: "Smith",
+                    email: "jane@gov.bc.ca",
+                    role_name: "FREP_EDITOR",
+                    role_display_name: "Editor",
+                    scopes: [{ type: "DISTRICT", value: "DKA" }],
+                },
+            ],
+        });
+
+        const written: string[] = [];
+        const originalBlob = globalThis.Blob;
+        // The download hands the browser a Blob; reading it back is how the
+        // file's actual content gets asserted.
+        globalThis.Blob = class {
+            constructor(parts: string[]) {
+                written.push(parts.join(""));
+            }
+        } as unknown as typeof Blob;
+        const createObjectURL = vi.fn(() => "blob:x");
+        const revokeObjectURL = vi.fn();
+        Object.assign(URL, { createObjectURL, revokeObjectURL });
+
+        try {
+            renderTable();
+            await screen.findByText("JSMITH");
+            await userEvent.click(
+                screen.getByRole("button", { name: /Download/ })
+            );
+
+            const lines = written[0].split("\r\n");
+            // A heading and two grants, not a heading and one.
+            expect(lines).toHaveLength(3);
+            expect(lines[1]).toContain("DCC");
+            expect(lines[2]).toContain("DKA");
+        } finally {
+            globalThis.Blob = originalBlob;
+        }
+    });
+
     it("gives every column a cell, so nothing slides under the wrong heading", async () => {
         /*
             The count is the whole assertion, and it is here because a column was

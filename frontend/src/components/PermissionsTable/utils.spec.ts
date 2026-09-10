@@ -104,6 +104,29 @@ describe("toCsv", () => {
     });
 });
 
+describe("the name column", () => {
+    it("does not repeat a BCeID username inside the name", () => {
+        /*
+            CSS returns a Business BCeID account's name with its username on the
+            end, so a raw join wrote "Avisha Sodhi ASodhi" into the file while
+            the table beside it read "Avisha Sodhi". The export has to use the
+            same formatter the table does, or the two disagree about the same
+            person.
+        */
+        const lines = toCsv([
+            row({
+                username: "ASodhi",
+                first_name: "Avisha",
+                last_name: "Sodhi ASodhi",
+                domain: "BCEID",
+            }),
+        ]).split("\r\n");
+
+        expect(lines[1]).toContain('"Avisha Sodhi"');
+        expect(lines[1]).not.toContain("Sodhi ASodhi");
+    });
+});
+
 describe("expandToGrants", () => {
     /*
         The bug this exists for: a person holding one role in three districts is
