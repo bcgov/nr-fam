@@ -205,18 +205,83 @@ class AssignmentRowEnrichmentServiceTest {
   }
 
   @Test
-  @DisplayName("bounds how many users one listing resolves")
-  void boundsLookupsPerListing() {
-    // Each is a separate call to a SOAP-backed directory; a large backlog of
-    // never-signed-in users must not turn one page load into hundreds.
-    when(userLookupClient.getIdirDetailByGuid(any(), anyString())).thenReturn(Optional.empty());
-
-    List<CssUserRoleRowDto> rows = IntStream.range(0, 40)
-        .mapToObj(i -> unnamed("GUID%02d".formatted(i), "R"))
+  @DisplayName("names every user a bulk upload granted")
+  void namesAWholeUpload() {
+    // The bug: the cap was 25, and a 52-person upload is 52 people who have
+    // never signed in. The 26th onward showed <guid>@azureidir with no name.
+    List<CssUserRoleRowDto> rows = IntStream.range(0, 52)
+        .mapToObj(i -> {
+          String guid = "GUID%02d".formatted(i);
+          directoryKnows(guid, "USER%02d".formatted(i), "First" + i, "Last" + i);
+          // Two roles each, as the upload file had.
+          return List.of(unnamed(guid, "R1"), unnamed(guid, "R2"));
+        })
+        .flatMap(List::stream)
         .toList();
 
-    assertThat(service.withResolvedNames(DirectoryEnv.TEST, rows)).hasSize(40);
-    verify(userLookupClient, times(25)).getIdirDetailByGuid(any(), anyString());
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, rows))
+        .hasSize(104)
+        .allSatisfy(row -> {
+          assertThat(row.firstName()).isNotBlank();
+          assertThat(row.username()).doesNotContain("@azureidir");
+        });
+    verify(userLookupClient, times(52)).getIdirDetailByGuid(any(), anyString());
+  }
+
+  @Test
+  @DisplayName("still bounds how many users one listing resolves")
+  void boundsLookupsPerListing() {
+    // Each is a separate call to a SOAP-backed directory; a large backlog of
+    // never-signed-in users must not turn one page load into thousands.
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString())).thenReturn(Optional.empty());
+
+    int total = AssignmentRowEnrichmentService.MAX_LOOKUPS + 10;
+    List<CssUserRoleRowDto> rows = IntStream.range(0, total)
+        .mapToObj(i -> unnamed("GUID%04d".formatted(i), "R"))
+        .toList();
+
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, rows)).hasSize(total);
+    verify(userLookupClient, times(AssignmentRowEnrichmentService.MAX_LOOKUPS))
+        .getIdirDetailByGuid(any(), anyString());
+  }
+
+  @Test
+  @DisplayName("reuses a resolved name on the next listing")
+  void reusesResolvedNames() {
+    // Lifting the cap is only affordable if reloading the tab does not ask the
+    // directory about the same fifty people again.
+    directoryKnows(GUID, "JSMITH", "Jane", "Smith");
+
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R")));
+    assertThat(service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R"))))
+        .singleElement()
+        .satisfies(row -> assertThat(row.firstName()).isEqualTo("Jane"));
+
+    verify(userLookupClient, times(1)).getIdirDetailByGuid(any(), eq(GUID));
+  }
+
+  @Test
+  @DisplayName("asks again about a user the directory did not recognise")
+  void doesNotRememberMisses() {
+    // Only answers are held. A miss or an outage must not stick for the TTL.
+    when(userLookupClient.getIdirDetailByGuid(any(), anyString())).thenReturn(Optional.empty());
+
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R")));
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R")));
+
+    verify(userLookupClient, times(2)).getIdirDetailByGuid(any(), eq(GUID));
+  }
+
+  @Test
+  @DisplayName("does not reuse a name across directories")
+  void cachesPerDirectory() {
+    directoryKnows(GUID, "JSMITH", "Jane", "Smith");
+
+    service.withResolvedNames(DirectoryEnv.TEST, List.of(unnamed(GUID, "R")));
+    service.withResolvedNames(DirectoryEnv.PROD, List.of(unnamed(GUID, "R")));
+
+    verify(userLookupClient).getIdirDetailByGuid(eq(DirectoryEnv.TEST), eq(GUID));
+    verify(userLookupClient).getIdirDetailByGuid(eq(DirectoryEnv.PROD), eq(GUID));
   }
 
   // ---------------------------------------------------------------------------

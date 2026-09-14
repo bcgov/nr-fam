@@ -6,13 +6,20 @@ import ca.bc.gov.nrs.fam.dto.CssUserRoleRowDto;
 import ca.bc.gov.nrs.fam.dto.UserLookupIdirUserDto;
 import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,8 +34,8 @@ import org.springframework.stereotype.Service;
  * empty name and email columns.
  *
  * <p>The directory can answer that, given a GUID. So only the rows CSS could not
- * name are looked up, deduplicated by GUID, which in practice is a handful even
- * on an application with many users.
+ * name are looked up, deduplicated by GUID. That was a handful until bulk upload,
+ * which grants dozens of people at once who have never signed in.
  *
  * <p><b>Best effort, deliberately.</b> {@link UserLookupClient} otherwise raises
  * an upstream failure rather than returning an empty result, because its usual
@@ -48,15 +55,61 @@ public class AssignmentRowEnrichmentService {
    *
    * <p>Each is a separate call to a SOAP-backed directory, so an application with
    * a large backlog of never-signed-in users could otherwise turn one page load
-   * into hundreds of upstream requests. What is skipped is logged rather than
+   * into thousands of upstream requests. What is skipped is logged rather than
    * dropped silently - a bounded listing that looks complete is worse than one
    * that says it is not.
+   *
+   * <p><b>It was 25, and a bulk upload walked straight past it.</b> Every person
+   * a file names is somebody who has not signed in yet, so a 52-person upload
+   * left 27 rows showing {@code <guid>@azureidir} with no name - on every page
+   * load, not just the first. The bound is now sized for an upload rather than
+   * for the odd hand-granted new starter, and {@link #LOOKUP_CONCURRENCY} and
+   * {@link #resolvedByGuid} are what keep that affordable.
    */
-  private static final int MAX_LOOKUPS = 25;
+  static final int MAX_LOOKUPS = 500;
+
+  /**
+   * Directory calls in flight at once for one listing.
+   *
+   * <p>In turn, fifty users is fifty round trips while somebody waits for the
+   * table. All at once, it is fifty simultaneous requests from one page load
+   * against a shared directory. Eight keeps the wait to a handful of trips
+   * without FAM being the reason the directory is slow for everyone else.
+   */
+  private static final int LOOKUP_CONCURRENCY = 8;
+
+  /**
+   * How long a resolved name is reused.
+   *
+   * <p>A GUID's owner does not change, and a name rarely does - so this is
+   * about how stale a renamed person may look, not whether the row is right.
+   * The access shown is always read fresh from CSS; only the label beside it is
+   * remembered.
+   */
+  private static final Duration RESOLVED_TTL = Duration.ofMinutes(15);
+
+  /** Past this many held names, expired ones are swept before adding more. */
+  private static final int RESOLVED_SWEEP_THRESHOLD = 5_000;
 
   private static final String IDIR_DOMAIN = "IDIR";
 
   private final UserLookupClient userLookupClient;
+
+  /**
+   * Names already resolved, by directory and GUID.
+   *
+   * <p>Without it, lifting the cap would make every visit to a large
+   * application's users tab fan out to the directory again for the same people.
+   * Only answers are held: a GUID the directory did not recognise, or a lookup
+   * that failed, is asked again next time, so an outage does not stick.
+   */
+  private final Map<String, Cached> resolvedByGuid = new ConcurrentHashMap<>();
+
+  private record Cached(UserLookupIdirUserDto user, Instant readAt) {
+    boolean isFresh(Instant now) {
+      return readAt.plus(RESOLVED_TTL).isAfter(now);
+    }
+  }
 
   /**
    * Fill in the names CSS did not supply.
@@ -128,37 +181,105 @@ public class AssignmentRowEnrichmentService {
   /**
    * Resolve a set of GUIDs against the directory, capped and best-effort.
    *
-   * <p>Shared by both listings so the cap, the logging and the give-up-on-first-
-   * failure rule cannot drift between them.
+   * <p>Shared by both listings so the cap, the cache, the logging and the
+   * give-up-on-first-failure rule cannot drift between them.
+   *
+   * <p><b>The first lookup runs alone.</b> One failure is enough to know the
+   * rest will fail the same way, and asking eight at once first would spend
+   * eight timeouts learning what one already said. Once the directory has
+   * answered, the rest go out {@link #LOOKUP_CONCURRENCY} at a time, and a
+   * failure among them stops any that have not started.
    */
   private Map<String, UserLookupIdirUserDto> lookUp(
       DirectoryEnv directory, Set<String> unresolved) {
 
-    List<String> toLookUp = new ArrayList<>(unresolved);
+    Map<String, UserLookupIdirUserDto> resolved = new ConcurrentHashMap<>();
+    Instant now = Instant.now();
+
+    List<String> toLookUp = new ArrayList<>();
+    for (String guid : unresolved) {
+      Cached cached = resolvedByGuid.get(cacheKey(directory, guid));
+      if (cached != null && cached.isFresh(now)) {
+        resolved.put(guid, cached.user());
+      } else {
+        toLookUp.add(guid);
+      }
+    }
+
     if (toLookUp.size() > MAX_LOOKUPS) {
       log.warn("{} users in this listing have no name in CSS; resolving the first {} against "
           + "the directory and leaving the rest showing their GUID.",
           toLookUp.size(), MAX_LOOKUPS);
       toLookUp = toLookUp.subList(0, MAX_LOOKUPS);
     }
+    if (toLookUp.isEmpty()) {
+      return resolved;
+    }
 
-    Map<String, UserLookupIdirUserDto> resolved = new HashMap<>();
-    for (String guid : toLookUp) {
-      try {
-        userLookupClient.getIdirDetailByGuid(directory, guid)
-            .ifPresent(user -> resolved.put(guid, user));
-      } catch (RuntimeException e) {
-        // One failure is enough to know the rest will fail the same way, and
-        // this runs while somebody waits for a table to render.
-        log.warn("Could not resolve names from the directory; the listing will show GUIDs "
-            + "for users who have not signed in yet. Reason: {}", e.getMessage());
-        break;
+    if (!lookUpOne(directory, toLookUp.get(0), resolved)) {
+      return resolved;
+    }
+
+    AtomicBoolean failed = new AtomicBoolean(false);
+    Semaphore permits = new Semaphore(LOOKUP_CONCURRENCY);
+
+    // Virtual threads: each lookup spends its life waiting on the directory, and
+    // the semaphore rather than the pool is what bounds the load. Closing the
+    // executor waits for every lookup that started.
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      for (String guid : toLookUp.subList(1, toLookUp.size())) {
+        executor.submit(() -> {
+          permits.acquireUninterruptibly();
+          try {
+            if (!failed.get() && !lookUpOne(directory, guid, resolved)) {
+              failed.set(true);
+            }
+          } finally {
+            permits.release();
+          }
+        });
       }
     }
 
     log.debug("Resolved {} of {} unnamed user(s) against the directory.",
         resolved.size(), unresolved.size());
     return resolved;
+  }
+
+  /**
+   * One directory lookup, remembered when it answers.
+   *
+   * @return false when the directory could not be reached, so the caller stops
+   */
+  private boolean lookUpOne(
+      DirectoryEnv directory, String guid, Map<String, UserLookupIdirUserDto> resolved) {
+
+    try {
+      userLookupClient.getIdirDetailByGuid(directory, guid).ifPresent(user -> {
+        resolved.put(guid, user);
+        remember(directory, guid, user);
+      });
+      return true;
+    } catch (RuntimeException e) {
+      // This runs while somebody waits for a table to render; the names are
+      // cosmetic and the rows are already right.
+      log.warn("Could not resolve names from the directory; the listing will show GUIDs "
+          + "for users who have not signed in yet. Reason: {}", e.getMessage());
+      return false;
+    }
+  }
+
+  private void remember(DirectoryEnv directory, String guid, UserLookupIdirUserDto user) {
+    if (resolvedByGuid.size() >= RESOLVED_SWEEP_THRESHOLD) {
+      Instant now = Instant.now();
+      resolvedByGuid.values().removeIf(cached -> !cached.isFresh(now));
+    }
+    resolvedByGuid.put(cacheKey(directory, guid), new Cached(user, Instant.now()));
+  }
+
+  /** Per directory: the same GUID means nothing across environments. */
+  private static String cacheKey(DirectoryEnv directory, String guid) {
+    return directory + "|" + guid.toUpperCase(Locale.ROOT);
   }
 
   /** As {@link #guidNeedingLookup}, for an administrator row. */
