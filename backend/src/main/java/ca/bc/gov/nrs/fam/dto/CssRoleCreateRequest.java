@@ -69,14 +69,6 @@ public record CssRoleCreateRequest(
     boolean requiresForestClient) {
 
   /**
-   * The single scope type these flags describe, or null for an unscoped role.
-   *
-   * <p>Both at once is refused rather than resolved. A grant carries one
-   * {@code scope_type} and the picker offers one kind of scope, so a role marked
-   * both would silently be treated as district scoped and its forest client side
-   * would be unreachable.
-   */
-  /**
    * Every scope this role is defined by, in no particular order - the caller
    * canonicalises.
    *

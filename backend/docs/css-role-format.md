@@ -27,7 +27,7 @@ A role defined through *Manage roles* becomes up to four CSS roles:
 
 ```
 FSPTS_VIEW_ALL                                      the role; its name is the code
-└── HAS_DISTRICT_ROLE                               composite child, when scoped
+└── HAS_DISTRICT_ROLE                               composite child, one per scope type
 
 FAM:LABEL:FSPTS_VIEW_ALL:View All                   sidecar, holds the short name
 FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit
@@ -39,8 +39,8 @@ FAM:DESC:FSPTS_VIEW_ALL:Allows users to view all the FSPs but not edit
 | Raw code | the role's own name | `CssRoleOptionDto.name` |
 | Short name | a sidecar role, `FAM:LABEL:<CODE>:<text>` | `CssRoleNaming.parseLabel` |
 | Description | a sidecar role, `FAM:DESC:<CODE>:<text>` | `CssRoleNaming.parseDescription` |
-| Scope type | a marker role composed into it | `CssRoleNaming.MARKERS` |
-| Scope value | appended at grant time, `<CODE>_DISTRICT-DCC` | `CssRoleNaming.parse` |
+| Scope type | a marker role composed into it, one per type | `CssRoleNaming.MARKERS` |
+| Scope value | appended at grant time, `<CODE>_DISTRICT-DCC`, one suffix per type | `CssRoleNaming.parse` |
 
 ### Two sidecars, not one three-part name
 
@@ -100,9 +100,12 @@ marker, and finds its description on a sidecar instead.
 - **FAM administrators only.** Deciding *which roles exist* changes an
   application's authorisation model; deciding *who holds one* does not. `APP_ADMIN`
   can do the second and not the first.
-- **District or forest client, never both.** A grant carries one `scope_type` and
-  the picker offers one kind of scope, so a role marked both would silently behave
-  as district scoped with its client side unreachable.
+- **Scopes combine rather than exclude.** A role may require a district, a region
+  and a forest client in any combination, and gets one marker for each. It is
+  granted for every combination of the values chosen, so two districts and three
+  clients assign six roles, each carrying both suffixes in a fixed order -
+  `FOM_SUBMITTER_DISTRICT-DCC_FOREST_CLIENT-00001012`. (This used to be refused,
+  back when a grant could carry only one scope type.)
 - **A code cannot be reused.** People may already hold it, and `create` must not
   silently redefine what they have.
 - **Marker names are reserved.** Creating `HAS_DISTRICT_ROLE` as a role of its own
