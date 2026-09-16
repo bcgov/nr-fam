@@ -1858,25 +1858,25 @@ class CssIntegrationServiceTest {
   }
 
   @Test
-  @DisplayName("reads a prod application's administrators from FAM's own prod environment")
+  @DisplayName("reads a test application's administrators from FAM's own client for this deployment")
   void administratorsAreEnvironmentSpecific() {
     /*
-        The environment is the one being administered, not the one FAM happens
-        to be deployed in. Administering a prod application is an act against
-        prod, and the role that authorises it lives there - so this reads FAM's
-        own integration in prod, and a dev tab cannot list prod administrators.
+        The application's environment names the role, so a test tab cannot list
+        prod administrators. Where it is read from is FAM's own deployment
+        environment - the client whose tokens the role has to reach.
 
         This read has to match the write in appointApplicationAdmin exactly. Any
         disagreement between them is an appointment that lands somewhere the
         table does not look, which reports success and shows nothing.
     */
+    org.mockito.Mockito.doReturn("prod").when(famProperties).deploymentEnvironment();
     when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
         .thenReturn(List.of());
 
-    service.getAdministrators(INTEGRATION, "prod", AdminRoleAuthGroup.APP_ADMIN);
+    service.getAdministrators(INTEGRATION, "test", AdminRoleAuthGroup.APP_ADMIN);
 
     verify(cssApiService).getUsersWithRole(
-        FAM_OWN_INTEGRATION, "prod", "APP_ADMIN_" + INTEGRATION + "_PROD");
+        FAM_OWN_INTEGRATION, "prod", "APP_ADMIN_" + INTEGRATION + "_TEST");
   }
 
   @Test
@@ -2081,23 +2081,23 @@ class CssIntegrationServiceTest {
   }
 
   @Test
-  @DisplayName("appoints against the application's environment, not FAM's own")
-  void appointUsesTheApplicationEnvironment() {
+  @DisplayName("appoints on FAM's own client for this deployment, naming the application's environment")
+  void appointUsesFamsDeploymentEnvironment() {
     /*
         The regression this guards: every other appointment test administers a
         dev application from a dev deployment, where the application's
-        environment and FAM's own are the same string - so an appointment that
-        wrote to FAM's deployment environment passed all of them, and appointing
-        a delegate for a TEST application quietly wrote the delegation into dev.
-        It reported success and the row never appeared, because the read looked
-        where the write should have gone.
+        environment and FAM's own are the same string, so they cannot tell the
+        two apart.
 
-        Administering a test application is an act against test. The role that
-        authorises it belongs on FAM's own integration - the application's
-        integration holds application roles, never these - in the environment
-        being administered.
+        They are different things. The application's environment is named
+        inside the role. FAM's deployment environment decides which of FAM's
+        clients the role goes on, because a token only carries the roles of the
+        client it was issued to. Appointing for a TEST application from FAM PROD
+        once wrote to FAM's test client: it reported success and never reached
+        the token of anybody signing in to FAM PROD.
     */
-    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "test")).thenReturn(List.of());
+    org.mockito.Mockito.doReturn("prod").when(famProperties).deploymentEnvironment();
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "prod")).thenReturn(List.of());
 
     Requester appAdminOfTest = Requester.builder()
         .userName("JSMITH").userGuid("SOMEONEELSE")
@@ -2106,14 +2106,37 @@ class CssIntegrationServiceTest {
 
     service.appointDelegatedAdmin(
         INTEGRATION, "test", appointment(null, List.of()), appAdminOfTest);
+    service.appointApplicationAdmin(INTEGRATION, "test", appointAdmin(), appAdminOfTest);
+    service.appointDevopsAdmin(INTEGRATION, "test", appointAdmin(), Requester.builder()
+        .userName("FAMADMIN").userGuid("FFFF0000")
+        .accessRoles(List.of(FamAdminRole.FAM_ADMIN))
+        .build());
 
-    String delegation = "DELEGATED_ADMIN_" + INTEGRATION + "_TEST__CHR_FREP_EDITOR";
-    verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "test", delegation);
-    verify(cssApiService).assignUserRoles(
-        eq(FAM_OWN_INTEGRATION), eq("test"), anyString(), eq(List.of(delegation)));
+    for (String roleName : List.of(
+        "DELEGATED_ADMIN_" + INTEGRATION + "_TEST__CHR_FREP_EDITOR",
+        "APP_ADMIN_" + INTEGRATION + "_TEST",
+        "DEVOPS_ADMIN_" + INTEGRATION + "_TEST")) {
+      verify(cssApiService).createRole(FAM_OWN_INTEGRATION, "prod", roleName);
+      verify(cssApiService).assignUserRoles(
+          eq(FAM_OWN_INTEGRATION), eq("prod"), anyString(), eq(List.of(roleName)));
+    }
 
-    // Nothing at all in dev, which is where this used to land.
-    verify(cssApiService, never()).assignUserRoles(anyInt(), eq("dev"), anyString(), anyList());
+    // Nothing on FAM's test client, which is where these used to land.
+    verify(cssApiService, never()).createRole(eq(FAM_OWN_INTEGRATION), eq("test"), anyString());
+    verify(cssApiService, never()).assignUserRoles(anyInt(), eq("test"), anyString(), anyList());
+  }
+
+  @Test
+  @DisplayName("refuses to appoint when FAM's deployment environment is not a CSS environment")
+  void appointRefusesUnknownDeploymentEnvironment() {
+    org.mockito.Mockito.doReturn("staging").when(famProperties).deploymentEnvironment();
+
+    assertThatThrownBy(() -> service.appointApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
+        requesterWithGuid("SOMEONEELSE")))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("FAM_DEPLOYMENT_ENVIRONMENT");
+
+    verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), anyList());
   }
 
   @Test
