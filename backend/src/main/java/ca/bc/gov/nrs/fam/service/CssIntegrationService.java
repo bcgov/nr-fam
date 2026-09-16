@@ -809,7 +809,7 @@ public class CssIntegrationService {
 
     for (String delegation : delegations) {
       try {
-        cssApiService.deleteRole(ownIntegrationId(), environment, delegation);
+        cssApiService.deleteRole(ownIntegrationId(), ownEnvironment(), delegation);
         removedDelegations.add(delegation);
       } catch (RuntimeException e) {
         log.error("Could not withdraw delegation {} while removing role {}: {}",
@@ -895,12 +895,13 @@ public class CssIntegrationService {
         request.userType(), request.userGuid());
 
     Integer ownIntegrationId = ownIntegrationId();
+    String ownEnvironment = ownEnvironment();
     String username = cssUsername(request.userGuid(), request.userType());
 
     List<String> delegations = delegationRoleNames(integrationId, environment, request);
 
     Set<String> existing = new HashSet<>();
-    cssApiService.getRoles(ownIntegrationId, environment)
+    cssApiService.getRoles(ownIntegrationId, ownEnvironment)
         .forEach(role -> existing.add(role.name()));
 
     List<CssUserRoleAssignmentResult> results = new ArrayList<>();
@@ -910,7 +911,7 @@ public class CssIntegrationService {
       try {
         boolean created = false;
         if (!existing.contains(delegation)) {
-          cssApiService.createRole(ownIntegrationId, environment, delegation);
+          cssApiService.createRole(ownIntegrationId, ownEnvironment, delegation);
           created = true;
         }
         assignable.add(delegation);
@@ -927,7 +928,7 @@ public class CssIntegrationService {
     }
 
     try {
-      cssApiService.assignUserRoles(ownIntegrationId, environment, username, assignable);
+      cssApiService.assignUserRoles(ownIntegrationId, ownEnvironment, username, assignable);
       results.replaceAll(result -> assignable.contains(result.roleName())
           ? new CssUserRoleAssignmentResult(result.roleName(), result.roleCreated(), true, null,
               EmailSendingStatus.NOT_REQUIRED)
@@ -978,19 +979,20 @@ public class CssIntegrationService {
         request.userType(), request.userGuid());
 
     Integer ownIntegrationId = ownIntegrationId();
+    String ownEnvironment = ownEnvironment();
     String username = cssUsername(request.userGuid(), request.userType());
     String roleName = FamAdminRole.appAdmin(integrationId, environment);
 
     boolean created = false;
     try {
-      boolean exists = cssApiService.getRoles(ownIntegrationId, environment).stream()
+      boolean exists = cssApiService.getRoles(ownIntegrationId, ownEnvironment).stream()
           .anyMatch(role -> roleName.equals(role.name()));
       if (!exists) {
-        cssApiService.createRole(ownIntegrationId, environment, roleName);
+        cssApiService.createRole(ownIntegrationId, ownEnvironment, roleName);
         created = true;
       }
       cssApiService.assignUserRoles(
-          ownIntegrationId, environment, username, List.of(roleName));
+          ownIntegrationId, ownEnvironment, username, List.of(roleName));
     } catch (RuntimeException e) {
       log.error("Could not appoint {} as an application administrator: {}",
           username, e.getMessage());
@@ -1022,7 +1024,7 @@ public class CssIntegrationService {
     authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
 
     String roleName = FamAdminRole.appAdmin(integrationId, environment);
-    cssApiService.removeUserRole(ownIntegrationId(), environment,
+    cssApiService.removeUserRole(ownIntegrationId(), ownEnvironment(),
         cssUsername(request.userGuid(), request.userType()), roleName);
 
     log.info("Removed application administration of integration {} ({}) from {}.",
@@ -1085,19 +1087,20 @@ public class CssIntegrationService {
         request.userType(), request.userGuid());
 
     Integer ownIntegrationId = ownIntegrationId();
+    String ownEnvironment = ownEnvironment();
     String username = cssUsername(request.userGuid(), request.userType());
     String roleName = FamAdminRole.devopsAdmin(integrationId, environment);
 
     boolean created = false;
     try {
-      boolean exists = cssApiService.getRoles(ownIntegrationId, environment).stream()
+      boolean exists = cssApiService.getRoles(ownIntegrationId, ownEnvironment).stream()
           .anyMatch(role -> roleName.equals(role.name()));
       if (!exists) {
-        cssApiService.createRole(ownIntegrationId, environment, roleName);
+        cssApiService.createRole(ownIntegrationId, ownEnvironment, roleName);
         created = true;
       }
       cssApiService.assignUserRoles(
-          ownIntegrationId, environment, username, List.of(roleName));
+          ownIntegrationId, ownEnvironment, username, List.of(roleName));
     } catch (RuntimeException e) {
       log.error("Could not appoint {} as a DevOps administrator: {}", username, e.getMessage());
       return CssUserRoleAssignmentResult.failed(roleName, e.getMessage());
@@ -1128,7 +1131,7 @@ public class CssIntegrationService {
     authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
 
     String roleName = FamAdminRole.devopsAdmin(integrationId, environment);
-    cssApiService.removeUserRole(ownIntegrationId(), environment,
+    cssApiService.removeUserRole(ownIntegrationId(), ownEnvironment(),
         cssUsername(request.userGuid(), request.userType()), roleName);
 
     log.info("Removed DevOps administration of integration {} ({}) from {}.",
@@ -1161,7 +1164,7 @@ public class CssIntegrationService {
 
     for (String delegation : delegations) {
       cssApiService.removeUserRole(
-          ownIntegrationId(), environment, username, delegation);
+          ownIntegrationId(), ownEnvironment(), username, delegation);
     }
 
     log.info("Removed delegated administration of {} from {} on integration {} ({}).",
@@ -1323,6 +1326,34 @@ public class CssIntegrationService {
     return ownIntegrationId;
   }
 
+  /**
+   * The environment of FAM's own integration that administrative roles live in:
+   * the one this deployment signs people in through.
+   *
+   * <p><b>Not the environment of the application being administered.</b> The
+   * application's environment is already inside the role name -
+   * {@code APP_ADMIN_22264_TEST} - and a token only carries the roles of the
+   * client it was issued to, which for FAM PROD is FAM's {@code prod} client. A
+   * role for a TEST application written to FAM's {@code test} client reported
+   * success and never reached the token of anyone signing in to FAM PROD, so
+   * only the PROD appointments made there ever took effect.
+   *
+   * @throws FamHttpException when the deployment environment is not one CSS has -
+   *     guessing would put the appointment on a client nobody signs in through
+   */
+  private String ownEnvironment() {
+    String environment = famProperties.deploymentEnvironment() == null
+        ? "" : famProperties.deploymentEnvironment().trim().toLowerCase(Locale.ROOT);
+
+    if (!List.of("dev", "test", "prod").contains(environment)) {
+      throw FamHttpException.internalError(ErrorCode.UNKNOWN_STATE,
+          "FAM's deployment environment '%s' is not dev, test or prod, so administrators "
+              .formatted(famProperties.deploymentEnvironment())
+              + "cannot be managed. Set FAM_DEPLOYMENT_ENVIRONMENT.");
+    }
+    return environment;
+  }
+
   private String cssUsername(String userGuid, ca.bc.gov.nrs.fam.constants.UserType userType) {
     try {
       FamProperties.Integration.Css css = famProperties.integration().css();
@@ -1375,13 +1406,13 @@ public class CssIntegrationService {
    * administrators never appear in the application's own user list, and why these
    * tabs are a second read rather than a filter over the first.
    *
-   * <p><b>The environment is the application's</b>, not the one FAM happens to be
-   * deployed in. Administering a test application is an act against test, so the
-   * role authorising it lives in FAM's own integration under {@code test} -
-   * whichever deployment the appointment was made from. This read has to agree
-   * with the appointment paths exactly: a write and a read that disagree about
-   * the environment is an appointment that lands where the table does not look,
-   * reporting success and showing nothing.
+   * <p><b>Two environments, used for different things.</b> The application's
+   * names the role - {@code APP_ADMIN_<id>_TEST} - while FAM's own deployment
+   * environment decides which of FAM's clients it is read from, because that is
+   * the client whose tokens it has to reach. See {@link #ownEnvironment()}. This
+   * read has to agree with the appointment paths exactly: a write and a read that
+   * disagree about the environment is an appointment that lands where the table
+   * does not look, reporting success and showing nothing.
    *
    * @throws FamHttpException when FAM's own integration id is not configured -
    *     without it there is nowhere to look, and guessing would list the wrong
@@ -1436,7 +1467,7 @@ public class CssIntegrationService {
           .orElse(null);
 
       for (CssApiService.CssUserDto user
-          : holdersOf(ownIntegrationId, environment, roleName)) {
+          : holdersOf(ownIntegrationId, ownEnvironment(), roleName)) {
 
         rows.add(new CssAdministratorRowDto(
             user.displayUsername(),
@@ -1473,7 +1504,7 @@ public class CssIntegrationService {
 
     String tierRole = FamAdminRole.delegatedAdmin(integrationId, environment);
 
-    return cssApiService.getRoles(ownIntegrationId, environment).stream()
+    return cssApiService.getRoles(ownIntegrationId, ownEnvironment()).stream()
         .map(CssRoleDto::name)
         .filter(name -> name.equalsIgnoreCase(tierRole)
             || name.toUpperCase(java.util.Locale.ROOT)
@@ -1563,7 +1594,7 @@ public class CssIntegrationService {
       return List.of();
     }
 
-    return cssApiService.getRoles(ownIntegrationId, environment).stream()
+    return cssApiService.getRoles(ownIntegrationId, ownEnvironment()).stream()
         .map(CssRoleDto::name)
         .filter(name -> FamAdminRole.delegatedRoleOf(name)
             .map(delegated -> roleName.equals(delegated)
