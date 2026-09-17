@@ -81,12 +81,12 @@ class SchemaValidationIT {
   }
 
   @Test
-  @DisplayName("only the four tables FAM still owns are mapped")
+  @DisplayName("only the tables FAM still owns are mapped")
   void expectedEntitiesAreMapped() {
     // Guards against an entity for something FAM does not own creeping back.
     // Applications, roles, role assignments, delegated administration and forest
     // clients belong to CSS; users belong to the token and the identity
-    // directory. The audit trail is all that is left.
+    // directory. The audit trail and Terms of Use acceptance are all that is left.
     List<String> mapped = entityManager.getMetamodel().getEntities().stream()
         .map(EntityType::getName)
         .sorted(Comparator.naturalOrder())
@@ -94,7 +94,8 @@ class SchemaValidationIT {
 
     assertThat(mapped).containsExactlyInAnyOrder(
         "FamPrivilegeChangeAudit",
-        "FamPrivilegeChangeType");
+        "FamPrivilegeChangeType",
+        "FamUserTermsAcceptance");
   }
 
   /** A minimal, valid audit row: every NOT NULL column populated but update_user. */

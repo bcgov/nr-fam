@@ -215,8 +215,12 @@ Nothing in a CSS response marks which integration is FAM's, so it has to be told
 
 It is also where every administrative role lives - `APP_ADMIN_<id>_<ENV>` and the
 delegations `DELEGATED_ADMIN_<id>_<ENV>__<ROLE>` are held on FAM's own
-integration, not on the application being administered. So without this id there
-is nowhere to read or write them, and three things break:
+integration, not on the application being administered. They sit in FAM's own
+deployment environment (`FAM_DEPLOYMENT_ENVIRONMENT`), not the application's, so
+FAM PROD keeps `APP_ADMIN_<id>_DEV` on its `prod` client, where its users' tokens
+come from. See
+[authentication.md](backend/docs/authentication.md#which-of-fams-environments-holds-them).
+Without this id there is nowhere to read or write them, and three things break:
 
 - the **Delegated admins** and **Application admins** tabs fail with a message
   naming this variable;

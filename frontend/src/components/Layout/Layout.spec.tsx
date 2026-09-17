@@ -27,6 +27,7 @@ const renderLayout = (state: Partial<AuthState>) => {
         logout: vi.fn(async () => {}),
         ensureFreshToken: async () => {},
         forceRefreshSession: async () => {},
+        acceptTermsOfUse: async () => {},
     };
     return render(
         <AuthContext.Provider value={value}>

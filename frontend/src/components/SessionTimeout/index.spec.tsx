@@ -34,6 +34,7 @@ const authValue = (): AuthContextValue => ({
     logout,
     ensureFreshToken,
     forceRefreshSession,
+    acceptTermsOfUse: async () => {},
 });
 
 const renderGuard = () =>

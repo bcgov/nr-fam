@@ -1,7 +1,9 @@
 package ca.bc.gov.nrs.fam.security;
 
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
+import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.exception.FamHttpException;
+import ca.bc.gov.nrs.fam.service.TermsAcceptanceService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +21,9 @@ import org.springframework.stereotype.Service;
  *
  * <p><strong>Everything comes from the token.</strong> Identity is read from the
  * claims and roles from {@code client_roles} - see {@link AccessRoleResolver}.
- * Neither is a database read, so no query runs on the authentication path.
+ * Neither is a database read. The one query on this path is whether a Business
+ * BCeID delegated administrator has accepted the Terms of Use - see
+ * {@link TermsAcceptanceService} - and nobody else triggers it.
  *
  * <p>This used to load a {@code fam_user} row and reject a token that had none,
  * which made "has signed in to FAM at least once" a precondition for every API
@@ -34,6 +38,7 @@ public class RequesterService {
 
   private final TokenClaimsReader claimsReader;
   private final AccessRoleResolver accessRoleResolver;
+  private final TermsAcceptanceService termsAcceptanceService;
 
   /**
    * Build the {@link Requester} for the current request.
@@ -56,18 +61,19 @@ public class RequesterService {
   /**
    * Derive the two computed flags upstream attached to the requester.
    *
-   * <p>{@code isDelegatedAdmin} and {@code requiresAcceptTc} are always false
-   * since V94: delegated administration and terms acceptance are CSS concerns,
-   * and the tables that backed them are gone.
+   * <p>{@code isDelegatedAdmin} comes from the roles: any {@code DELEGATED_ADMIN_}
+   * role on the token. {@code requiresAcceptTc} is the one exception to
+   * "everything comes from the token" - whether somebody accepted the Terms of
+   * Use is recorded nowhere else. It is only looked up for a Business BCeID
+   * delegated administrator, so every other request still makes no query.
    */
   public Requester toRequester(
       TokenClaimsReader.TokenIdentity identity, List<String> accessRoles) {
 
-    // Delegated administration and terms-and-conditions acceptance went to CSS
-    // in V94 along with the tables that recorded them. Both flags are retained on
-    // Requester so the response shape is unchanged, and both are now always false.
-    boolean delegatedAdmin = false;
-    boolean requiresAcceptTc = false;
+    UserType userType = identity.identityProvider().getUserType();
+    boolean delegatedAdmin = TermsAcceptanceService.holdsDelegatedAdminRole(accessRoles);
+    boolean requiresAcceptTc =
+        termsAcceptanceService.requiresAcceptance(userType, identity.userGuid(), delegatedAdmin);
 
     return Requester.builder()
         .oidcUserId(identity.oidcUserId())
@@ -75,7 +81,7 @@ public class RequesterService {
         .firstName(identity.firstName())
         .lastName(identity.lastName())
         .email(identity.email())
-        .userType(identity.identityProvider().getUserType())
+        .userType(userType)
         .userGuid(identity.userGuid())
         .businessGuid(identity.businessGuid())
         .accessRoles(accessRoles)

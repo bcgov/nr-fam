@@ -12,3 +12,9 @@ export const SELF_GRANT_PROHIBITED_ERROR_CODE = "self_grant_prohibited";
  * UserSearch. Raised by AuthorizationService.enforceSameOrganization.
  */
 export const DIFFERENT_ORG_GRANT_PROHIBITED = "different_org_grant_prohibited";
+
+/**
+ * A Business BCeID delegated administrator who has not accepted the current FAM
+ * Terms of Use. Raised by AuthorizationService.requireAcceptedTerms.
+ */
+export const TERMS_CONDITIONS_REQUIRED = "terms_condition_required";

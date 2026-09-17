@@ -1,0 +1,558 @@
+import {
+    Button,
+    ComposedModal,
+    InlineNotification,
+    ModalBody,
+    ModalHeader,
+} from "@carbon/react";
+import { useState, type FC } from "react";
+import { InlineSpinner } from "@/components/InlineSpinner";
+import { useAuth } from "@/context/auth/useAuth";
+import "./terms-of-use.scss";
+
+/*
+    The FAM Terms of Use, version 1.
+
+    Transcribed from the approved copy, public/2024-06-04-fam-terms-conditions.pdf,
+    which is also what the dialog offers for download. The legacy Vue component
+    carried the same words but lost the numbering - its list markup restarted and
+    nested wrongly, so "section 4" and "section 11" pointed at nothing. The
+    numbering here follows the PDF.
+
+    Changing the wording is a new version. Change it together with
+    FamConstants.CURRENT_TERMS_AND_CONDITIONS_VERSION in the backend, which is
+    what asks every delegated administrator to accept again, and replace the PDF.
+*/
+export const TERMS_PDF_PATH = "/2024-06-04-fam-terms-conditions.pdf";
+
+const PRIVACY_POLICY_URL = "https://www2.gov.bc.ca/gov/content/home/privacy";
+const DISCLAIMER_URL = "https://www2.gov.bc.ca/gov/content/home/disclaimer";
+const BCEID_TERMS_URL = "https://www.bceid.ca/aboutbceid/agreements.aspx";
+
+const ExternalLink: FC<{ href: string; children: string }> = ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+        {children}
+    </a>
+);
+
+const TermsText: FC = () => (
+    <div className="terms-of-use__text">
+        <p>
+            This Forest Access Management application (“FAM”) terms of use agreement
+            (the “Agreement”) is entered into between the legal entity that has
+            received approval for Delegated Administrator access to FAM (the
+            “Subscriber”) and His Majesty the King in right of the Province of British
+            Columbia as represented by the Minister of Forests (the “Province”).
+        </p>
+        <p>
+            By clicking the “I Accept” button (or any similar button or mechanism),
+            and in consideration of the Province granting the Delegated Administrator
+            access to FAM, the Subscriber, and the Delegated Administrator on behalf
+            of the Subscriber, agree (and will be conclusively deemed to have agreed)
+            to the following:
+        </p>
+
+        <h3>Definitions</h3>
+        <ol start={1}>
+            <li>
+                In this Agreement the following words have the following meanings:
+                <ol type="a">
+                    <li>
+                        “Applications” means any applications to which Users may be
+                        granted access by the Delegated Administrator through FAM;
+                    </li>
+                    <li>
+                        “Business BCeID” means the Master Login ID and User Login IDs
+                        (both as defined in the Business BCeID Terms) issued to the
+                        Subscriber and individuals within the Subscriber’s
+                        organization pursuant to the Business BCeID Terms;
+                    </li>
+                    <li>
+                        “Business BCeID Terms” means the terms found at:{" "}
+                        <ExternalLink href={BCEID_TERMS_URL}>{BCEID_TERMS_URL}</ExternalLink>;
+                    </li>
+                    <li>
+                        “Delegated Administrator” means the individual within the
+                        Subscriber’s organization who is responsible for granting
+                        Users access to Applications through FAM;
+                    </li>
+                    <li>
+                        “Device” means a computer, mobile device or any other device
+                        capable of accessing FAM or any Application;
+                    </li>
+                    <li>
+                        “Documentation” means documentation for FAM or an Application
+                        that describes the features and functionality of FAM or the
+                        Application;
+                    </li>
+                    <li>
+                        “FOIPPA” means the Freedom of Information and Protection of
+                        Privacy Act, R.S.B.C. 1996, c. 165, as amended or replaced from
+                        time to time;
+                    </li>
+                    <li>
+                        “Users” means individuals within the Subscriber’s organization
+                        who have been granted access to any Application by the
+                        Delegated Administrator through FAM; and
+                    </li>
+                    <li>
+                        “Works” means, collectively, FAM, the Applications and the
+                        Documentation.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Authority and Ability to Accept Terms</h3>
+        <ol start={2}>
+            <li>
+                The Delegated Administrator accepting the terms of this Agreement on
+                behalf of the Subscriber represents and warrants that:
+                <ol type="a">
+                    <li>they are at least 19 years of age; and</li>
+                    <li>
+                        they have all necessary authority to accept this Agreement on
+                        behalf of the Subscriber.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Responsibilities of Subscriber</h3>
+        <ol start={3}>
+            <li>
+                The Subscriber acknowledges and agrees that it is responsible for
+                ensuring that:
+                <ol type="a">
+                    <li>
+                        the Delegated Administrator and Users have all necessary
+                        hardware and software required to allow the Delegated
+                        Administrator to access FAM and to allow Users to access the
+                        Applications;
+                    </li>
+                    <li>
+                        the Delegated Administrator fulfills the responsibilities set
+                        out in section 4 of this Agreement;
+                    </li>
+                    <li>
+                        the Subscriber takes such steps as are necessary to ensure that
+                        any individual that leaves the Subscriber’s organization no
+                        longer has access to FAM or any Application;
+                    </li>
+                    <li>
+                        the Subscriber takes appropriate steps regarding the security of
+                        any Device used to access FAM or any Applications, including as
+                        applicable informing Users that FAM and the Applications must
+                        not be accessed using publicly shared Devices, that Devices used
+                        to access FAM or any Application must be kept up to date, and
+                        that appropriate security measures such as setting Devices used
+                        to access FAM or any Application to lock after a short period
+                        of inactivity must be observed;
+                    </li>
+                    <li>
+                        Users are made aware of the terms of this Agreement applicable
+                        to them; and
+                    </li>
+                    <li>
+                        the Delegated Administrator and Users comply with all
+                        applicable laws, any applicable Documentation, and the terms of
+                        this Agreement applicable to them.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Responsibilities of Delegated Administrator</h3>
+        <ol start={4}>
+            <li>
+                The Delegated Administrator is responsible for managing User access to
+                the Applications, including:
+                <ol type="a">
+                    <li>
+                        managing the process for granting Users access to the
+                        Applications;
+                    </li>
+                    <li>
+                        ensuring that Users have the minimum level of access to
+                        Applications that is necessary to perform their job functions;
+                    </li>
+                    <li>
+                        promptly revoking access for any User who:
+                        <ol type="i">
+                            <li>
+                                no longer requires access to perform the User’s job
+                                functions,
+                            </li>
+                            <li>leaves the Subscriber’s organization, or</li>
+                            <li>
+                                fails to comply with any term of this Agreement
+                                applicable to Users; and
+                            </li>
+                        </ol>
+                    </li>
+                    <li>
+                        ensuring that the list of Users remains accurate and up to date.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Authentication</h3>
+        <ol start={5}>
+            <li>
+                The Subscriber acknowledges and agrees that:
+                <ol type="a">
+                    <li>
+                        the Delegated Administrator and Users will use the Subscriber’s
+                        Business BCeID to authenticate their identity before access is
+                        granted to FAM (in the case of the Delegated Administrator) or
+                        any Application (in the case of Users);
+                    </li>
+                    <li>
+                        the Subscriber is responsible for all use of its Business
+                        BCeID; and
+                    </li>
+                    <li>
+                        the Business BCeID Terms continue to apply to the Subscriber,
+                        the Delegated Administrator and Users.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Collection of Information</h3>
+        <ol start={6}>
+            <li>
+                Contact information (as defined in FOIPPA) consisting of first and last
+                name and business email address is collected from the Delegated
+                Administrator and Users in connection with the use of FAM and the
+                Applications. This information is used for the purposes of providing
+                access to and of managing the ongoing operation and administration of
+                FAM and the Applications. Any information automatically collected from
+                individuals through the website through which FAM and the Applications
+                are accessed is collected in accordance with the Province’s general{" "}
+                <ExternalLink href={PRIVACY_POLICY_URL}>Privacy Policy</ExternalLink>.
+            </li>
+        </ol>
+
+        <h3>Ownership and License</h3>
+        <ol start={7}>
+            <li>
+                The Works are owned by the Province or its licensors and are protected
+                by copyright, trademark and other laws protecting intellectual property
+                rights. Use of the Works except as expressly permitted under this
+                Agreement or as otherwise approved by the Province in writing is
+                prohibited.
+            </li>
+            <li>
+                The Province grants to the Delegated Administrator a non-exclusive,
+                revocable, limited license to access and use FAM, and to allow Users to
+                access and use the Applications and the Documentation, in accordance
+                with the terms of this Agreement.
+            </li>
+            <li>
+                A User’s right to access and use the Applications and the Documentation
+                automatically terminates if the User’s access is revoked by the
+                Delegated Administrator pursuant to section 4. The Delegated
+                Administrator’s right to access and use FAM is:
+                <ol type="a">
+                    <li>
+                        automatically suspended if the Delegated Administrator’s access
+                        to FAM is suspended pursuant to section 11; and
+                    </li>
+                    <li>
+                        automatically terminated if the Delegated Administrator’s access
+                        to FAM is terminated by the Province pursuant to section 11.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Acceptable Use</h3>
+        <ol start={10}>
+            <li>
+                The Subscriber must not take, and must ensure that the Delegated
+                Administrator and Users do not take, any action that would jeopardize
+                the security, integrity and/or availability of FAM or any Application,
+                including:
+                <ol type="a">
+                    <li>
+                        using FAM or any Application for any unlawful or inappropriate
+                        purpose;
+                    </li>
+                    <li>
+                        decompiling, disassembling, reverse engineering or otherwise
+                        copying any software associated with FAM or any Application;
+                    </li>
+                    <li>tampering with any portion of FAM or any Application;</li>
+                    <li>
+                        using FAM or any Application to transmit any virus or other
+                        harmful or destructive computer code, files or programs or to
+                        conduct hacking and/or intrusion activities;
+                    </li>
+                    <li>
+                        attempting to circumvent or subvert any security measure
+                        associated with FAM or any Application;
+                    </li>
+                    <li>
+                        taking any action that might reasonably be construed as likely
+                        to adversely affect other users of FAM or any Application; or
+                    </li>
+                    <li>
+                        removing or altering any proprietary symbol or notice, including
+                        any copyright notice, trademark or logo, displayed in connection
+                        with the Works.
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Suspension and Termination</h3>
+        <ol start={11}>
+            <li>
+                The Province may, in its sole discretion:
+                <ol type="a">
+                    <li>
+                        immediately suspend the Delegated Administrator’s access to FAM
+                        if:
+                        <ol type="i">
+                            <li>
+                                the Delegated Administrator breaches any provision of
+                                this Agreement applicable to the Delegated
+                                Administrator, or
+                            </li>
+                            <li>
+                                the Province determines, in its sole discretion that
+                                such suspension is necessary to maintain the security,
+                                integrity, or availability of FAM or any other aspect
+                                of the Province’s systems;
+                            </li>
+                        </ol>
+                    </li>
+                    <li>
+                        restore the Delegated Administrator’s access if the reason for
+                        the suspension is resolved to the Province’s satisfaction; and
+                    </li>
+                    <li>
+                        terminate the Delegated Administrator’s access if:
+                        <ol type="i">
+                            <li>
+                                the reason for the suspension is not resolved to the
+                                Province’s satisfaction, or
+                            </li>
+                            <li>
+                                the Delegated Administrator leaves the Subscriber’s
+                                organization.
+                            </li>
+                        </ol>
+                    </li>
+                </ol>
+            </li>
+        </ol>
+
+        <h3>Indemnification</h3>
+        <ol start={12}>
+            <li>
+                The Subscriber must indemnify and save harmless the Province and the
+                Province’s employees and agents from any loss, claim (including any
+                claim of infringement of third-party intellectual property rights),
+                damage award, action, cause of action, cost or expense that the
+                Province or any of the Province’s employees or agents may sustain,
+                incur, suffer or be put to at any time, either before or after this
+                Agreement ends (each a “Loss”), to the extent the Loss is directly or
+                indirectly caused or contributed to by any act or omission by the
+                Subscriber, the Delegated Administrator, any User or any other
+                employee, officer, agent or director of the Subscriber in connection
+                with this Agreement.
+            </li>
+        </ol>
+
+        <h3>Disclaimer</h3>
+        <ol start={13}>
+            <li>
+                The Works are provided “as is”, and the Province disclaims all
+                representations, warranties, conditions, obligations and liabilities
+                of any kind, whether express or implied, in relation to the Works,
+                including but not limited to implied warranties with respect to fitness
+                for a particular purpose, merchantability, satisfactory quality, and
+                non-infringement. Without limiting the general nature of the previous
+                sentence, the Province does not represent or warrant the accuracy or
+                the completeness of the Works or any information or data contained
+                within the Works, that FAM or the Applications will function without
+                error, failure, or interruption, or that the Works will meet the
+                Subscriber’s expectations or requirements. This disclaimer applies in
+                addition to the Province’s general{" "}
+                <ExternalLink href={DISCLAIMER_URL}>Warranty Disclaimer</ExternalLink>.
+            </li>
+        </ol>
+
+        <h3>Limitation of Liability</h3>
+        <ol start={14}>
+            <li>
+                To the maximum extent permitted by applicable law, under no
+                circumstances will the Province be liable to any person or entity for
+                any direct, indirect, special, incidental, consequential or other loss,
+                claim, injury or damage, whether foreseeable or unforeseeable
+                (including without limitation claims for damages for loss of profits or
+                business opportunities, use or misuse of, or inability to use, the
+                Works, interruptions, deletion or corruption of files, loss of programs
+                or information, errors, defects or delays), arising out of or in any
+                way connected with the use of the Works and whether based on contract,
+                tort, strict liability or any other legal theory. The previous sentence
+                will apply even if the Province has been specifically advised of the
+                possibility of any such loss, claim, injury or damage. This limitation
+                of liability applies in addition to the Province’s general{" "}
+                <ExternalLink href={DISCLAIMER_URL}>Limitation of Liabilities</ExternalLink>.
+            </li>
+        </ol>
+
+        <h3>Changes to FAM and/or this Agreement</h3>
+        <ol start={15}>
+            <li>
+                The Province may at any time, in its sole discretion, make changes to
+                the Works and/or the terms and conditions of this Agreement. The
+                Delegated Administrator will be notified upon sign in to FAM if changes
+                have been made to the terms and conditions of this Agreement, and must
+                accept the updated terms and conditions by clicking the “I Accept”
+                button (or similar button or mechanism) in order to proceed. By
+                proceeding, the Subscriber, and the Delegated Administrator on behalf
+                of the Subscriber, will be conclusively deemed to have accepted the
+                updated terms and conditions.
+            </li>
+        </ol>
+
+        <h3>General</h3>
+        <ol start={16}>
+            <li>
+                In this Agreement:
+                <ol type="a">
+                    <li>
+                        words expressed in the singular include the plural and vice
+                        versa; and
+                    </li>
+                    <li>“including” is not intended to be limiting.</li>
+                </ol>
+            </li>
+            <li>
+                This Agreement, and any terms for which links are provided in this
+                Agreement, is the entire agreement between the Subscriber and the
+                Province with respect to the use of the Works.
+            </li>
+            <li>
+                If any provision of this Agreement is invalid, illegal or
+                unenforceable, that provision will be severed from this Agreement and
+                all other provisions will remain in full force and effect.
+            </li>
+            <li>
+                This Agreement is governed by and is to be construed in accordance with
+                the laws of British Columbia and the applicable laws of Canada.
+            </li>
+            <li>
+                The Subscriber agrees to the exclusive jurisdiction and venue of the
+                courts of the province of British Columbia, sitting in Victoria, for
+                the hearing of any dispute arising from or related to this Agreement or
+                its subject matter.
+            </li>
+        </ol>
+    </div>
+);
+
+/**
+ * The Terms of Use a Business BCeID delegated administrator must accept before
+ * using FAM.
+ *
+ * Shown in place of the shell while `requiresAcceptTc` is set - see
+ * ProtectedLayout in App.tsx. There is no way to dismiss it other than the two
+ * choices it offers: no close button, and Escape and the backdrop do nothing.
+ * Declining signs out and records nothing, so the next sign-in asks again.
+ *
+ * A failed acceptance says so and lets them try again. Legacy signed the person
+ * out instead, which reads as being thrown out for agreeing.
+ */
+export const TermsOfUse: FC = () => {
+    const { acceptTermsOfUse, logout } = useAuth();
+    const [submitting, setSubmitting] = useState(false);
+    const [failed, setFailed] = useState(false);
+
+    const handleAccept = async () => {
+        if (submitting) {
+            return;
+        }
+        setSubmitting(true);
+        setFailed(false);
+        try {
+            await acceptTermsOfUse();
+        } catch (error) {
+            console.error("Accepting the Terms of Use failed.", error);
+            setFailed(true);
+            setSubmitting(false);
+        }
+    };
+
+    /*
+        ComposedModal rather than Modal: Modal's built-in footer stretches its
+        buttons edge to edge, and a passive Modal puts its own buttons inside
+        the scrolling body where they would scroll away with the text. Composing
+        it keeps the actions pinned below the terms and sized like every other
+        dialog in the app - see DestructiveModal.
+    */
+    return (
+        <ComposedModal
+            open
+            className="terms-of-use"
+            size="lg"
+            aria-label="FAM Terms of use"
+            preventCloseOnClickOutside
+            // Escape and the close button both land here. Neither is a choice,
+            // so returning false keeps the dialog open.
+            onClose={() => false}
+            // Nothing to focus but the text: the reader should meet the terms
+            // before either button.
+            selectorPrimaryFocus=".terms-of-use__intro"
+        >
+            <ModalHeader title="FAM Terms of use" />
+            <ModalBody hasScrollingContent aria-label="Terms of use text">
+                <p className="terms-of-use__intro" tabIndex={-1}>
+                    As a Business BCeID delegated administrator, you must accept
+                    the FAM Terms of Use before you can manage access. You can
+                    also{" "}
+                    <a href={TERMS_PDF_PATH} target="_blank" rel="noopener noreferrer">
+                        download a copy (PDF)
+                    </a>
+                    .
+                </p>
+                {failed && (
+                    <InlineNotification
+                        kind="error"
+                        lowContrast
+                        hideCloseButton
+                        title="We couldn't record your acceptance."
+                        subtitle="Please try again."
+                    />
+                )}
+                <TermsText />
+            </ModalBody>
+            <div className="terms-of-use__actions">
+                <Button
+                    kind="tertiary"
+                    size="md"
+                    onClick={() => void logout()}
+                    disabled={submitting}
+                >
+                    Cancel and log out
+                </Button>
+                <Button
+                    kind="primary"
+                    size="md"
+                    renderIcon={submitting ? InlineSpinner : undefined}
+                    onClick={() => void handleAccept()}
+                    disabled={submitting}
+                >
+                    I accept the Terms of Use
+                </Button>
+            </div>
+        </ComposedModal>
+    );
+};
+
+export default TermsOfUse;

@@ -3,7 +3,11 @@ import axios from "axios";
 import type { User } from "oidc-client-ts";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { bootstrapLogin, fetchSelf } from "@/services/AuthApiService";
+import {
+    acceptTermsOfUse as postTermsAcceptance,
+    bootstrapLogin,
+    fetchSelf,
+} from "@/services/AuthApiService";
 import {
     AUTH_CALLBACK_PATH,
     ensureFreshToken as ensureFreshTokenFor,
@@ -155,7 +159,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         applySession(user);
 
-        const accessRoles = (await fetchSelf()).access_roles ?? [];
+        const self = await fetchSelf();
 
         // Last, and only now. The route guards treat this as "the session is
         // ready to be judged", and judging it needs the roles: setting it in
@@ -163,7 +167,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // an empty role list and sent to /no-access.
         setAuthState((current) => ({
             ...current,
-            accessRoles,
+            accessRoles: self.access_roles ?? [],
+            requiresAcceptTc: self.requires_accept_tc ?? false,
             isAuthRestored: true,
         }));
     }, [applySession]);
@@ -216,6 +221,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             `Bearer ${user.access_token}`;
     }, []);
 
+    /**
+     * Accepts the Terms of Use, then lifts the gate from what the backend says
+     * rather than assuming - it is the backend that refuses requests until then.
+     */
+    const acceptTermsOfUse = useCallback(async () => {
+        const self = await postTermsAcceptance();
+        setAuthState((current) => ({
+            ...current,
+            requiresAcceptTc: self.requires_accept_tc ?? false,
+        }));
+    }, []);
+
     const login = useCallback(async (idp: IdpTypes) => {
         try {
             await getUserManager().signinRedirect({
@@ -246,11 +263,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     const user =
                         await getUserManager().signinRedirectCallback();
                     applySession(user);
-                    const accessRoles =
-                        (await bootstrapLogin()).access_roles ?? [];
+                    const self = await bootstrapLogin();
                     setAuthState((current) => ({
                         ...current,
-                        accessRoles,
+                        accessRoles: self.access_roles ?? [],
+                        requiresAcceptTc: self.requires_accept_tc ?? false,
                         isAuthRestored: true,
                     }));
                     startSilentRefresh();
@@ -305,6 +322,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 logout,
                 ensureFreshToken,
                 forceRefreshSession,
+                acceptTermsOfUse,
             }}
         >
             {children}
