@@ -4,15 +4,113 @@
   gap: 1rem;
 }
 
-.user-search-results__actions {
+/* The filter, and how much of the result set it is currently showing. */
+.user-search-results__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.user-search-results__filter {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.user-search-results__count {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--cds-label-01-font-size, 0.75rem);
+}
+
+.user-search-results__empty {
+  color: var(--cds-text-secondary, #525252);
+}
+
+/*
+  The footer, stuck to the bottom of the results.
+
+  Inside the scrolling area rather than in a modal footer row of its own: it
+  then follows the table when the results are short, and stays in view over them
+  when they are long. The negative inline margins let it span the body's padding
+  so the rule above it reaches both edges of the dialog.
+*/
+.user-search-results-modal .user-search-results__actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
+  flex-wrap: nowrap;
   gap: 0.75rem;
-  padding-top: 0.5rem;
+  margin-inline: -1rem;
+  padding: 1rem;
+  border-block-start: 1px solid var(--cds-border-subtle, #e0e0e0);
+  background-color: var(--cds-layer, #f4f4f4);
+}
+
+/*
+  The pagination bar belongs to the table, not beside it.
+
+  The results column spaces its children by 1rem, which is right between the
+  filter and the table and wrong here - Carbon's own tables carry the pagination
+  flush against the bottom edge, as one piece of furniture rather than a bar
+  floating under one. The negative margin cancels that one gap.
+
+  Carbon also stacks the bar's three groups onto separate rows as soon as they
+  are cramped, which put three lines of chrome under the table. The dialog is
+  wide enough for one row; letting the groups shrink keeps it there.
+*/
+.user-search-results .cds--pagination {
+  margin-block-start: -1rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.user-search-results .cds--pagination__left,
+.user-search-results .cds--pagination__right {
+  min-inline-size: 0;
 }
 
 /* Wide: five columns of directory data do not fit a small dialog. */
 .user-search-results-modal .cds--modal-container {
   inline-size: min(90vw, 62rem);
   max-inline-size: none;
+}
+
+/*
+  Carbon's 3rem body padding is dead space above a footer that is always there.
+*/
+.user-search-results-modal .cds--modal-content {
+  padding-block-end: 0;
+}
+
+/*
+  No fade over the end of the results.
+
+  Carbon masks the bottom 80px of a scrolling modal body to hint that there is
+  more below. That hint is for a body whose last line is text running under the
+  edge; here the last thing in the body is the pagination bar, and the mask
+  dissolved half of it - the page numbers and the next-page arrow faded out
+  while remaining perfectly clickable. The footer says where the content ends,
+  so nothing is lost by removing it.
+
+  The class arrives on its own: ModalBody measures its content and applies
+  --scroll-content whenever it overflows, whether or not hasScrollingContent is
+  passed. So this cannot be turned off by a prop.
+*/
+.user-search-results-modal .cds--modal-scroll-content {
+  mask-image: none;
+}
+
+/*
+  And the footer sits directly under the table.
+
+  Carbon gives the last child of a scrolling body a 2rem bottom margin, which is
+  what its fade needs to fade into. Without the fade it is just a gap between
+  the pagination and the buttons.
+*/
+.user-search-results-modal .cds--modal-scroll-content > *:last-child,
+.user-search-results-modal .user-search-results > *:last-child {
+  margin-block-end: 0;
 }

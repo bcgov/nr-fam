@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState/EmptyState";
 import { PageTitle } from "@/components/PageTitle";
+import { ApplicationOption } from "@/components/ApplicationOption";
 import { SectionTile } from "@/components/SectionTile";
 import { AdministratorsTable } from "@/components/PermissionsTable/AdministratorsTable";
 import { CssPermissionsTable } from "@/components/PermissionsTable/CssPermissionsTable";
@@ -283,6 +284,15 @@ export const ManagePermissions: FC = () => {
                         items={applicationsQuery.data ?? []}
                         itemToString={(item: CssApplicationOptionDto | null) =>
                             item?.description ?? item?.name ?? ""
+                        }
+                        /*
+                            The environment as a pill rather than the "(DEV)"
+                            the description carries. itemToString is untouched:
+                            it is what the closed box shows and what the filter
+                            matches, so typing "dev" still finds them.
+                        */
+                        itemToElement={(item: CssApplicationOptionDto | null) =>
+                            item ? <ApplicationOption option={item} /> : null
                         }
                         /*
                             Carbon shows the whole list otherwise. Beside the

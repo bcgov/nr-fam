@@ -197,6 +197,10 @@ public class BulkGrantService {
               // one means an appended column here, in the parser, in the preview
               // and in the e2e fixture - a change of its own rather than a
               // by-product of adding expiry to the single-grant screen.
+              null,
+              // And it notifies, as it always has. The per-grant opt-out belongs
+              // to the screen where somebody is granting to one person they may
+              // have already spoken to; a CSV of two hundred has no such context.
               null),
           requester);
 

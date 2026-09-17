@@ -17,6 +17,7 @@ import type {
 } from "fam-api";
 import { useMemo, useState, type FC } from "react";
 import { PageTitle } from "@/components/PageTitle";
+import { ApplicationOption } from "@/components/ApplicationOption";
 import { StepContainer } from "@/components/StepContainer";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { UserPermissionHistoryTable } from "@/components/UserPermissionHistoryTable";
@@ -141,6 +142,10 @@ export const UserHistory: FC = () => {
                     items={applicationOptions}
                     itemToString={(item: CssApplicationOptionDto | null) =>
                         item?.description ?? item?.name ?? ""
+                    }
+                    // The environment as a pill - see ApplicationOption.
+                    itemToElement={(item: CssApplicationOptionDto | null) =>
+                        item ? <ApplicationOption option={item} /> : null
                     }
                     // Carbon shows the whole list otherwise - see matchesTypedText.
                     shouldFilterItem={matchesTypedTextBeside(

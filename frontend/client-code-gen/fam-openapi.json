@@ -1415,6 +1415,11 @@
             "type" : "string",
             "format" : "date",
             "example" : "2026-09-30"
+          },
+          "notify_user" : {
+            "type" : "boolean",
+            "default" : true,
+            "description" : "Send the access-granted notification. Defaults to true."
           }
         },
         "required" : [ "role_name", "user_guid", "user_type" ]

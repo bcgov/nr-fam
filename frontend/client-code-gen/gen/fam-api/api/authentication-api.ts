@@ -34,6 +34,40 @@ import { SelfPermissionDto } from '../model';
 export const AuthenticationApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
+         * 
+         * @summary Accept the current FAM Terms of Use (Business BCeID delegated administrators)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        acceptTermsOfUse: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/auth/self/terms-acceptance`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.
          * @summary Provision the signed-in user and return their access
          * @param {*} [options] Override http request option.
@@ -180,6 +214,18 @@ export const AuthenticationApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = AuthenticationApiAxiosParamCreator(configuration)
     return {
         /**
+         * 
+         * @summary Accept the current FAM Terms of Use (Business BCeID delegated administrators)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async acceptTermsOfUse(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SelfDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.acceptTermsOfUse(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AuthenticationApi.acceptTermsOfUse']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.
          * @summary Provision the signed-in user and return their access
          * @param {*} [options] Override http request option.
@@ -238,6 +284,15 @@ export const AuthenticationApiFactory = function (configuration?: Configuration,
     const localVarFp = AuthenticationApiFp(configuration)
     return {
         /**
+         * 
+         * @summary Accept the current FAM Terms of Use (Business BCeID delegated administrators)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        acceptTermsOfUse(options?: any): AxiosPromise<SelfDto> {
+            return localVarFp.acceptTermsOfUse(options).then((request) => request(axios, basePath));
+        },
+        /**
          * Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.
          * @summary Provision the signed-in user and return their access
          * @param {*} [options] Override http request option.
@@ -283,6 +338,15 @@ export const AuthenticationApiFactory = function (configuration?: Configuration,
  */
 export interface AuthenticationApiInterface {
     /**
+     * 
+     * @summary Accept the current FAM Terms of Use (Business BCeID delegated administrators)
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthenticationApiInterface
+     */
+    acceptTermsOfUse(options?: RawAxiosRequestConfig): AxiosPromise<SelfDto>;
+
+    /**
      * Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.
      * @summary Provision the signed-in user and return their access
      * @param {*} [options] Override http request option.
@@ -327,6 +391,17 @@ export interface AuthenticationApiInterface {
  * @extends {BaseAPI}
  */
 export class AuthenticationApi extends BaseAPI implements AuthenticationApiInterface {
+    /**
+     * 
+     * @summary Accept the current FAM Terms of Use (Business BCeID delegated administrators)
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AuthenticationApi
+     */
+    public acceptTermsOfUse(options?: RawAxiosRequestConfig) {
+        return AuthenticationApiFp(this.configuration).acceptTermsOfUse(options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      * Called once after a successful Keycloak sign-in. Replaces the Cognito pre-token-generation trigger.
      * @summary Provision the signed-in user and return their access
