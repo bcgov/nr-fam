@@ -1767,9 +1767,9 @@ public class CssIntegrationService {
 
     LocalDate expiresOn = requireGrantableExpiry(request.expiresOn(), targetRoles);
 
+    List<CssRoleDto> definedRoles = cssApiService.getRoles(integrationId, environment);
     Set<String> existing = new HashSet<>();
-    cssApiService.getRoles(integrationId, environment)
-        .forEach(role -> existing.add(role.name()));
+    definedRoles.forEach(role -> existing.add(role.name()));
 
     /*
       What this person already holds, read before anything is assigned - after
@@ -1874,13 +1874,35 @@ public class CssIntegrationService {
       The read is best effort - see rolesHeldBy - so an outage means the email is
       sent as it always was, which is the safe direction to fail in.
     */
-    Set<String> announceable = new HashSet<>(assignable);
+    /*
+      The person granting can also turn the notification off for this grant -
+      see CssUserRoleAssignmentRequest.notifyUser. Suppressing it leaves the
+      grant and its audit row exactly as they were; only the mail is skipped, and
+      the results say NOT_REQUIRED, which is what they already said for a grant
+      with no address to send to.
+    */
+    Set<String> announceable = request.shouldNotifyUser()
+        ? new HashSet<String>(assignable)
+        : new HashSet<String>();
     announceable.removeAll(alreadyHeld);
+
+    /*
+      How each role reads in the email: its short name if it has one, otherwise
+      its description, otherwise the code. The short name is what the pills and
+      the pickers show, so the email calls a role what the screens call it.
+
+      Both come from sidecar roles already in the list read above, so naming them
+      costs no extra call to CSS.
+    */
+    Map<String, String> roleNames = new HashMap<>(
+        sidecarText(definedRoles, CssRoleNaming::parseDescription));
+    roleNames.putAll(sidecarText(definedRoles, CssRoleNaming::parseLabel));
 
     List<CssUserRoleAssignmentResult> announced =
         accessGrantedEmailService.notifyGranted(
             request.targetUserEmail(),
             applicationLabel(integrationId, environment),
+            roleNames,
             results.stream()
                 .filter(result -> announceable.contains(result.roleName()))
                 .toList());

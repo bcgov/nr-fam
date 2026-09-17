@@ -22,6 +22,7 @@ import { Chip } from "@/components/Chip";
 import { InlineSpinner } from "@/components/InlineSpinner";
 import { DestructiveModal } from "@/components/DestructiveModal";
 import { PageTitle } from "@/components/PageTitle";
+import { ApplicationOption } from "@/components/ApplicationOption";
 import { describeError } from "@/components/PermissionsTable/CssPermissionsTable";
 import { StepContainer } from "@/components/StepContainer";
 import { TableSkeleton } from "@/components/TableSkeleton";
@@ -387,6 +388,10 @@ export const ManageRoles: FC = () => {
                         itemToString={(item: CssRoleManagementApplicationDto | null) =>
                             item?.description ?? ""
                         }
+                        // The environment as a pill - see ApplicationOption.
+                        itemToElement={(
+                            item: CssRoleManagementApplicationDto | null
+                        ) => (item ? <ApplicationOption option={item} /> : null)}
                         /*
                             Carbon shows the whole list otherwise. Beside the
                             selection, because Carbon leaves the chosen

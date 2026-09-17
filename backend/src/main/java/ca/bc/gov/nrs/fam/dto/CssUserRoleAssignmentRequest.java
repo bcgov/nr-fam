@@ -68,10 +68,31 @@ public record CssUserRoleAssignmentRequest(
      * is a name, and the assignment call carries nothing but names.
      */
     @Schema(type = "string", format = "date", example = "2026-09-30")
-    LocalDate expiresOn) {
+    LocalDate expiresOn,
+
+    /**
+     * Whether to send the "you have been granted access" notification.
+     *
+     * <p>Null means yes. Notifying is the norm and was the only behaviour until
+     * this field existed, so a caller that does not mention it - an older client,
+     * the bulk upload - keeps sending mail rather than silently stopping.
+     *
+     * <p>False is for a grant the person has already been told about: access
+     * being restored after a correction, or a batch somebody is being walked
+     * through in person. It suppresses only the notification; the grant and its
+     * audit row are unaffected.
+     */
+    @Schema(defaultValue = "true",
+        description = "Send the access-granted notification. Defaults to true.")
+    Boolean notifyUser) {
 
   /** Never null, so callers can iterate without a guard. */
   public List<CssScopeSelection> scopes() {
     return scopes == null ? List.of() : scopes;
+  }
+
+  /** Notifying is the default, so only an explicit false suppresses it. */
+  public boolean shouldNotifyUser() {
+    return notifyUser == null || notifyUser;
   }
 }

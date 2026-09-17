@@ -1,0 +1,46 @@
+.application-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.application-option__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The pill keeps its size when a long application name runs out of room. */
+.application-option__env {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/*
+  The three environments, in the colours the design asks for: blue for what is
+  being built, yellow for what is being checked, green for the one that is live.
+
+  Painted here rather than left to Carbon's tag types because Carbon has no
+  yellow tag at all, and its blue and green are the same blue and green the role
+  and scope chips use - an environment sitting beside those has to be
+  distinguishable from them. Each rule carries both classes, which outweighs
+  Carbon's own .cds--tag--blue without needing !important.
+*/
+.application-option__env.application-option__env--dev {
+  border: 1px solid #b7cdfa;
+  background-color: #dce8fd;
+  color: #1d4ed8;
+}
+
+.application-option__env.application-option__env--test {
+  border: 1px solid #f0dc8a;
+  background-color: #fdf5d3;
+  color: #92610a;
+}
+
+.application-option__env.application-option__env--prod {
+  border: 1px solid #b4e3c7;
+  background-color: #e6f7ec;
+  color: #14683b;
+}

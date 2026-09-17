@@ -5,6 +5,7 @@ import ca.bc.gov.nrs.fam.dto.CssRoleNaming;
 import ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentResult;
 import ca.bc.gov.nrs.fam.integration.EmailService;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,11 +43,15 @@ public class AccessGrantedEmailService {
    *
    * @param targetUserEmail supplied by the caller - see
    *     {@code CssUserRoleAssignmentRequest.targetUserEmail} for why
+   * @param roleNames what each role code is called, from its CSS sidecars -
+   *     the short name the screens show. A role with no sidecar is absent and is
+   *     named by its code.
    * @return the results, each carrying its email outcome
    */
   public List<CssUserRoleAssignmentResult> notifyGranted(
       String targetUserEmail,
       String applicationName,
+      Map<String, String> roleNames,
       List<CssUserRoleAssignmentResult> results) {
 
     List<CssUserRoleAssignmentResult> assigned =
@@ -71,7 +76,8 @@ public class AccessGrantedEmailService {
     EmailSendingStatus status;
     try {
       boolean sent = emailService.send(
-          List.of(targetUserEmail), subject(applicationName), body(applicationName, assigned));
+          List.of(targetUserEmail), subject(applicationName),
+          body(applicationName, roleNames, assigned));
       status = sent
           ? EmailSendingStatus.SENT_TO_EMAIL_SERVICE_SUCCESS
           : EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE;
@@ -89,15 +95,28 @@ public class AccessGrantedEmailService {
   }
 
   private static String body(
-      String applicationName, List<CssUserRoleAssignmentResult> assigned) {
+      String applicationName,
+      Map<String, String> roleNames,
+      List<CssUserRoleAssignmentResult> assigned) {
 
     StringBuilder body = new StringBuilder();
     body.append("You have been granted access to ").append(applicationName).append(".\n\n");
 
-    body.append(assigned.size() == 1 ? "Role granted:\n" : "Roles granted:\n");
+    body.append(assigned.size() == 1 ? "Role granted:\n\n" : "Roles granted:\n\n");
     for (CssUserRoleAssignmentResult result : assigned) {
       CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(result.roleName());
-      body.append("  - ").append(parsed.baseRoleName());
+      /*
+        What the role is called, not what it is keyed by. FREP_EDITOR means
+        nothing to the person being told they now hold it, and the code is FAM's
+        business rather than theirs.
+
+        Falls back to the code for a role defined directly in the CSS console,
+        which carries no sidecar to read a name from. A blank line would be worse
+        than a technical one.
+      */
+      String named = roleNames == null ? null : roleNames.get(parsed.baseRoleName());
+      body.append("  - ").append(
+          named == null || named.isBlank() ? parsed.baseRoleName() : named);
       if (parsed.isScoped()) {
         // The scope only exists in the generated role name, so it is read back
         // out rather than passed alongside. A role scoped by more than one thing

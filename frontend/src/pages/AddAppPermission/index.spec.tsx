@@ -480,6 +480,39 @@ describe("AddAppPermission", () => {
         });
     });
 
+    it("asks the backend to notify by default, and not to when unticked", async () => {
+        // Notifying is the norm, so the box arrives ticked and the common case
+        // takes no action.
+        renderPage();
+
+        // Nobody chosen yet, so there is nobody to notify and nothing to ask.
+        expect(
+            screen.queryByRole("checkbox", {
+                name: "Send email to notify user",
+            })
+        ).not.toBeInTheDocument();
+
+        await chooseUser();
+        await tickRole("Viewer");
+
+        const notify = screen.getByRole("checkbox", {
+            name: "Send email to notify user",
+        });
+        expect(notify).toBeChecked();
+
+        await userEvent.click(notify);
+        await userEvent.click(
+            screen.getByRole("button", { name: "Grant permission" })
+        );
+
+        await waitFor(() =>
+            expect(createCssUserRoleAssignment).toHaveBeenCalled()
+        );
+        expect(createCssUserRoleAssignment.mock.calls[0][2]).toMatchObject({
+            notify_user: false,
+        });
+    });
+
     it("refuses to submit a region-scoped role with no region chosen", async () => {
         renderPage();
         await chooseUser();

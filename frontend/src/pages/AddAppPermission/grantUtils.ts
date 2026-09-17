@@ -89,6 +89,14 @@ export type AppPermissionFormType = {
      * multi-role grant would be a question nobody wants asked four times.
      */
     expiresOn: string;
+    /**
+     * Whether to send the "you have been granted access" email.
+     *
+     * <p>On by default, which is how every grant behaved before this was a
+     * choice. Turned off for access somebody has already been told about - a
+     * correction, or a grant made while on the phone to them.
+     */
+    notifyUser: boolean;
 };
 
 /** Re-exported so the grant screen has one import for its form vocabulary. */
@@ -121,6 +129,7 @@ export const getDefaultFormData = (
     users: [],
     roles: [],
     expiresOn: "",
+    notifyUser: true,
 });
 
 export const validateAppPermissionForm = () =>
@@ -217,6 +226,9 @@ export const planGrants = (
                     // Omitted rather than sent empty: the backend reads absent
                     // as "does not expire", and an empty string is not a date.
                     expires_on: formData.expiresOn || undefined,
+                    // Absent means notify, so only an explicit false suppresses
+                    // it - see CssUserRoleAssignmentRequest.notifyUser.
+                    notify_user: formData.notifyUser,
                 },
             });
         }

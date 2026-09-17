@@ -62,6 +62,12 @@ export interface CssUserRoleAssignmentRequest {
      * @memberof CssUserRoleAssignmentRequest
      */
     'expires_on'?: string;
+    /**
+     * Send the access-granted notification. Defaults to true.
+     * @type {boolean}
+     * @memberof CssUserRoleAssignmentRequest
+     */
+    'notify_user'?: boolean;
 }
 
 

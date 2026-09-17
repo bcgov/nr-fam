@@ -1,4 +1,4 @@
-import { Button } from "@carbon/react";
+import { Button, Checkbox } from "@carbon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserType, type CssRoleOptionDto } from "fam-api/model";
 import { useMemo, useState, type FC, type FormEvent } from "react";
@@ -56,6 +56,11 @@ export const AddAppPermission: FC = () => {
     const [domain, setDomain] = useState<UserType>(UserType.Idir);
     const [roles, setRoles] = useState<RoleScopeSelection[]>([]);
     const [expiresOn, setExpiresOn] = useState("");
+    /*
+        Notifying is the norm, so the box arrives ticked: the common case takes
+        no action, and turning it off is a deliberate choice about one grant.
+    */
+    const [notifyUser, setNotifyUser] = useState(true);
     const [errors, setErrors] = useState(NO_ERRORS);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -87,7 +92,13 @@ export const AddAppPermission: FC = () => {
 
     const grantMutation = useMutation({
         mutationFn: async (): Promise<AppPermissionGrantSummary> => {
-            const planned = planGrants({ domain, users, roles, expiresOn });
+            const planned = planGrants({
+                domain,
+                users,
+                roles,
+                expiresOn,
+                notifyUser,
+            });
 
             // One call per user per role. Sequential rather than concurrent:
             // each may create scope roles, and CSS treats creation as
@@ -164,7 +175,13 @@ export const AddAppPermission: FC = () => {
     );
 
     const overTheLimit = useMemo(() => selectionsOverTheLimit(roles), [roles]);
-    const permissionTotal = totalPermissions({ domain, users, roles, expiresOn });
+    const permissionTotal = totalPermissions({
+        domain,
+        users,
+        roles,
+        expiresOn,
+        notifyUser,
+    });
 
     /**
      * Ticking a role adds it; unticking drops it and everything chosen for it.
@@ -358,6 +375,28 @@ export const AddAppPermission: FC = () => {
                     district/organization pair, so the number grows faster than
                     the selections suggest.
                 */}
+                {/*
+                    Last, next to the button that acts on it: it is about what
+                    happens when the grant goes through, not about what is being
+                    granted. Nothing is emailed for a role the person already
+                    holds either way - see AccessGrantedEmailService.
+
+                    Only once somebody has been chosen. Until then there is
+                    nobody to notify, and the question reads as though the empty
+                    form were about to send something.
+                */}
+                {users.length > 0 ? (
+                    <Checkbox
+                        id="notify-user"
+                        className="notify-user"
+                        labelText="Send email to notify user"
+                        checked={notifyUser}
+                        onChange={(_event, { checked }) =>
+                            setNotifyUser(checked)
+                        }
+                    />
+                ) : null}
+
                 {permissionTotal > 0 ? (
                     <p className="permission-total">
                         This will create <strong>{permissionTotal}</strong>{" "}

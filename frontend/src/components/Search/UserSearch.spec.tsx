@@ -151,6 +151,89 @@ describe("UserSearch", () => {
         );
     });
 
+    it("narrows the results with the filter, and keeps what was already ticked", async () => {
+        /*
+            A surname search comes back with everyone who shares it and the
+            directory cannot narrow it further, so sifting the results is the
+            only way to find the right one. Filtering is a view of the results,
+            not a change of mind: somebody ticked before filtering has still
+            chosen that person.
+        */
+        const { onSelectionChange } = renderSearch({ multiUserMode: true });
+
+        await search("smith");
+        const dialog = await openResults();
+
+        await userEvent.click(within(dialog).getByLabelText("Select JSMITH"));
+        await userEvent.type(
+            within(dialog).getByRole("searchbox", { name: /filter/i }),
+            "smythe"
+        );
+
+        expect(within(dialog).queryByText("JSMITH")).not.toBeInTheDocument();
+        expect(within(dialog).getByText("JSMYTHE")).toBeInTheDocument();
+        expect(within(dialog).getByText("1 of 2 results")).toBeInTheDocument();
+
+        await userEvent.click(
+            within(dialog).getByRole("button", { name: "Confirm" })
+        );
+        expect(onSelectionChange).toHaveBeenLastCalledWith([
+            expect.objectContaining({ userId: "JSMITH" }),
+        ]);
+    });
+
+    it("sorts on a header, across every page rather than the visible one", async () => {
+        /*
+            A surname search returns hundreds of people over dozens of pages.
+            Sorting only what is on screen would reorder ten of four hundred and
+            answer a question nobody asked, so the order is applied to the whole
+            result set and the table returns to page one.
+        */
+        renderSearch();
+
+        await search("smith");
+        const dialog = await openResults();
+
+        const usernames = () =>
+            within(dialog)
+                .getAllByRole("row")
+                .slice(1)
+                .map((row) => row.querySelectorAll("td")[1]?.textContent ?? "");
+
+        // The directory's own order until somebody asks for another.
+        expect(usernames()).toEqual(["JSMITH", "JSMYTHE"]);
+
+        // The header cell holds a button; Carbon hangs the sort on that.
+        const username = within(dialog).getByRole("button", {
+            name: /username/i,
+        });
+        await userEvent.click(username);
+        expect(usernames()).toEqual(["JSMITH", "JSMYTHE"]);
+
+        // Second click reverses it, third puts it back as it came.
+        await userEvent.click(username);
+        expect(usernames()).toEqual(["JSMYTHE", "JSMITH"]);
+
+        await userEvent.click(username);
+        expect(usernames()).toEqual(["JSMITH", "JSMYTHE"]);
+    });
+
+    it("says so when the filter matches nothing", async () => {
+        renderSearch();
+
+        await search("smith");
+        const dialog = await openResults();
+
+        await userEvent.type(
+            within(dialog).getByRole("searchbox", { name: /filter/i }),
+            "nobody"
+        );
+
+        expect(
+            within(dialog).getByText("No results match this filter.")
+        ).toBeInTheDocument();
+    });
+
     it("searches by first name when that is the chosen type", async () => {
         renderSearch();
 

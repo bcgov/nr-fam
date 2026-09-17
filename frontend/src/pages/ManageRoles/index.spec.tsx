@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import { findApplicationOption } from "@/test/applicationPicker";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -96,7 +97,7 @@ const renderPage = () => {
 
 const chooseApplication = async (description = "FREP (DEV)") => {
     await userEvent.click(screen.getByRole("combobox", { name: /application/i }));
-    await userEvent.click(await screen.findByText(description));
+    await userEvent.click(await findApplicationOption(description));
     await waitFor(() =>
         expect(
             screen.getByRole("heading", { name: "Create a role" })
@@ -479,8 +480,8 @@ describe("ManageRoles", () => {
             await userEvent.click(
                 screen.getByRole("combobox", { name: /application/i })
             );
-            expect(await screen.findByText("FREP (DEV)")).toBeInTheDocument();
-            expect(screen.getByText("FREP (TEST)")).toBeInTheDocument();
+            expect(await findApplicationOption("FREP (DEV)")).toBeInTheDocument();
+            expect(await findApplicationOption("FREP (TEST)")).toBeInTheDocument();
         });
 
         it("asks the role-management list, not the access one", async () => {
@@ -511,7 +512,7 @@ describe("ManageRoles", () => {
             await userEvent.click(
                 screen.getByRole("combobox", { name: /application/i })
             );
-            await userEvent.click(await screen.findByText("FREP (DEV)"));
+            await userEvent.click(await findApplicationOption("FREP (DEV)"));
 
             expect(
                 await screen.findByRole("button", { name: "Create role" })
@@ -529,7 +530,7 @@ describe("ManageRoles", () => {
             await userEvent.click(
                 screen.getByRole("combobox", { name: /application/i })
             );
-            await userEvent.click(await screen.findByText("FREP (DEV)"));
+            await userEvent.click(await findApplicationOption("FREP (DEV)"));
 
             expect(
                 await screen.findByRole("button", { name: /all environments/i })

@@ -246,14 +246,38 @@ export const CssPermissionsTable: FC<Props> = ({
         [assignmentsQuery.data]
     );
 
+    /*
+        What the grant just created, first.
+
+        Sorting by role puts a new grant wherever its role falls in the
+        alphabet - which, with a hundred rows to a page, is routinely on page
+        two. Somebody arriving from the grant screen is looking for the thing
+        they just did, so it goes where they are already looking. The "New" tag
+        and the accent bar say why it is out of order.
+
+        Only until the screen is left: newlyGrantedKeys is the grant summary
+        held in memory, so a reload orders by role again for everyone else.
+    */
+    const orderedRows = useMemo<PermissionRow[]>(() => {
+        if (newlyGrantedKeys.length === 0) {
+            return tableRows;
+        }
+        const isNew = (row: PermissionRow) =>
+            isNewlyGranted(row, newlyGrantedKeys);
+        return [
+            ...tableRows.filter(isNew),
+            ...tableRows.filter((row) => !isNew(row)),
+        ];
+    }, [tableRows, newlyGrantedKeys]);
+
     const filteredRows = useMemo<PermissionRow[]>(() => {
         const term = search.trim().toLowerCase();
         // Below the minimum the search is not applied at all, so a half-typed
         // word does not empty the table.
         if (term.length < MINIMUM_SEARCH_STR_LEN) {
-            return tableRows;
+            return orderedRows;
         }
-        return tableRows.filter((row) =>
+        return orderedRows.filter((row) =>
             [
                 row.username,
                 row.email,
@@ -286,7 +310,7 @@ export const CssPermissionsTable: FC<Props> = ({
                 .filter(Boolean)
                 .some((field) => String(field).toLowerCase().includes(term))
         );
-    }, [search, tableRows]);
+    }, [search, orderedRows]);
 
     // Carbon's Pagination is 1-indexed and does not slice for us.
     const pagedRows = useMemo(

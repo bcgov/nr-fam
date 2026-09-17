@@ -342,6 +342,23 @@ describe("CssPermissionsTable", () => {
         expect(within(untouched).queryByText("New")).not.toBeInTheDocument();
     });
 
+    it("puts what the grant just created at the top", async () => {
+        /*
+            The default order is alphabetical by role, which puts FREP_EDITOR
+            before FREP_VIEWER - so BJONES's older row only reaches the top
+            because the grant just made it.
+        */
+        renderTable({ newlyGrantedKeys: ["BJONES|FREP_VIEWER"] });
+
+        await rowFor("BJONES");
+        const usernames = screen
+            .getAllByRole("row")
+            // The header row has no data cell to read.
+            .map((row) => row.querySelector("td")?.textContent ?? "")
+            .filter(Boolean);
+        expect(usernames[0]).toContain("BJONES");
+    });
+
     it("filters on any column, including the scope", async () => {
         renderTable();
         await rowFor("JSMITH");

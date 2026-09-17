@@ -35,6 +35,8 @@ class AccessGrantedEmailServiceTest {
 
   private static final String EMAIL = "jane@gov.bc.ca";
   private static final String APP = "integration 22264 (DEV)";
+  /** A role defined in the CSS console has no sidecar to read a name from. */
+  private static final java.util.Map<String, String> NO_NAMES = java.util.Map.of();
 
   @Mock private EmailService emailService;
   @InjectMocks private AccessGrantedEmailService service;
@@ -66,7 +68,7 @@ class AccessGrantedEmailServiceTest {
     configured(true);
 
     List<CssUserRoleAssignmentResult> results =
-        service.notifyGranted(EMAIL, APP, List.of(assigned("FREP_ADMINISTRATOR")));
+        service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("FREP_ADMINISTRATOR")));
 
     ArgumentCaptor<List<String>> to = ArgumentCaptor.forClass(List.class);
     verify(emailService).send(to.capture(), anyString(), anyString());
@@ -80,7 +82,7 @@ class AccessGrantedEmailServiceTest {
   @DisplayName("sends nothing when no role was actually assigned")
   void sendsNothingWhenNothingGranted() {
     // No "you have been granted nothing" email.
-    service.notifyGranted(EMAIL, APP, List.of(failed("R")));
+    service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(failed("R")));
 
     verify(emailService, never()).send(any(), anyString(), anyString());
   }
@@ -92,7 +94,7 @@ class AccessGrantedEmailServiceTest {
     // not emailed", not an error suggesting the grant failed.
     configured(false);
 
-    assertThat(service.notifyGranted(EMAIL, APP, List.of(assigned("R"))))
+    assertThat(service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("R"))))
         .allSatisfy(r -> assertThat(r.emailSendingStatus())
             .isEqualTo(EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE));
   }
@@ -104,7 +106,7 @@ class AccessGrantedEmailServiceTest {
     when(emailService.send(any(), anyString(), anyString()))
         .thenThrow(new RuntimeException("relay exploded"));
 
-    assertThat(service.notifyGranted(EMAIL, APP, List.of(assigned("R"))))
+    assertThat(service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("R"))))
         .allSatisfy(r -> assertThat(r.emailSendingStatus())
             .isEqualTo(EmailSendingStatus.SENT_TO_EMAIL_SERVICE_FAILURE));
   }
@@ -115,7 +117,7 @@ class AccessGrantedEmailServiceTest {
     // Nothing to retry, and the grant is unaffected.
     when(emailService.isConfigured()).thenReturn(true);
 
-    assertThat(service.notifyGranted(null, APP, List.of(assigned("R"))))
+    assertThat(service.notifyGranted(null, APP, NO_NAMES, List.of(assigned("R"))))
         .allSatisfy(r -> assertThat(r.emailSendingStatus())
             .isEqualTo(EmailSendingStatus.NOT_REQUIRED));
     verify(emailService, never()).send(any(), anyString(), anyString());
@@ -126,7 +128,7 @@ class AccessGrantedEmailServiceTest {
   void unconfiguredRelayIsNotAFailure() {
     when(emailService.isConfigured()).thenReturn(false);
 
-    assertThat(service.notifyGranted(EMAIL, APP, List.of(assigned("R"))))
+    assertThat(service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("R"))))
         .allSatisfy(r -> assertThat(r.emailSendingStatus())
             .isEqualTo(EmailSendingStatus.NOT_REQUIRED));
   }
@@ -138,7 +140,7 @@ class AccessGrantedEmailServiceTest {
     // out for the message.
     configured(true);
 
-    service.notifyGranted(EMAIL, APP, List.of(
+    service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(
         assigned("CHR_FREP_EDITOR_DISTRICT-DCC"),
         assigned("CHR_FREP_EDITOR_DISTRICT-DQU")));
 
@@ -149,13 +151,52 @@ class AccessGrantedEmailServiceTest {
   }
 
   @Test
+  @DisplayName("calls a role what it is called, not what it is keyed by")
+  void namesRolesByTheirShortName() {
+    // CHR_FREP_EDITOR means nothing to the person being told they now hold it.
+    configured(true);
+
+    service.notifyGranted(
+        EMAIL, APP,
+        java.util.Map.of("CHR_FREP_EDITOR", "Submitter (CHR)"),
+        List.of(assigned("CHR_FREP_EDITOR_DISTRICT-DCC")));
+
+    assertThat(captureBody())
+        .contains("Submitter (CHR)")
+        .contains("(DCC)")
+        .doesNotContain("CHR_FREP_EDITOR");
+  }
+
+  @Test
+  @DisplayName("falls back to the code for a role with no name")
+  void fallsBackToTheRoleCode() {
+    // A role added straight into the CSS console carries no sidecar to read.
+    // A technical name beats a blank line.
+    configured(true);
+
+    service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("FREP_ADMINISTRATOR")));
+
+    assertThat(captureBody()).contains("FREP_ADMINISTRATOR");
+  }
+
+  @Test
+  @DisplayName("separates the heading from the roles with a blank line")
+  void headingIsFollowedByABlankLine() {
+    configured(true);
+
+    service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("R")));
+
+    assertThat(captureBody()).contains("Role granted:\n\n  - R");
+  }
+
+  @Test
   @DisplayName("does not announce roles that failed to assign")
   void doesNotAnnounceFailedRoles() {
     // Telling someone they have access they were not given is worse than saying
     // nothing.
     configured(true);
 
-    service.notifyGranted(EMAIL, APP, List.of(
+    service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(
         assigned("R_DISTRICT-DCC"), failed("R_DISTRICT-DQU")));
 
     assertThat(captureBody()).contains("DCC").doesNotContain("DQU");
@@ -166,7 +207,7 @@ class AccessGrantedEmailServiceTest {
   void failedRoleKeepsItsStatus() {
     configured(true);
 
-    assertThat(service.notifyGranted(EMAIL, APP, List.of(assigned("R1"), failed("R2"))))
+    assertThat(service.notifyGranted(EMAIL, APP, NO_NAMES, List.of(assigned("R1"), failed("R2"))))
         .filteredOn(r -> r.roleName().equals("R2"))
         .singleElement()
         .satisfies(r -> assertThat(r.emailSendingStatus())

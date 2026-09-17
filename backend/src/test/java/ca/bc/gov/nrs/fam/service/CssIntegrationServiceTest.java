@@ -92,8 +92,8 @@ class CssIntegrationServiceTest {
   void passThroughEmailStep() {
     // The notification reports its own outcome and never alters which roles were
     // assigned, so by default it hands the results straight back.
-    when(accessGrantedEmailService.notifyGranted(any(), anyString(), any()))
-        .thenAnswer(i -> i.getArgument(2));
+    when(accessGrantedEmailService.notifyGranted(any(), anyString(), any(), any()))
+        .thenAnswer(i -> i.getArgument(3));
 
     // Filtering and naming are tested on their own; here the rows come straight
     // back so these assertions see exactly what CSS reported.
@@ -579,7 +579,7 @@ class CssIntegrationServiceTest {
   private CssUserRoleAssignmentRequest request(String scopeType, List<String> values) {
     return new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
-        "jane@gov.bc.ca", selections(scopeType, values), null);
+        "jane@gov.bc.ca", selections(scopeType, values), null, null);
   }
 
   /** One scope dimension, or none when the test is exercising an unscoped role. */
@@ -749,7 +749,7 @@ class CssIntegrationServiceTest {
 
     org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
         org.mockito.ArgumentCaptor.forClass(List.class);
-    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), any(), captor.capture());
     assertThat(captor.getValue()).isEmpty();
   }
 
@@ -770,7 +770,7 @@ class CssIntegrationServiceTest {
 
     service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
 
-    verify(accessGrantedEmailService).notifyGranted(any(), eq("FREP (DEV)"), any());
+    verify(accessGrantedEmailService).notifyGranted(any(), eq("FREP (DEV)"), any(), any());
   }
 
   @Test
@@ -786,7 +786,7 @@ class CssIntegrationServiceTest {
     service.assignUserRoles(INTEGRATION, ENV, request(null, List.of()), GRANTER);
 
     verify(accessGrantedEmailService).notifyGranted(
-        any(), eq("integration " + INTEGRATION + " (DEV)"), any());
+        any(), eq("integration " + INTEGRATION + " (DEV)"), any(), any());
   }
 
   @Test
@@ -801,9 +801,42 @@ class CssIntegrationServiceTest {
 
     org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
         org.mockito.ArgumentCaptor.forClass(List.class);
-    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), any(), captor.capture());
     assertThat(captor.getValue()).singleElement().satisfies(result ->
         assertThat(result.roleName()).isEqualTo("CHR_FREP_EDITOR_DISTRICT-DQU"));
+  }
+
+  @Test
+  @DisplayName("sends nothing when the granter turned the notification off")
+  void suppressesTheNotificationOnRequest() {
+    // The grant itself is unaffected - only the mail is skipped.
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    service.assignUserRoles(INTEGRATION, ENV, new CssUserRoleAssignmentRequest(
+        "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
+        "jane@gov.bc.ca", List.of(), null, false), GRANTER);
+
+    verify(cssApiService).assignUserRoles(anyInt(), anyString(), anyString(), any());
+    org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
+        org.mockito.ArgumentCaptor.forClass(List.class);
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), any(), captor.capture());
+    // Nothing to announce, which is how "no address" already reads.
+    assertThat(captor.getValue()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("notifies when the flag is left out, as every older caller leaves it")
+  void notifiesWhenTheFlagIsAbsent() {
+    givenRoles(role("CHR_FREP_EDITOR", false));
+
+    service.assignUserRoles(INTEGRATION, ENV, new CssUserRoleAssignmentRequest(
+        "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
+        "jane@gov.bc.ca", List.of(), null, null), GRANTER);
+
+    org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
+        org.mockito.ArgumentCaptor.forClass(List.class);
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), any(), captor.capture());
+    assertThat(captor.getValue()).hasSize(1);
   }
 
   @Test
@@ -819,7 +852,7 @@ class CssIntegrationServiceTest {
 
     org.mockito.ArgumentCaptor<List<CssUserRoleAssignmentResult>> captor =
         org.mockito.ArgumentCaptor.forClass(List.class);
-    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), captor.capture());
+    verify(accessGrantedEmailService).notifyGranted(any(), anyString(), any(), captor.capture());
     assertThat(captor.getValue()).hasSize(1);
   }
 
@@ -917,7 +950,7 @@ class CssIntegrationServiceTest {
     // grant the unscoped base role, which is a wider grant than was asked for.
     CssUserRoleAssignmentRequest untyped = new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR",
-        "jane@gov.bc.ca", List.of(new CssScopeSelection(" ", List.of("DCC"))), null);
+        "jane@gov.bc.ca", List.of(new CssScopeSelection(" ", List.of("DCC"))), null, null);
 
     assertThatThrownBy(() -> service.assignUserRoles(INTEGRATION, ENV, untyped, GRANTER))
         .isInstanceOf(FamHttpException.class)
@@ -937,7 +970,7 @@ class CssIntegrationServiceTest {
     service.assignUserRoles(INTEGRATION, ENV, new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR", null,
         List.of(new CssScopeSelection("DISTRICT", List.of("DCC", "DKA")),
-            new CssScopeSelection("FOREST_CLIENT", List.of("00001012"))), null), GRANTER);
+            new CssScopeSelection("FOREST_CLIENT", List.of("00001012"))), null, null), GRANTER);
 
     verify(cssApiService).createRole(
         INTEGRATION, ENV, "CHR_FREP_EDITOR_DISTRICT-DCC_FOREST_CLIENT-00001012");
@@ -958,7 +991,7 @@ class CssIntegrationServiceTest {
     CssUserRoleAssignmentRequest tooMany = new CssUserRoleAssignmentRequest(
         "AABBCCDDEEFF00112233445566778899", UserType.IDIR, "CHR_FREP_EDITOR", null,
         List.of(new CssScopeSelection("DISTRICT", districts),
-            new CssScopeSelection("FOREST_CLIENT", clients)), null);
+            new CssScopeSelection("FOREST_CLIENT", clients)), null, null);
 
     assertThatThrownBy(() -> service.assignUserRoles(INTEGRATION, ENV, tooMany, GRANTER))
         .isInstanceOf(FamHttpException.class)
