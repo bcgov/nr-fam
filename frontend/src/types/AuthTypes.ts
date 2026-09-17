@@ -23,6 +23,12 @@ export type AuthState = {
      * settles on its own.
      */
     readonly accessRoles: readonly string[];
+    /**
+     * A Business BCeID delegated administrator who has not accepted the current
+     * FAM Terms of Use. Nothing inside the shell is shown until they do - see
+     * components/TermsOfUse. Absent is the same as false.
+     */
+    readonly requiresAcceptTc?: boolean;
 };
 
 export interface AuthContext {

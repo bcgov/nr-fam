@@ -727,6 +727,25 @@
         }
       }
     },
+    "/auth/self/terms-acceptance" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Accept the current FAM Terms of Use (Business BCeID delegated administrators)",
+        "operationId" : "accept_terms_of_use",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/login" : {
       "post" : {
         "tags" : [ "Authentication" ],

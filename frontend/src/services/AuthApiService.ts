@@ -51,6 +51,20 @@ export const fetchSelf = async (): Promise<FamSelf> => {
 };
 
 /**
+ * Accept the current FAM Terms of Use.
+ *
+ * Only a Business BCeID delegated administrator is asked; anybody else is
+ * refused with a 403. Returns the caller as `/auth/self` now describes them, with
+ * `requires_accept_tc` cleared.
+ */
+export const acceptTermsOfUse = async (): Promise<FamSelf> => {
+    const { data } = await axios.post<FamSelf>(
+        `${authBaseUrl()}/self/terms-acceptance`
+    );
+    return data;
+};
+
+/**
  * The caller's own administrative permissions, with applications named.
  *
  * The same roles `fetchSelf` returns, decoded: `APP_ADMIN_22264_DEV` becomes the

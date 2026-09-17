@@ -118,6 +118,37 @@ That placement matters: a token carries `client_roles` for the client it was
 issued to, so a role sitting on another application's integration would never
 reach FAM. The application therefore has to be named *inside* the role.
 
+### Which of FAM's environments holds them
+
+**FAM's own environment - the one people sign in to - not the application's.**
+FAM PROD administers applications in all three environments. RRS DEV and RRS TEST
+sign their users in through `dev.loginproxy` and `test.loginproxy`, but whoever
+administers them does so by signing in to FAM PROD through `loginproxy`. So every
+administrative role FAM PROD issues sits on FAM's integration under `prod`,
+whatever environment it is about:
+
+| What | Example | Read from the token of | Lives on |
+| ---- | ------- | ---------------------- | -------- |
+| An application role | `FREP_EDITOR`, for RRS DEV | RRS DEV | RRS's integration, `dev` |
+| An administrative role | `APP_ADMIN_6637_DEV` | FAM PROD | FAM's integration, `prod` |
+
+The `_DEV` in `APP_ADMIN_6637_DEV` says which application environment is being
+administered. It does not say where the role is stored. Putting it on FAM's `dev`
+environment instead reports success and does nothing: nobody signs in to FAM PROD
+through that client, so the role never reaches a token FAM reads.
+
+In code, the storage environment is `FAM_DEPLOYMENT_ENVIRONMENT`. Appointing,
+removing and listing administrators all use it, and all have to agree. If a write
+and a read disagree, the appointment lands where the admin tab doesn't look.
+
+This is not theoretical. From #16 until the fix, FAM PROD wrote DEV and TEST
+appointments to FAM's `dev` and `test` environments, so only PROD appointments
+took effect. Anyone appointed during that window has to have the misplaced role
+removed in CSS directly and be appointed again.
+
+The lower FAM deployments work the same way against their own sandbox
+integrations, and have no bearing on production.
+
 | Role | Grants |
 | ---- | ------ |
 | `FAM_ADMIN` | Everything, in every application and environment. |
@@ -163,7 +194,9 @@ project in CSS would silently revoke everyone's access, and "Forests Stewardship
 Plan" does not slug to anything an administrator would recognise.
 
 **Environment is part of the name on purpose.** Administering DEV does not imply
-administering PROD; those are separate grants.
+administering PROD; those are separate grants. Because the environment is in the
+name, all of them can sit side by side on FAM's `prod` environment - see
+[Which of FAM's environments holds them](#which-of-fams-environments-holds-them).
 
 ### The line between APP_ADMIN and DELEGATED_ADMIN
 

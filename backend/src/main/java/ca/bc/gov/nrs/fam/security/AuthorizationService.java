@@ -115,12 +115,34 @@ public class AuthorizationService {
   public void requireApplicationAccess(
       Requester requester, int cssIntegrationId, String cssEnvironment) {
 
+    requireAcceptedTerms(requester);
     if (!canAdminister(requester, cssIntegrationId, cssEnvironment)) {
       // Deliberately the same message either way. Saying "this is FAM's own
       // integration, you need FAM_ADMIN" would confirm which integration id is
       // FAM's to a caller who was guessing.
       throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
           "Requires administrator privilege for this application.");
+    }
+  }
+
+  /**
+   * A Business BCeID delegated administrator must have accepted the current Terms
+   * of Use.
+   *
+   * <p>Port of legacy's {@code enforce_bceid_terms_conditions_guard}. The frontend
+   * will not let them past the terms either, but that is presentation - this is
+   * what stops a request made without the screen.
+   *
+   * <p>Applied where legacy applied it - reading an application's users, granting
+   * and revoking - by way of {@link #requireApplicationAccess} and
+   * {@link #requireGrantableRoles}, rather than on {@link #authorize}. The
+   * endpoints that only look up reference data stay open, and so does the
+   * acceptance endpoint itself.
+   */
+  public void requireAcceptedTerms(Requester requester) {
+    if (requester != null && requester.requiresAcceptTc()) {
+      throw FamHttpException.forbidden(ErrorCode.TERMS_CONDITIONS_REQUIRED,
+          "You must accept the FAM Terms of Use before administering access.");
     }
   }
 
@@ -144,6 +166,7 @@ public class AuthorizationService {
   public void requireGrantableRoles(
       Requester requester, int cssIntegrationId, String cssEnvironment, List<String> roleNames) {
 
+    requireAcceptedTerms(requester);
     List<String> refused = roleNames.stream()
         .filter(roleName -> !requester.canGrantRole(cssIntegrationId, cssEnvironment, roleName))
         .toList();

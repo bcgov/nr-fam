@@ -51,8 +51,12 @@ public final class FamConstants {
   public static final String FOREST_CLIENT_STATUS_CODE_ACTIVE = "ACT";
 
   /**
-   * Must stay in sync with the version rendered by the frontend's
-   * TermsAndConditions component.
+   * The FAM Terms of Use a Business BCeID delegated administrator must have
+   * accepted. Must stay in sync with the text in the frontend's
+   * {@code TermsOfUse} component - change both together.
+   *
+   * <p>Bumping it asks every delegated administrator to accept again; their
+   * acceptance of the previous version stays in {@code fam_user_terms_acceptance}.
    */
   public static final String CURRENT_TERMS_AND_CONDITIONS_VERSION = "1";
 

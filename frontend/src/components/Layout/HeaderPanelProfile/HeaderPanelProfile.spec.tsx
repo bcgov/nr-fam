@@ -22,6 +22,7 @@ const renderPanel = (
         logout,
         ensureFreshToken: async () => {},
         forceRefreshSession: async () => {},
+        acceptTermsOfUse: async () => {},
     };
     const ui: ReactNode = (
         <AuthContext.Provider value={value}>

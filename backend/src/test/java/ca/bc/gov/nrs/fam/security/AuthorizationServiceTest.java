@@ -398,4 +398,30 @@ class AuthorizationServiceTest {
     assertThatThrownBy(() -> service.requireApplicationAccess(devops, 22264, "DEV"))
         .isInstanceOf(FamHttpException.class);
   }
+  @Test
+  @DisplayName("a delegated administrator who has not accepted the Terms of Use may not administer")
+  void unacceptedTermsBlockAdministration() {
+    Requester unaccepted = Requester.builder()
+        .userGuid("AAAA")
+        .userType(UserType.BCEID)
+        .accessRoles(List.of(FamAdminRole.delegation(22264, "DEV", "FREP_EDITOR")))
+        .isDelegatedAdmin(true)
+        .requiresAcceptTc(true)
+        .build();
+
+    assertThatThrownBy(() -> service.requireApplicationAccess(unaccepted, 22264, "DEV"))
+        .isInstanceOf(FamHttpException.class)
+        .extracting("code").isEqualTo(ErrorCode.TERMS_CONDITIONS_REQUIRED);
+    assertThatThrownBy(() ->
+        service.requireGrantableRoles(unaccepted, 22264, "DEV", List.of("FREP_EDITOR")))
+        .isInstanceOf(FamHttpException.class)
+        .extracting("code").isEqualTo(ErrorCode.TERMS_CONDITIONS_REQUIRED);
+
+    Requester accepted = unaccepted.toBuilder().requiresAcceptTc(false).build();
+    assertThatCode(() -> service.requireApplicationAccess(accepted, 22264, "DEV"))
+        .doesNotThrowAnyException();
+    assertThatCode(() ->
+        service.requireGrantableRoles(accepted, 22264, "DEV", List.of("FREP_EDITOR")))
+        .doesNotThrowAnyException();
+  }
 }

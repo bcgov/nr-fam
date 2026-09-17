@@ -4,6 +4,7 @@ import type { FC, ReactNode } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { SessionTimeout } from "@/components/SessionTimeout";
+import { TermsOfUse } from "@/components/TermsOfUse";
 import { SelectedAppProvider } from "@/context/application/SelectedAppProvider";
 import { AuthProvider } from "@/context/auth/AuthProvider";
 import { useAuth } from "@/context/auth/useAuth";
@@ -92,6 +93,20 @@ const ProtectedLayout: FC = () => {
         once - the alternative is remembering it on each new route, which is the
         kind of thing that gets forgotten exactly once.
     */
+    /*
+        A Business BCeID delegated administrator who has not accepted the Terms
+        of Use sees the terms and nothing else - not the shell with the terms on
+        top, which would render every screen and fire its queries behind the
+        dialog only for the backend to refuse them.
+    */
+    if (authState.requiresAcceptTc) {
+        return (
+            <RequireAnyFamRole>
+                <TermsOfUse />
+            </RequireAnyFamRole>
+        );
+    }
+
     return (
         <RequireAnyFamRole>
             <Layout accessRoles={authState.accessRoles}>

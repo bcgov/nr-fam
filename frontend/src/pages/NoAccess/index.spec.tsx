@@ -19,6 +19,7 @@ const renderPage = (famLoginUser: FamLoginUser | null = null) => {
         logout,
         ensureFreshToken: async () => {},
         forceRefreshSession: async () => {},
+        acceptTermsOfUse: async () => {},
     } as AuthContextValue;
 
     render(

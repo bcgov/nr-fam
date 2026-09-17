@@ -7,6 +7,7 @@ import ca.bc.gov.nrs.fam.security.AccessRoleResolver;
 import ca.bc.gov.nrs.fam.security.Requester;
 import ca.bc.gov.nrs.fam.security.RequesterService;
 import ca.bc.gov.nrs.fam.service.SelfPermissionService;
+import ca.bc.gov.nrs.fam.service.TermsAcceptanceService;
 import ca.bc.gov.nrs.fam.security.TokenClaimsReader;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,6 +46,7 @@ public class AuthController {
   private final RequesterService requesterService;
   private final TokenClaimsReader claimsReader;
   private final SelfPermissionService selfPermissionService;
+  private final TermsAcceptanceService termsAcceptanceService;
 
   /**
    * Provision the signed-in user and return their identity and effective roles.
@@ -113,6 +115,25 @@ public class AuthController {
       summary = "Every application role the current user holds")
   public List<SelfApplicationRoleDto> selfApplicationRoles(Requester requester) {
     return selfPermissionService.getSelfApplicationRoles(requester);
+  }
+
+  /**
+   * Accept the current FAM Terms of Use.
+   *
+   * <p>Port of legacy's {@code POST /user-terms-conditions}. Only a Business BCeID
+   * delegated administrator is asked, and only they may answer - anybody else is
+   * refused rather than recorded. Takes no body: the version accepted is always
+   * the current one, never something the browser names.
+   *
+   * <p>Returns the caller as {@code /self} would now describe them, so the
+   * frontend can drop the gate without a second round trip.
+   */
+  @PostMapping("/self/terms-acceptance")
+  @Operation(operationId = "accept_terms_of_use",
+      summary = "Accept the current FAM Terms of Use (Business BCeID delegated administrators)")
+  public SelfDto acceptTermsOfUse(Requester requester) {
+    termsAcceptanceService.accept(requester);
+    return toSelf(requester.toBuilder().requiresAcceptTc(false).build());
   }
 
   private static SelfDto toSelf(Requester requester) {

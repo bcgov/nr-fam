@@ -15,6 +15,8 @@ export type AuthContextValue = {
     ensureFreshToken: () => Promise<void>;
     /** Renews now, rotating the refresh token. Throws if it has gone. */
     forceRefreshSession: () => Promise<void>;
+    /** Records acceptance of the Terms of Use and lifts the gate. Throws on failure. */
+    acceptTermsOfUse: () => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthContextValue | undefined>(

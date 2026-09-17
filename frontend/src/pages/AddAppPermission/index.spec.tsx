@@ -110,6 +110,7 @@ const renderPage = (environment = "dev") => {
         logout: async () => {},
         ensureFreshToken: async () => {},
         forceRefreshSession: async () => {},
+        acceptTermsOfUse: async () => {},
     };
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

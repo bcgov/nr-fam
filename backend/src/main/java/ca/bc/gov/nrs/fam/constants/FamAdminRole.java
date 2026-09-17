@@ -30,6 +30,11 @@ import java.util.Optional;
  *
  * <p>Environment is part of the name, so administering DEV does not imply
  * administering PROD.
+ *
+ * <p>That environment is the application's, and only names the role. The role
+ * itself lives in FAM's own deployment environment - FAM PROD holds
+ * {@code APP_ADMIN_22264_DEV} on its {@code prod} client, because that is the
+ * client its users sign in through.
  */
 public final class FamAdminRole {
 
