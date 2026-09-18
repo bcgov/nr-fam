@@ -11,11 +11,11 @@ import java.time.Duration;
  * Probes this container's own actuator health endpoint and reports the verdict
  * as an exit code, for the {@code HEALTHCHECK} in the Dockerfile.
  *
- * <p>The deploy image is distroless: no shell, no {@code curl}, no {@code wget}.
- * What it does have is the JRE that runs the application, and the extracted
- * layout puts the application's own classes in a plain {@code app.jar} on the
- * classpath - so a class using nothing but {@code java.net.http} is the one
- * HTTP client available to a health check.
+ * <p>The deploy image is distroless and holds one native binary: no shell, no
+ * {@code curl}, no {@code wget}, and no {@code java} to run a second class with.
+ * So the binary itself is the health check - {@code FamApiApplication} routes
+ * its {@code healthcheck} argument here - and this uses nothing but
+ * {@code java.net.http}, which is compiled into it along with everything else.
  *
  * <p>OpenShift ignores {@code HEALTHCHECK} and uses its own liveness and
  * readiness probes; this is for anyone running the image directly, and for

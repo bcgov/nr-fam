@@ -23,10 +23,10 @@ from AWS serverless to OpenShift. What changed:
 
 | Path                        | What it is                                                    |
 | --------------------------- | ------------------------------------------------------------- |
-| `backend/`                  | Spring Boot API (Java 21, Maven). See `backend/docs/`.         |
+| `backend/`                  | Spring Boot API (Java 21, Maven), deployed as a GraalVM native image. See `backend/docs/`. |
 | `frontend/`                 | Vue 3 SPA, served by Caddy.                                    |
 | `frontend/client-code-gen/` | The generated API client and its spec. See its README.         |
-| `migrations/`               | DBA-owned role and grant scripts. The migrations themselves ship in the backend jar. |
+| `migrations/`               | DBA-owned role and grant scripts. The migrations themselves ship inside the backend image. |
 | `common/`                   | Shared OpenShift template (secret, ConfigMap, NetworkPolicy).  |
 | `monitoring/`               | Sysdig alert definitions.                                      |
 
@@ -112,6 +112,34 @@ cd frontend && npm run install-frontend && npm run dev
 The frontend dev server proxies `/api` to the backend and strips the prefix,
 matching the Caddy configuration it runs behind in production. The API is
 therefore same-origin in both, so CORS is not involved.
+
+## The backend is a native image
+
+What deploys is a GraalVM native binary, not a jar on a JVM: it starts in well
+under a second and holds around 150MB rather than 400-600MB, which is why the
+pod asks for 256Mi and the start-up probe now allows half a minute instead of
+two and a half.
+
+Nothing changes for day-to-day work. `./mvnw spring-boot:run` and
+`docker compose up` both still run the jar on a JVM - compose builds the
+Dockerfile's `dev` stage for exactly that reason. The native compile happens in
+CI, where it costs ten to twenty minutes per backend build.
+
+To build it yourself, with GraalVM 21 installed:
+
+```sh
+cd backend && ./mvnw -Pnative -DskipTests native:compile   # target/fam-backend
+```
+
+Or without, through the image: `docker build -t fam-backend backend/`.
+
+**The trade is that mistakes move to run time.** Anything resolved by
+reflection has to be known when the binary is compiled; Spring's AOT step works
+most of it out, but a library doing something dynamic can compile cleanly and
+then fail on the one endpoint that exercises it. A green `./mvnw verify` no
+longer proves the deployed artefact works, so the end-to-end suite against a
+deployed PR is what actually vouches for it. See
+[native-image.md](backend/docs/native-image.md).
 
 ## Tests
 

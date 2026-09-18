@@ -31,12 +31,26 @@
     <java.version>21</java.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>
 
-    <!-- Overrides the version Spring Boot manages (11.7.2), which supports
-         PostgreSQL 17 at most and warns "Flyway upgrade recommended" against the
-         on-prem PostgreSQL 18 instance. 11.20.3 raises the supported ceiling to
-         18. Kept on the 11.x line rather than 12.x/13.x so Boot's Flyway
-         auto-configuration stays on the major version it was built against. -->
-    <flyway.version>11.20.3</flyway.version>
+    <!-- Flyway is deliberately NOT pinned: it stays on whatever Spring Boot
+         manages (11.7.2 here).
+
+         This used to override to 11.20.3, to silence a startup warning - the
+         only difference for PostgreSQL between the two is the major version
+         each stops recognising, 17 against 18, and that is a
+         "Flyway upgrade recommended" line rather than a refusal. The hard
+         minimum is 9.0 in both.
+
+         A warning was not worth what the override cost. Boot's native-image
+         support for Flyway reaches into Flyway internals - the
+         NativeImageResourceProviderCustomizer constructs an
+         org.flywaydb.core.internal.scanner.Scanner - and those are not stable
+         across Flyway minors. Running half a dozen versions ahead of Boot
+         compiled cleanly and then died at startup with a NoSuchMethodError, in
+         the native image only: that code path does not run on the JVM, so the
+         whole test suite passed either way.
+
+         If the warning ever needs to go, upgrade Spring Boot and take the
+         Flyway version it brings. -->
 
     <!-- Overrides the driver Spring Boot 3.5.16 manages (42.7.11). pgjdbc
          vendors its SCRAM implementation rather than depending on
@@ -222,6 +236,31 @@
               <artifactId>lombok</artifactId>
             </exclude>
           </excludes>
+        </configuration>
+      </plugin>
+
+      <!--
+        GraalVM native image.
+
+        Declared rather than only inherited: spring-boot-starter-parent's
+        `native` profile manages this plugin's configuration but does not add it
+        to the build, so without this `-Pnative package` produces a jar and no
+        binary. Its settings - the AOT-processed classes directory, the minimum
+        toolchain version - still come from the parent.
+
+        The build arguments are there for when something is missing at run time.
+        Native failures are reflection failures, and they surface as an exception
+        thrown deep inside a framework; the stack trace is what makes them
+        findable, and it costs nothing at run time.
+      -->
+      <plugin>
+        <groupId>org.graalvm.buildtools</groupId>
+        <artifactId>native-maven-plugin</artifactId>
+        <configuration>
+          <imageName>fam-backend</imageName>
+          <buildArgs>
+            <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+          </buildArgs>
         </configuration>
       </plugin>
 
