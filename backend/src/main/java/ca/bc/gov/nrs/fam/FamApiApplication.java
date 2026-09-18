@@ -1,6 +1,7 @@
 package ca.bc.gov.nrs.fam;
 
 import ca.bc.gov.nrs.fam.configuration.NativeRuntimeHints;
+import ca.bc.gov.nrs.fam.integration.TokenSourceRuntimeHints;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -15,7 +16,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
-@ImportRuntimeHints(NativeRuntimeHints.class)
+@ImportRuntimeHints({NativeRuntimeHints.class, TokenSourceRuntimeHints.class})
 public class FamApiApplication {
 
   /**

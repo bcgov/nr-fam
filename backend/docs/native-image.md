@@ -87,6 +87,18 @@ per reason:
   is instantiated reflectively but was never registered". **An entity added with
   an id of some other type needs its array added there.**
 
+- **The CSS client's response types**, registered for binding. `TokenResponse`,
+  `CssIntegrationDto`, `CssRoleDto` and `CssUserDto` are read from upstream
+  responses inside `CssApiService` and named in no controller signature, so AOT
+  cannot see them. Without the hints Jackson has no constructor to call, the
+  parse returns null, and the caller reports "CSS token response contained no
+  access_token" - every screen that lists applications answers 502.
+- **The token source's records**, through `TokenSourceRuntimeHints` rather than
+  the annotation. `@RegisterReflectionForBinding` is only read from beans, and
+  `ClientCredentialsTokenSource` is constructed directly, so the annotation was
+  ignored without complaint. **If a hint appears to do nothing, check whether
+  the class carrying it is a bean.**
+
 ### The parts most likely to need it here
 
 - **springdoc / swagger-ui.** The most dynamic dependency in the build. It
@@ -111,4 +123,5 @@ per reason:
 | `openshift.deploy.yml` | The reduced memory request and limit, and the shorter start-up probe |
 | `FamApiApplication` | Routes a `healthcheck` argument to `HealthCheck`, because the image has no `java` to run a second class with; imports `NativeRuntimeHints` |
 | `NativeRuntimeHints` | The reflective accesses AOT does not work out on its own, each with the code path that needs it |
+| `TokenSourceRuntimeHints` | The same, for the token records - a registrar because the class that parses them is not a bean |
 | `.github/workflows/pr-open.yml` | The 40-minute build timeout the compile needs |
