@@ -61,6 +61,20 @@ all on one endpoint.
    reachability repository has it: the `add-reachability-metadata` goal already
    pulls from there, and a version bump is often the fix.
 
+### Pinning a library ahead of Spring Boot
+
+**Don't, for anything Boot has native support for.** Boot's native integration
+reaches into library internals, and those are not API-stable across minor
+versions. Flyway was pinned six months ahead of the version Boot manages, to
+silence a "Flyway upgrade recommended" warning about PostgreSQL 18; it compiled
+cleanly and then died at startup with a `NoSuchMethodError` from
+`NativeImageResourceProviderCustomizer`, which constructs a Flyway `Scanner`
+whose signature had moved.
+
+The JVM never runs that code, so the whole test suite passed. Nothing caught it
+until a pod refused to start. The version is now whatever Boot manages - see the
+comment in `pom.xml` - and the warning is the price.
+
 ### The parts most likely to need it here
 
 - **springdoc / swagger-ui.** The most dynamic dependency in the build. It
