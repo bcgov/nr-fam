@@ -225,6 +225,31 @@
         </configuration>
       </plugin>
 
+      <!--
+        GraalVM native image.
+
+        Declared rather than only inherited: spring-boot-starter-parent's
+        `native` profile manages this plugin's configuration but does not add it
+        to the build, so without this `-Pnative package` produces a jar and no
+        binary. Its settings - the AOT-processed classes directory, the minimum
+        toolchain version - still come from the parent.
+
+        The build arguments are there for when something is missing at run time.
+        Native failures are reflection failures, and they surface as an exception
+        thrown deep inside a framework; the stack trace is what makes them
+        findable, and it costs nothing at run time.
+      -->
+      <plugin>
+        <groupId>org.graalvm.buildtools</groupId>
+        <artifactId>native-maven-plugin</artifactId>
+        <configuration>
+          <imageName>fam-backend</imageName>
+          <buildArgs>
+            <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+          </buildArgs>
+        </configuration>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

@@ -1,49 +1,87 @@
 # syntax=docker/dockerfile:1
 
-### Build
-FROM eclipse-temurin:21-jdk-alpine AS build
+### Dependencies
+#
+# GraalVM, because the deployed image is a native binary rather than a jar on a
+# JVM. The application starts in a fraction of a second and holds a fraction of
+# the memory, which is what OpenShift is paying for: a pod that used to reserve
+# 768Mi to idle now reserves 256Mi, and a rolling deploy no longer spends a
+# minute and a half waiting for JVMs to warm up.
+#
+# The same JDK builds the ordinary jar for local work, so there is one toolchain
+# here rather than two.
+FROM ghcr.io/graalvm/native-image-community:21 AS deps
 WORKDIR /app
 
-# Resolve dependencies as their own layer so source-only changes stay cached.
+# Resolved as their own layer so source-only changes stay cached.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 RUN ./mvnw -B -ntp dependency:go-offline
 
 COPY src/ src/
-RUN ./mvnw -B -ntp clean package -DskipTests
 
-# Explode the jar so the runtime image can use Spring Boot's layered layout,
-# keeping dependency layers stable across application-only rebuilds.
-#
-# --application-filename fixes the name the ENTRYPOINT below launches. Without
-# it the extracted jar keeps the uber-jar's name, which carries the version -
-# so the image would only start until the next version bump.
-RUN java -Djarmode=tools -jar target/*.jar extract --layers \
+### The jar, for local development
+FROM deps AS build-jar
+RUN ./mvnw -B -ntp -DskipTests package && \
+    java -Djarmode=tools -jar target/*.jar extract --layers \
       --application-filename app.jar --destination extracted
 
-### Deploy
-FROM gcr.io/distroless/java21-debian12:nonroot AS deploy
+### The native binary, for deployment
+#
+# -Pnative runs Spring's AOT processing first - it evaluates the context at
+# build time and writes the reflection, resource and proxy metadata GraalVM
+# needs - and then compiles. This is the slow part of the build: ten to twenty
+# minutes, and hungry for memory.
+#
+# The compiler's heap is left to size itself against the container's limit,
+# which is what it does by default. If a runner ever dies here for want of
+# memory, cap it with -J-Xmx in the plugin's buildArgs rather than guessing at a
+# number that has to suit both CI and a laptop.
+FROM deps AS build-native
+RUN ./mvnw -B -ntp -Pnative -DskipTests package
+
+### Local development image
+#
+# What docker-compose builds (`target: dev`). A jar on a JVM, because a native
+# compile between `docker compose up` and a running stack would cost twenty
+# minutes and teach everybody to avoid compose. Nothing deploys this.
+FROM gcr.io/distroless/java21-debian12:nonroot AS dev
 WORKDIR /app
 
-COPY --from=build /app/extracted/dependencies/ ./
-COPY --from=build /app/extracted/spring-boot-loader/ ./
-COPY --from=build /app/extracted/snapshot-dependencies/ ./
-COPY --from=build /app/extracted/application/ ./
+COPY --from=build-jar /app/extracted/dependencies/ ./
+COPY --from=build-jar /app/extracted/spring-boot-loader/ ./
+COPY --from=build-jar /app/extracted/snapshot-dependencies/ ./
+COPY --from=build-jar /app/extracted/application/ ./
 
-# Container-aware heap sizing; OpenShift sets the memory limit, not the image.
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=50 -Djava.security.egd=file:/dev/./urandom"
+EXPOSE 8080
+USER nonroot
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+### Deploy
+#
+# Last, so it is what an unqualified build produces - CI names no target.
+#
+# base-debian12, not the java21 image: there is no JVM to carry any more. The
+# binary is not fully static - it links glibc and the system TLS libraries - so
+# this cannot go all the way down to `static`.
+FROM gcr.io/distroless/base-debian12:nonroot AS deploy
+WORKDIR /app
+
+COPY --from=build-native /app/target/fam-backend ./fam-backend
 
 EXPOSE 8080
 USER nonroot
 
-# Distroless has no shell and no curl or wget, so the probe is a class in the
-# application's own jar using java.net.http. OpenShift ignores HEALTHCHECK and
-# runs its own probes; this serves anyone running the image directly. The JVM
-# needs a moment to come up, hence the start period. The heap flags are not
-# tuning: they undo JAVA_TOOL_OPTIONS above, which would otherwise have this
-# throwaway JVM reserve half the container's memory alongside the application.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD ["java", "-Xms8m", "-Xmx32m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", \
-       "-cp", "app.jar", "ca.bc.gov.nrs.fam.HealthCheck"]
+# No JAVA_TOOL_OPTIONS: heap percentages meant something to a JVM sizing itself
+# against the container's limit. A native image manages its own heap and honours
+# the cgroup limit directly, so there is nothing here to tune.
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# The binary probes itself - see FamApiApplication. Distroless has no shell,
+# curl or wget, and there is no `java` to run a helper class with any more. The
+# start period is short because the application is listening almost immediately;
+# it used to allow a minute for the JVM.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/app/fam-backend", "healthcheck"]
+
+ENTRYPOINT ["/app/fam-backend"]

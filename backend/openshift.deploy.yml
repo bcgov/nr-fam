@@ -30,16 +30,22 @@ parameters:
   - name: CPU_REQUEST
     value: "200m"
   - name: MEMORY_REQUEST
-    description: JVM working set. Higher than a Node backend would need.
-    value: "768Mi"
+    description: >-
+      Native image working set. A quarter of what the JVM build reserved: there
+      is no heap sized as a share of the limit and no metaspace, just the
+      binary's own arenas.
+    value: "256Mi"
   - name: MEMORY_LIMIT
-    description: Memory limit for the container (bounds the pod's working set).
-    value: "2Gi"
+    description: >-
+      Memory limit for the container (bounds the pod's working set). Kept well
+      above the request so a large CSV upload or a wide report has somewhere to
+      go, but far below the 2Gi the JVM build needed.
+    value: "768Mi"
   - name: LOG_LEVEL
     description: Application log level (DEBUG|INFO|WARN|ERROR)
     value: "INFO"
-  # Container timezone. Drives the JVM default zone, which is what the log
-  # pattern's %d renders against - an OpenShift container is UTC by default,
+  # Container timezone. Drives the application's default zone, which is what the
+  # log pattern's %d renders against - an OpenShift container is UTC by default,
   # which puts every log line 7-8 hours off the BC business day.
   #
   # A parameter rather than an ENV in the Dockerfile, so it can be changed per
@@ -351,14 +357,15 @@ objects:
               volumeMounts:
                 - name: tmp
                   mountPath: /tmp
-              # JVM start-up is slower than Node's; allow up to 150s before the
-              # container is considered failed.
+              # A native image is listening in well under a second, so the
+              # long runway the JVM build needed is gone: 10 x 3s fails a broken
+              # container in half a minute instead of two and a half.
               startupProbe:
                 httpGet:
                   path: /actuator/health/readiness
                   port: http
-                periodSeconds: 5
-                failureThreshold: 30
+                periodSeconds: 3
+                failureThreshold: 10
               readinessProbe:
                 httpGet:
                   path: /actuator/health/readiness
@@ -371,9 +378,9 @@ objects:
                   port: http
                 periodSeconds: 10
                 failureThreshold: 3
-              # No preStop hook: the distroless java image has no shell, and
-              # Spring Boot's graceful shutdown (server.shutdown=graceful, 20s
-              # drain) covers in-flight requests within the 30s grace period.
+              # No preStop hook: the distroless image has no shell, and Spring
+              # Boot's graceful shutdown (server.shutdown=graceful, 20s drain)
+              # covers in-flight requests within the 30s grace period.
           volumes:
             - name: tmp
               emptyDir:
