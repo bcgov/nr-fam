@@ -1,8 +1,10 @@
 package ca.bc.gov.nrs.fam;
 
+import ca.bc.gov.nrs.fam.configuration.NativeRuntimeHints;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.ImportRuntimeHints;
 
 /**
  * Forest Access Management (FAM) API.
@@ -13,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
+@ImportRuntimeHints(NativeRuntimeHints.class)
 public class FamApiApplication {
 
   /**

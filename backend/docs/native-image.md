@@ -75,6 +75,18 @@ The JVM never runs that code, so the whole test suite passed. Nothing caught it
 until a pod refused to start. The version is now whatever Boot manages - see the
 comment in `pom.xml` - and the warning is the price.
 
+### Hints this application already needs
+
+`NativeRuntimeHints` (registered from `FamApiApplication`) holds them, one entry
+per reason:
+
+- **`UUID[]` and `String[]`, unsafe-allocated.** Hibernate builds a multi-id
+  loader for every entity, and that allocates an array of the entity's id type
+  reflectively while the `SessionFactory` is built. Without the hint the
+  application fails at start-up - not on a query - with "Class java.util.UUID[]
+  is instantiated reflectively but was never registered". **An entity added with
+  an id of some other type needs its array added there.**
+
 ### The parts most likely to need it here
 
 - **springdoc / swagger-ui.** The most dynamic dependency in the build. It
@@ -97,5 +109,6 @@ comment in `pom.xml` - and the warning is the price.
 | `pom.xml` | Declares `native-maven-plugin`; the `native` profile itself comes from `spring-boot-starter-parent`. The plugin has no execution bound to a phase on purpose - that would make every ordinary `mvn package` try to compile a binary - so the Dockerfile names the `native:compile` goal instead |
 | `Dockerfile` | `deps` → `build-jar`/`build-native` → `dev`/`deploy` stages. The deploy stage also copies `libz.so.1` in: the binary links zlib and distroless/base does not ship it, which the build logs as `ldd` output on every compile |
 | `openshift.deploy.yml` | The reduced memory request and limit, and the shorter start-up probe |
-| `FamApiApplication` | Routes a `healthcheck` argument to `HealthCheck`, because the image has no `java` to run a second class with |
+| `FamApiApplication` | Routes a `healthcheck` argument to `HealthCheck`, because the image has no `java` to run a second class with; imports `NativeRuntimeHints` |
+| `NativeRuntimeHints` | The reflective accesses AOT does not work out on its own, each with the code path that needs it |
 | `.github/workflows/pr-open.yml` | The 40-minute build timeout the compile needs |
