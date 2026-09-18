@@ -48,6 +48,23 @@ const DEVOPS_ADMIN_PREFIX = "DEVOPS_ADMIN_";
 const APP_ADMIN_PREFIX = "APP_ADMIN_";
 const DELEGATED_ADMIN_PREFIX = "DELEGATED_ADMIN_";
 
+/**
+ * The how-to guides, served from public/ and opened in a new tab.
+ *
+ * <p>Held in the app rather than linked to a site somebody else maintains: the
+ * legacy application shipped them the same way, and a guide that 404s is worse
+ * than no menu item.
+ *
+ * <p>Built from {@code docs/guides} - Markdown, plus screenshots captured from
+ * the running app - by {@code npm run guides:build}. They replaced two Word
+ * documents that were dated in their filenames; the names are stable now
+ * because the content is versioned with the code instead.
+ */
+export const HOW_TO_GUIDES = {
+    applicationAdmin: "/fam-app-admin-guide.pdf",
+    delegatedAdmin: "/fam-delegated-admin-guide.pdf",
+} as const;
+
 /** Whether these roles carry any authority over who holds what. */
 const managesAccess = (roles: readonly string[]) =>
     roles.some(
@@ -74,6 +91,36 @@ const managesAccess = (roles: readonly string[]) =>
 export const hasAnyFamRole = (roles: readonly string[]) =>
     managesAccess(roles) ||
     roles.some((role) => role.startsWith(DEVOPS_ADMIN_PREFIX));
+
+/**
+ * The how-to guide for these roles, or null when none of them has one.
+ *
+ * <p>Two guides exist, one per kind of administrator. Somebody who is both -
+ * an application administrator here, a delegated administrator there - gets the
+ * application administrator's, which covers appointing administrators and
+ * everything the delegated one covers.
+ *
+ * <p>A FAM administrator reads the application administrator's guide too: they
+ * do the same job everywhere rather than a different one.
+ *
+ * <p>Null for a DevOps administrator holding nothing else. Neither guide is
+ * about defining roles, and offering somebody a document that does not mention
+ * what they came to do is worse than not offering one.
+ */
+export const howToGuideFor = (
+    roles: readonly string[]
+): string | null => {
+    const holds = (prefix: string) =>
+        roles.some((role) => role.startsWith(prefix));
+
+    if (roles.includes(FAM_ADMIN) || holds(APP_ADMIN_PREFIX)) {
+        return HOW_TO_GUIDES.applicationAdmin;
+    }
+    if (holds(DELEGATED_ADMIN_PREFIX)) {
+        return HOW_TO_GUIDES.delegatedAdmin;
+    }
+    return null;
+};
 
 export const MENU: MenuLeaf[] = [
     {

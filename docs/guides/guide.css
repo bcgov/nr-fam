@@ -1,0 +1,122 @@
+/*
+  Print styles for the how-to guides.
+
+  Deliberately plain: this is a document somebody reads on screen or prints, not
+  a page of the app, so it uses the BC Sans stack the rest of the ministry's
+  documents use and leaves Carbon out of it entirely.
+*/
+
+@page {
+    size: letter;
+}
+
+body {
+    margin: 0;
+    color: #1a1a1a;
+    font-family: "BC Sans", "Noto Sans", system-ui, -apple-system, sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
+}
+
+h1 {
+    margin: 0 0 0.25rem;
+    color: #013366;
+    font-size: 20pt;
+    line-height: 1.2;
+}
+
+/* Each section starts a page, so a flow is never split across a fold. */
+h2 {
+    margin: 0 0 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 3px solid #fcba19;
+    color: #013366;
+    font-size: 15pt;
+    break-before: page;
+}
+
+/* Except the first, which would otherwise leave the title page empty. */
+h2:first-of-type {
+    break-before: auto;
+}
+
+h3 {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 12.5pt;
+}
+
+p,
+li {
+    orphans: 3;
+    widows: 3;
+}
+
+ol,
+ul {
+    padding-left: 1.5rem;
+}
+
+li {
+    margin-bottom: 0.35rem;
+}
+
+a {
+    color: #1a5a96;
+}
+
+code {
+    padding: 0 0.2em;
+    border-radius: 3px;
+    background: #f2f2f2;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.9em;
+}
+
+/*
+  A screenshot is evidence for the step beside it, so it must not drift onto the
+  next page away from its text. The border stops a white-backed screenshot from
+  bleeding into the page.
+*/
+img {
+    display: block;
+    max-width: 100%;
+    margin: 0.75rem 0 1rem;
+    border: 1px solid #d5d5d5;
+    break-inside: avoid;
+}
+
+/* The lead-in under the title, on the first page only. */
+.subtitle {
+    margin: 0 0 1.5rem;
+    color: #474543;
+    font-size: 13pt;
+}
+
+blockquote {
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    border-left: 4px solid #fcba19;
+    background: #f9f6ed;
+}
+
+blockquote p {
+    margin: 0.25rem 0;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.75rem 0 1rem;
+}
+
+th,
+td {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #d5d5d5;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background: #f2f2f2;
+}

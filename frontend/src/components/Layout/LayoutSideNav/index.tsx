@@ -1,9 +1,13 @@
-import { Email } from "@carbon/icons-react";
+import { Document, Email } from "@carbon/icons-react";
 import { SideNav, SideNavItems, SideNavLink } from "@carbon/react";
 import type { FC } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useLayout } from "@/context/layout/useLayout";
-import { getMenuEntries, isMenuItemActive } from "@/routes/routePaths";
+import {
+    getMenuEntries,
+    howToGuideFor,
+    isMenuItemActive,
+} from "@/routes/routePaths";
 import "./LayoutSideNav.css";
 
 /** Shared mailbox behind the bottom-pinned Support link, as nr-fsp-new has. */
@@ -23,6 +27,7 @@ type Props = {
 export const LayoutSideNav: FC<Props> = ({ accessRoles }) => {
     const { isSideNavExpanded } = useLayout();
     const location = useLocation();
+    const howToGuide = howToGuideFor(accessRoles);
 
     return (
         <SideNav
@@ -55,6 +60,24 @@ export const LayoutSideNav: FC<Props> = ({ accessRoles }) => {
                 <li className="side-nav-support-heading" aria-hidden="true">
                     Support
                 </li>
+                {/*
+                    A PDF, opened in a new tab rather than navigated to: the
+                    reader is following it while doing the thing it describes,
+                    and replacing the screen with the instructions for that
+                    screen would be a poor trade. Which guide depends on what
+                    they administer - see howToGuideFor.
+                */}
+                {howToGuide ? (
+                    <SideNavLink
+                        data-testid="side-nav-link-how-to-guide"
+                        href={howToGuide}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        renderIcon={Document}
+                    >
+                        How-to guide
+                    </SideNavLink>
+                ) : null}
                 <SideNavLink
                     data-testid="side-nav-link-email-support"
                     href={`mailto:${SUPPORT_EMAIL}`}
