@@ -20,6 +20,19 @@ RUN ./mvnw -B -ntp dependency:go-offline
 
 COPY src/ src/
 
+# Where zlib is in this image.
+#
+# The deploy stage is distroless/base, which carries glibc, OpenSSL and little
+# else - and a GraalVM binary links zlib, so it exits on the first line with
+# "libz.so.1: cannot open shared object file". The library is copied across
+# below; this proves the path now, in a stage that takes a minute, rather than
+# after a twenty-minute compile.
+RUN test -f /usr/lib64/libz.so.1 || { \
+      echo "libz.so.1 is not at /usr/lib64 - the COPY in the deploy stage needs the real path:"; \
+      ls -l /usr/lib64/libz* /lib64/libz* /usr/lib/*/libz* 2>/dev/null; \
+      exit 1; \
+    }
+
 ### The jar, for local development
 FROM deps AS build-jar
 RUN ./mvnw -B -ntp -DskipTests package && \
@@ -46,7 +59,8 @@ FROM deps AS build-native
 # The `test` is the guard: a compile that quietly produces nothing should fail
 # here, naming the stage that did it, rather than three stages later as a COPY
 # that cannot find its source.
-RUN ./mvnw -B -ntp -Pnative -DskipTests native:compile && test -x target/fam-backend
+RUN ./mvnw -B -ntp -Pnative -DskipTests native:compile && test -x target/fam-backend \
+    && echo "--- shared libraries the binary needs:" && ldd target/fam-backend
 
 ### Local development image
 #
@@ -77,6 +91,14 @@ FROM gcr.io/distroless/base-debian12:nonroot AS deploy
 WORKDIR /app
 
 COPY --from=build-native /app/target/fam-backend ./fam-backend
+
+# zlib, which the binary links and this image does not ship. Into the multiarch
+# directory rather than /usr/lib64: that is where Debian's loader looks, and the
+# build image's own layout (Oracle Linux) is not this image's.
+#
+# The alternative is distroless/java-base, which carries the libraries a JVM
+# wants - zlib among them - but it exists to host a JVM this image does not have.
+COPY --from=deps /usr/lib64/libz.so.1 /usr/lib/x86_64-linux-gnu/libz.so.1
 
 EXPOSE 8080
 USER nonroot

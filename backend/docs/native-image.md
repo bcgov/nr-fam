@@ -81,7 +81,7 @@ all on one endpoint.
 | File | What it does |
 | --- | --- |
 | `pom.xml` | Declares `native-maven-plugin`; the `native` profile itself comes from `spring-boot-starter-parent`. The plugin has no execution bound to a phase on purpose - that would make every ordinary `mvn package` try to compile a binary - so the Dockerfile names the `native:compile` goal instead |
-| `Dockerfile` | `deps` → `build-jar`/`build-native` → `dev`/`deploy` stages |
+| `Dockerfile` | `deps` → `build-jar`/`build-native` → `dev`/`deploy` stages. The deploy stage also copies `libz.so.1` in: the binary links zlib and distroless/base does not ship it, which the build logs as `ldd` output on every compile |
 | `openshift.deploy.yml` | The reduced memory request and limit, and the shorter start-up probe |
 | `FamApiApplication` | Routes a `healthcheck` argument to `HealthCheck`, because the image has no `java` to run a second class with |
 | `.github/workflows/pr-open.yml` | The 40-minute build timeout the compile needs |
