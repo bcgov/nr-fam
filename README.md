@@ -128,7 +128,7 @@ CI, where it costs ten to twenty minutes per backend build.
 To build it yourself, with GraalVM 21 installed:
 
 ```sh
-cd backend && ./mvnw -Pnative -DskipTests package   # target/fam-backend
+cd backend && ./mvnw -Pnative -DskipTests native:compile   # target/fam-backend
 ```
 
 Or without, through the image: `docker build -t fam-backend backend/`.

@@ -28,17 +28,25 @@ RUN ./mvnw -B -ntp -DskipTests package && \
 
 ### The native binary, for deployment
 #
-# -Pnative runs Spring's AOT processing first - it evaluates the context at
-# build time and writes the reflection, resource and proxy metadata GraalVM
-# needs - and then compiles. This is the slow part of the build: ten to twenty
-# minutes, and hungry for memory.
+# `native:compile`, not `package`. The goal has to be named: with -Pnative alone,
+# `package` runs Spring's AOT processing and then repackages the jar, which
+# finishes in seconds and writes no binary at all - the stage then "succeeds"
+# and the COPY below fails looking for a file nothing produced.
+#
+# The goal forks its own `package` run first, so AOT still happens: the context
+# is evaluated at build time and the reflection, resource and proxy metadata
+# GraalVM needs is written out. Then it compiles, which is the slow part of the
+# build - ten to twenty minutes, and hungry for memory.
 #
 # The compiler's heap is left to size itself against the container's limit,
 # which is what it does by default. If a runner ever dies here for want of
 # memory, cap it with -J-Xmx in the plugin's buildArgs rather than guessing at a
 # number that has to suit both CI and a laptop.
 FROM deps AS build-native
-RUN ./mvnw -B -ntp -Pnative -DskipTests package
+# The `test` is the guard: a compile that quietly produces nothing should fail
+# here, naming the stage that did it, rather than three stages later as a COPY
+# that cannot find its source.
+RUN ./mvnw -B -ntp -Pnative -DskipTests native:compile && test -x target/fam-backend
 
 ### Local development image
 #

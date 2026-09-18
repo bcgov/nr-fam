@@ -35,8 +35,8 @@ suite running against a deployed PR.
 
 ```sh
 cd backend
-./mvnw -Pnative -DskipTests package   # needs GraalVM 21; writes target/fam-backend
-docker build -t fam-backend .          # or build it through the image
+./mvnw -Pnative -DskipTests native:compile   # needs GraalVM 21; writes target/fam-backend
+docker build -t fam-backend .                # or build it through the image
 ```
 
 `docker compose up` builds the Dockerfile's `dev` stage instead - the jar on a
@@ -50,7 +50,7 @@ The symptom is usually a `ClassNotFoundException`, a
 all on one endpoint.
 
 1. Reproduce it against the binary rather than the JVM: `./mvnw -Pnative
-   -DskipTests package && ./target/fam-backend`.
+   -DskipTests native:compile && ./target/fam-backend`.
 2. Read the stack trace. `-H:+ReportExceptionStackTraces` is on (see the
    `native-maven-plugin` block in `pom.xml`), so the trace names the type that
    could not be reached.
@@ -80,7 +80,7 @@ all on one endpoint.
 
 | File | What it does |
 | --- | --- |
-| `pom.xml` | Declares `native-maven-plugin`; the `native` profile itself comes from `spring-boot-starter-parent` |
+| `pom.xml` | Declares `native-maven-plugin`; the `native` profile itself comes from `spring-boot-starter-parent`. The plugin has no execution bound to a phase on purpose - that would make every ordinary `mvn package` try to compile a binary - so the Dockerfile names the `native:compile` goal instead |
 | `Dockerfile` | `deps` → `build-jar`/`build-native` → `dev`/`deploy` stages |
 | `openshift.deploy.yml` | The reduced memory request and limit, and the shorter start-up probe |
 | `FamApiApplication` | Routes a `healthcheck` argument to `HealthCheck`, because the image has no `java` to run a second class with |
