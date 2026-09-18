@@ -48,6 +48,68 @@ describe("Layout", () => {
         expect(screen.getByTestId("bc-header__header")).toBeInTheDocument();
     });
 
+    describe("the how-to guide", () => {
+        const guideHref = () =>
+            screen.queryByTestId("side-nav-link-how-to-guide")?.getAttribute("href");
+
+        it("gives a delegated administrator the delegated administrator's guide", () => {
+            renderLayout({
+                accessRoles: ["DELEGATED_ADMIN_22264_DEV__FREP_EDITOR"],
+            });
+
+            expect(guideHref()).toBe("/fam-delegated-admin-guide.pdf");
+        });
+
+        it("gives an application administrator theirs", () => {
+            renderLayout({ accessRoles: ["APP_ADMIN_22264_DEV"] });
+
+            expect(guideHref()).toBe("/fam-app-admin-guide.pdf");
+        });
+
+        it("gives somebody who is both the application administrator's", () => {
+            // It covers appointing administrators and everything the delegated
+            // administrator's guide covers, so it is the one that answers more.
+            renderLayout({
+                accessRoles: [
+                    "DELEGATED_ADMIN_22264_DEV__FREP_EDITOR",
+                    "APP_ADMIN_6538_TEST",
+                ],
+            });
+
+            expect(guideHref()).toBe("/fam-app-admin-guide.pdf");
+        });
+
+        it("gives a FAM administrator the application administrator's", () => {
+            renderLayout({ accessRoles: ["FAM_ADMIN"] });
+
+            expect(guideHref()).toBe("/fam-app-admin-guide.pdf");
+        });
+
+        it("offers none to a DevOps-only administrator", () => {
+            // Neither guide is about defining roles.
+            renderLayout({ accessRoles: ["DEVOPS_ADMIN_22264_DEV"] });
+
+            expect(
+                screen.queryByTestId("side-nav-link-how-to-guide")
+            ).not.toBeInTheDocument();
+        });
+
+        it("opens in a new tab, above Report an issue", () => {
+            renderLayout({ accessRoles: ["APP_ADMIN_22264_DEV"] });
+
+            const guide = screen.getByTestId("side-nav-link-how-to-guide");
+            expect(guide).toHaveAttribute("target", "_blank");
+            expect(guide).toHaveAttribute("rel", expect.stringContaining("noopener"));
+
+            // Reading order, not just presence: the guide comes first.
+            const support = screen.getByTestId("side-nav-link-email-support");
+            expect(
+                guide.compareDocumentPosition(support) &
+                    Node.DOCUMENT_POSITION_FOLLOWING
+            ).toBeTruthy();
+        });
+    });
+
     it("offers Manage roles to a FAM administrator", () => {
         renderLayout({ accessRoles: ["FAM_ADMIN"] });
 

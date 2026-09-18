@@ -50,6 +50,19 @@ export default defineConfig({
         },
         {
             name: "chromium",
+            // The capture spec takes pictures for the how-to guides and asserts
+            // almost nothing; it runs on its own project rather than costing
+            // every ordinary run a few minutes. See guides.capture.spec.ts.
+            testIgnore: /guides\.capture\.spec\.ts/,
+            use: {
+                ...devices["Desktop Chrome"],
+                storageState: STORAGE_STATE,
+            },
+            dependencies: ["setup"],
+        },
+        {
+            name: "guides",
+            testMatch: /guides\.capture\.spec\.ts/,
             use: {
                 ...devices["Desktop Chrome"],
                 storageState: STORAGE_STATE,
@@ -58,6 +71,7 @@ export default defineConfig({
         },
         {
             name: "Google Chrome",
+            testIgnore: /guides\.capture\.spec\.ts/,
             use: {
                 ...devices["Desktop Chrome"],
                 channel: "chrome",
@@ -67,6 +81,7 @@ export default defineConfig({
         },
         {
             name: "firefox",
+            testIgnore: /guides\.capture\.spec\.ts/,
             use: {
                 ...devices["Desktop Firefox"],
                 storageState: STORAGE_STATE,
@@ -75,6 +90,7 @@ export default defineConfig({
         },
         {
             name: "safari",
+            testIgnore: /guides\.capture\.spec\.ts/,
             use: {
                 ...devices["Desktop Safari"],
                 storageState: STORAGE_STATE,
@@ -83,6 +99,7 @@ export default defineConfig({
         },
         {
             name: "Microsoft Edge",
+            testIgnore: /guides\.capture\.spec\.ts/,
             use: {
                 ...devices["Desktop Edge"],
                 channel: "msedge",
