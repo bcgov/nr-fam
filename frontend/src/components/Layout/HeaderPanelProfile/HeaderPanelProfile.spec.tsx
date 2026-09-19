@@ -34,6 +34,25 @@ const renderPanel = (
 };
 
 describe("HeaderPanelProfile", () => {
+
+    it("offers the terms of use to a delegated administrator", () => {
+        // They accepted on their organization's behalf and cannot reach the
+        // acceptance dialog again, so this is the only way back to the text.
+        renderPanel({ accessRoles: ["DELEGATED_ADMIN_22264_DEV__FREP_EDITOR"] });
+
+        const link = screen.getByRole("link", { name: /terms of use/i });
+        expect(link).toHaveAttribute("href", "/2024-06-04-fam-terms-conditions.pdf");
+        expect(link).toHaveAttribute("target", "_blank");
+    });
+
+    it("does not offer them to anybody else", () => {
+        renderPanel({ accessRoles: ["FAM_ADMIN"] });
+
+        expect(
+            screen.queryByRole("link", { name: /terms of use/i })
+        ).not.toBeInTheDocument();
+    });
+
     it("names an IDIR user and their provider", () => {
         renderPanel({
             famLoginUser: {

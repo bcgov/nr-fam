@@ -610,6 +610,18 @@ class CssIntegrationServiceTest {
     return requesterWithGuid(guid, ENV);
   }
 
+  /**
+   * A FAM administrator, who is the only one who may appoint or remove an
+   * application administrator - see
+   * {@code AuthorizationService.requireApplicationAdminManagement}.
+   */
+  private static Requester famAdmin(String guid) {
+    return Requester.builder()
+        .userName("FAMADMIN").userGuid(guid)
+        .accessRoles(List.of(FamAdminRole.FAM_ADMIN))
+        .build();
+  }
+
   /*
       The self-grant rule is production-only - below it, granting yourself a
       role is how somebody tests the application they are building. So the
@@ -2139,7 +2151,9 @@ class CssIntegrationServiceTest {
 
     service.appointDelegatedAdmin(
         INTEGRATION, "test", appointment(null, List.of()), appAdminOfTest);
-    service.appointApplicationAdmin(INTEGRATION, "test", appointAdmin(), appAdminOfTest);
+    // An application administrator is a FAM administrator's appointment now.
+    service.appointApplicationAdmin(
+        INTEGRATION, "test", appointAdmin(), famAdmin("SOMEONEELSE"));
     service.appointDevopsAdmin(INTEGRATION, "test", appointAdmin(), Requester.builder()
         .userName("FAMADMIN").userGuid("FFFF0000")
         .accessRoles(List.of(FamAdminRole.FAM_ADMIN))
@@ -2165,7 +2179,7 @@ class CssIntegrationServiceTest {
     org.mockito.Mockito.doReturn("staging").when(famProperties).deploymentEnvironment();
 
     assertThatThrownBy(() -> service.appointApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
-        requesterWithGuid("SOMEONEELSE")))
+        famAdmin("SOMEONEELSE")))
         .isInstanceOf(FamHttpException.class)
         .hasMessageContaining("FAM_DEPLOYMENT_ENVIRONMENT");
 
@@ -2329,7 +2343,7 @@ class CssIntegrationServiceTest {
     when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of());
 
     service.appointApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
-        requesterWithGuid("SOMEONEELSE"));
+        famAdmin("SOMEONEELSE"));
 
     // Authorised over the application, so there is nothing to name after the
     // environment - unlike a delegation.
@@ -2347,7 +2361,7 @@ class CssIntegrationServiceTest {
         .thenReturn(List.of(role(roleName, false)));
 
     assertThat(service.appointApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
-        requesterWithGuid("SOMEONEELSE")).roleCreated()).isFalse();
+        famAdmin("SOMEONEELSE")).roleCreated()).isFalse();
 
     verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
   }
@@ -2355,13 +2369,38 @@ class CssIntegrationServiceTest {
   @Test
   @DisplayName("refuses to appoint yourself as an application administrator")
   void appointAdminRefusesSelf() {
-    Requester self = requesterWithGuid("AABBCCDDEEFF00112233445566778899", PROD);
+    // A FAM administrator, so the refusal is the self-grant rule rather than the
+    // tier rule - which is what this test is about.
+    Requester self = famAdmin("AABBCCDDEEFF00112233445566778899");
 
     assertThatThrownBy(() -> service.appointApplicationAdmin(
         INTEGRATION, PROD, appointAdmin(), self))
         .isInstanceOf(FamHttpException.class);
 
     verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
+  }
+
+  @Test
+  @DisplayName("an application administrator may not appoint a peer")
+  void appAdminMayNotAppointAppAdmin() {
+    /*
+        The tier no longer multiplies itself. An administrator who can appoint
+        peers can grow their own tier with nobody above them asked, and two of
+        them could remove each other - so the roster is a FAM administrator's
+        to change, as the DevOps one already was.
+    */
+    assertThatThrownBy(() -> service.appointApplicationAdmin(
+        INTEGRATION, ENV, appointAdmin(), requesterWithGuid("SOMEONEELSE")))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("Only a FAM administrator");
+
+    assertThatThrownBy(() -> service.removeApplicationAdmin(
+        INTEGRATION, ENV, appointAdmin(), requesterWithGuid("SOMEONEELSE")))
+        .isInstanceOf(FamHttpException.class)
+        .hasMessageContaining("Only a FAM administrator");
+
+    verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), any());
+    verify(cssApiService, never()).removeUserRole(anyInt(), anyString(), anyString(), anyString());
   }
 
   @Test
@@ -2376,7 +2415,7 @@ class CssIntegrationServiceTest {
   @DisplayName("removing takes the role away from that person only")
   void removesApplicationAdmin() {
     service.removeApplicationAdmin(INTEGRATION, ENV, appointAdmin(),
-        requesterWithGuid("SOMEONEELSE"));
+        famAdmin("SOMEONEELSE"));
 
     verify(cssApiService).removeUserRole(eq(FAM_OWN_INTEGRATION), eq("dev"), anyString(),
         eq("APP_ADMIN_" + INTEGRATION + "_DEV"));

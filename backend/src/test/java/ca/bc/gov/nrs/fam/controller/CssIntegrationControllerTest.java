@@ -119,11 +119,27 @@ class CssIntegrationControllerTest {
   @DisplayName("revoking a FAM administrative role needs the appointing tier")
   void revokingAnAdminRoleNeedsTheStricterRule() {
     // Taking somebody's APP_ADMIN away is as much an act of administration as
-    // granting it, so a delegated admin must not be able to do it.
+    // granting it, and appointing one is a FAM administrator's to make - so this
+    // path has to ask the same question the dedicated endpoint does, or it is a
+    // way around it.
     controller.deleteCssUserRoleAssignment(
         INTEGRATION, ENV, revokeRequest("APP_ADMIN_22264_DEV"), requester);
 
+    verify(authorizationService).requireApplicationAdminManagement(requester);
+    verify(authorizationService, never())
+        .requireDelegatedAdminManagement(any(), anyInt(), anyString());
+  }
+
+  @Test
+  @DisplayName("granting or revoking a delegation stays with the application administrator")
+  void delegationRolesKeepTheirOwnTier() {
+    // The tiers are not guarded alike: appointing a delegated administrator is
+    // still an application administrator's to do.
+    controller.deleteCssUserRoleAssignment(
+        INTEGRATION, ENV, revokeRequest("DELEGATED_ADMIN_22264_DEV__FREP_EDITOR"), requester);
+
     verify(authorizationService).requireDelegatedAdminManagement(requester, INTEGRATION, ENV);
+    verify(authorizationService, never()).requireApplicationAdminManagement(any());
   }
 
   @Test

@@ -204,6 +204,14 @@ Both tiers grant and revoke ordinary user access. The only difference is that an
 application administrator may appoint delegated administrators and a delegated
 administrator may not.
 
+An application administrator may **not** appoint or remove another application
+administrator. That was allowed once, on the reasoning that they can already
+grant every role the application defines, so a peer gains them nothing they
+could not do themselves. True of the roles, and beside the point for the tier: an
+administrator who can appoint peers grows their own tier with nobody above them
+asked, and two of them can remove each other. The roster is a FAM
+administrator's, as the DevOps roster already was.
+
 That single rule is what makes the tier real. Appointing an administrator happens
 through the same grant endpoint as any other role - the role being granted just
 happens to be one of FAM's own - so the endpoint checks whether the role being
@@ -219,11 +227,12 @@ the ordinary path and the distinction would be decorative.
 | List an application's roles | any tier, for that application |
 | List an application's assignments | any tier, for that application |
 | Grant or revoke an application role | any tier, for that application |
-| Grant or revoke a FAM administrative role | `FAM_ADMIN` or `APP_ADMIN`, for that application |
+| Grant or revoke a `DELEGATED_ADMIN` role | `FAM_ADMIN` or `APP_ADMIN`, for that application |
+| Grant or revoke an `APP_ADMIN` role | `FAM_ADMIN` |
 | **Define a new role on an application** | `FAM_ADMIN`, in any application |
 
-Defining a role is the one operation an application administrator is refused for
-their *own* application. Every other row decides who holds a role that already
+Defining a role and appointing another application administrator are the two
+operations an application administrator is refused for their *own* application. Every other row decides who holds a role that already
 exists; this one decides what the application's roles mean, which is a change to
 its authorisation model rather than to one person's access. See
 [css-role-format.md](css-role-format.md) for how a role is represented once

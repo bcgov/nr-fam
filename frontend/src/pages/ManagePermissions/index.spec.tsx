@@ -266,6 +266,56 @@ describe("ManagePermissions", () => {
         );
     });
 
+    it("withholds appointing an application admin from an application admin", async () => {
+        /*
+            The tab stays - seeing who else administers the application is
+            useful - but the tier no longer multiplies itself, so the two ways
+            in are gone. The endpoints refuse them regardless; this stops
+            offering.
+        */
+        fetchSelfPermissions.mockResolvedValue([
+            {
+                role: "APP_ADMIN",
+                css_integration_id: FREP.integration_id,
+                environment: "dev",
+            },
+        ]);
+        renderPage();
+        await waitFor(() => expect(getApplications).toHaveBeenCalled());
+        await choose("FREP (DEV)");
+
+        await waitFor(() =>
+            expect(tabNames().join(" ")).toContain("Application admins")
+        );
+        await userEvent.click(
+            screen.getByRole("tab", { name: /application admins/i })
+        );
+
+        expect(
+            screen.queryByRole("button", { name: "Add application admin" })
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: "Bulk upload" })
+        ).not.toBeInTheDocument();
+    });
+
+    it("offers both to a FAM administrator", async () => {
+        renderPage();
+        await waitFor(() => expect(getApplications).toHaveBeenCalled());
+        await choose("FREP (DEV)");
+
+        await waitFor(() =>
+            expect(tabNames().join(" ")).toContain("Application admins")
+        );
+        await userEvent.click(
+            screen.getByRole("tab", { name: /application admins/i })
+        );
+
+        expect(
+            await screen.findByRole("button", { name: "Add application admin" })
+        ).toBeInTheDocument();
+    });
+
     it("hides the admin tabs from an administrator of a different application", async () => {
         fetchSelfPermissions.mockResolvedValue([
             {

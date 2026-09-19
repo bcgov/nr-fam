@@ -960,18 +960,16 @@ public class CssIntegrationService {
    * role to name and no scope to choose. One role,
    * {@code APP_ADMIN_<id>_<ENV>}, on FAM's own integration.
    *
-   * <p>Same guard as appointing a delegated administrator - application
-   * administrators and above - which means an application administrator can
-   * appoint a peer. That matches what the tier already implies: they can already
-   * grant every role the application defines, so a peer gains them nothing they
-   * could not do themselves. Appointing into FAM's own integration remains
-   * {@code FAM_ADMIN} only.
+   * <p>FAM administrators only - see
+   * {@link ca.bc.gov.nrs.fam.security.AuthorizationService#requireApplicationAdminManagement}.
+   * An application administrator used to be able to appoint a peer, which let a
+   * tier grow itself without anyone above it being asked.
    */
   public CssUserRoleAssignmentResult appointApplicationAdmin(
       int integrationId, String environment, CssAdministratorAppointRequest request,
       Requester requester) {
 
-    authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
+    authorizationService.requireApplicationAdminManagement(requester);
     requireIdirAdministrator(request.userType(), "an application administrator");
     authorizationService.forbidSelfGrant(requester, request.userGuid(), environment);
     targetOrganizationGuard.requireSameOrganization(
@@ -1012,12 +1010,17 @@ public class CssIntegrationService {
     return result;
   }
 
-  /** Remove somebody's application administrator role. */
+  /**
+   * Remove somebody's application administrator role.
+   *
+   * <p>FAM administrators only, as appointing one is: otherwise two application
+   * administrators could remove each other.
+   */
   public void removeApplicationAdmin(
       int integrationId, String environment, CssAdministratorAppointRequest request,
       Requester requester) {
 
-    authorizationService.requireDelegatedAdminManagement(requester, integrationId, environment);
+    authorizationService.requireApplicationAdminManagement(requester);
     // Removing yourself is refused for the same reason appointing yourself is:
     // an administrator who can drop their own tier mid-session leaves the screen
     // in a state that disagrees with their token until they sign in again.

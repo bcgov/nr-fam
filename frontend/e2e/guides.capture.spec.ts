@@ -142,22 +142,47 @@ const chooseApplication = async (page: Page): Promise<string> => {
  * without a password prompt. That is all this does.
  */
 const ensureSignedIn = async (page: Page) => {
-    await page.goto("/");
-    const signIn = page.locator("#login-idir-button");
-    if (!(await signIn.isVisible().catch(() => false))) {
-        return;
+    /*
+        Retried, because the round trip can land back on the sign-in page.
+
+        The authorization code is single-use. If the callback is loaded twice -
+        which the dev server does often enough, reloading on its own - the second
+        exchange fails, the app reports no session and shows the landing page
+        again. Nothing is wrong with the credentials, so pressing the button
+        again works; failing here instead cost a capture run.
+    */
+    const shell = page.locator("#protected-layout-container");
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await page.goto("/");
+        const signIn = page.locator("#login-idir-button");
+        if (!(await signIn.isVisible().catch(() => false))) {
+            return;
+        }
+        await signIn.click();
+
+        /*
+            Waited for by what appears, not by the URL. A predicate that also
+            accepts the landing page is true the moment it is asked - the click
+            has not navigated yet - so the wait returns at once and the retry
+            aborts the sign-in it was supposed to be helping.
+        */
+        await shell
+            .waitFor({ state: "visible", timeout: 180_000 })
+            .catch(() => undefined);
+
+        if (await shell.isVisible().catch(() => false)) {
+            return;
+        }
+        console.warn(
+            `Sign-in attempt ${attempt} came back to the landing page; trying again.`
+        );
     }
-    await signIn.click();
-    await page.waitForURL(
-        (url) =>
-            url.pathname.startsWith("/manage-permissions") ||
-            url.pathname.startsWith("/my-permissions") ||
-            url.pathname.startsWith("/no-access"),
-        { timeout: 120_000 }
+    throw new Error(
+        "could not sign in after three attempts - if the browser is asking for "
+            + "credentials, the stored Keycloak session has expired: re-run "
+            + "`npm run pree2e:login && npm run e2e:login`"
     );
-    await expect(page.locator("#protected-layout-container")).toBeVisible({
-        timeout: 30_000,
-    });
 };
 
 /**
@@ -232,6 +257,18 @@ const remember = (find: string | null | undefined, replace: string) => {
     substitutions.push({ find: value, replace });
 };
 
+/*
+    The account the capture runs as is a real person, and its username is typed
+    into the search box on every form it fills in. A value is an attribute
+    rather than a table cell, so the column pass never reaches it - and this is
+    registered here, at module load, rather than in the grant flow where the
+    rest of the identity is learned: capturing one picture on its own has to
+    anonymise as thoroughly as capturing all of them.
+*/
+if (TARGET_USER) {
+    remember(TARGET_USER, PEOPLE[0].user);
+}
+
 /** Everything the directory knows about the person being granted to. */
 const rememberRealIdentity = (identity: {
     userId?: string;
@@ -285,6 +322,10 @@ const anonymise = async (page: Page) => {
                 "user name": (p) => p.user,
                 username: (p) => p.user,
                 "full name": (p) => `${p.first} ${p.last}`,
+                // User history heads its full-name column "User" on its own.
+                // Without this the usernames and emails beside it were replaced
+                // and the real names were left sitting in the picture.
+                user: (p) => `${p.first} ${p.last}`,
                 "first name": (p) => p.first,
                 "last name": (p) => p.last,
                 email: (p) => email(p),
@@ -338,7 +379,21 @@ const anonymise = async (page: Page) => {
                 );
                 Array.from(table.querySelectorAll("tbody tr")).forEach((row, rowIndex) => {
                     const person = personFor(rowIndex);
-                    Array.from(row.querySelectorAll("td")).forEach((cell, index) => {
+                    const cells = Array.from(row.querySelectorAll("td"));
+                    /*
+                        An empty table is one row, not a person.
+
+                        Carbon spans its "nobody here yet" message across every
+                        column in a single cell, which sits under the first
+                        heading and was duly replaced with an invented username
+                        - so the Application admins picture in the guide showed
+                        a roster of one made-up administrator where the app was
+                        actually saying there are none.
+                    */
+                    if (cells.some((cell) => (cell as HTMLTableCellElement).colSpan > 1)) {
+                        return;
+                    }
+                    cells.forEach((cell, index) => {
                         const heading = headings[index];
                         const replace = heading ? COLUMNS[heading] : undefined;
                         if (!replace) {
@@ -488,6 +543,18 @@ const shoot = async (
     await anonymise(page);
     await target.screenshot({
         path: path.join(SHOTS, `${name}.png`),
+        /*
+            Transitions finished, not caught halfway.
+
+            Carbon drops a closing modal's `is-visible` class immediately and
+            then fades the element out over a quarter of a second. Waiting on
+            the class therefore said "closed" while the dialog was still painted
+            at nearly full opacity, and the picture of the delegated admin form
+            came out with the search results sitting on top of the form it was
+            meant to show. This holds every finite animation at its end state
+            for the duration of the shot.
+        */
+        animations: "disabled",
         // A form is explained step by step, and the steps below the fold are
         // the ones people get stuck on - the notify checkbox and the button
         // that submits. A table is cropped to the viewport as usual: a hundred
@@ -648,6 +715,20 @@ test.describe("how-to guide screenshots", () => {
 
             await page.getByRole("button", { name: "Grant permission" }).click();
             await expect(toast(page)).toContainText("Permission granted");
+            /*
+                The list as well as the message.
+
+                The toast fires when the grant succeeds; the table behind it
+                only catches up on the refetch that follows. The picture
+                captioned "FAM confirms what it granted" came out showing that
+                message above the list exactly as it was before the grant - no
+                new row, no New pill - which contradicts the sentence it
+                illustrates.
+            */
+            await expect(
+                page.locator("tbody tr").filter({ hasText: roleName })
+            ).toBeVisible({ timeout: 60_000 });
+            await tableSettled(page);
             await shoot(page, "08-grant-confirmation");
 
             /*
@@ -662,7 +743,18 @@ test.describe("how-to guide screenshots", () => {
             const grantedRow = page.locator("tr").filter({ hasText: roleName });
             await expect(grantedRow.first()).toBeVisible({ timeout: 60_000 });
             await tableSettled(page);
+            /*
+                Wider than the rest, so the Action column is in the picture.
+
+                A reviewer asked for the full table: the guide points at the
+                clock and trash icons under Action, and at 1440 the column was
+                cropped off the right-hand edge - the one column the surrounding
+                text is about.
+            */
+            await page.setViewportSize({ width: 1800, height: 900 });
+            await tableSettled(page);
             await shoot(page, "09-permissions-table");
+            await page.setViewportSize(VIEWPORT);
 
             /*
                 The removal confirmation, taken on the way to cleaning up.
@@ -696,55 +788,98 @@ test.describe("how-to guide screenshots", () => {
     });
 
     test("the delegated and application admin forms", async ({ page }) => {
-        // The empty forms, which say what they ask for without anybody being
-        // appointed. Nothing is submitted, so there is nothing to clean up.
-        //
-        // Reached the way somebody reaches them - through the tabs - because the
-        // screens need the application on the query string and the tab is what
-        // puts it there.
-        const openTabAndForm = async (
-            tab: RegExp,
-            button: RegExp,
-            route: RegExp,
-            name: string
-        ) => {
-            await gotoProtected(page, "/manage-permissions");
-            await chooseApplication(page);
-            const target = page.getByRole("tab").filter({ hasText: tab });
-            if (!(await target.isVisible().catch(() => false))) {
-                test.skip(true, `this account has no ${tab.source} tab`);
-            }
-            await target.click();
-            await tableSettled(page);
-            await page.getByRole("button", { name: button }).first().click();
-            // The button navigates, and a screenshot taken in the meantime is a
-            // picture of the screen being left. The first capture run produced
-            // three of those.
-            await page.waitForURL(route, { timeout: 60_000 });
-            // The form's own lists - roles, and the user search - load too.
-            await tableSettled(page);
-            await shoot(page, name);
-        };
+        // Each screen is reached the way somebody reaches it - through the tabs
+        // - because they need the application on the query string and the tab
+        // is what puts it there. Nothing is submitted on any of them, so there
+        // is nothing to clean up.
 
-        await openTabAndForm(
-            /delegated admins/i,
-            /add delegated admin/i,
-            /add-delegated-admin/,
-            "13-add-delegated-admin"
-        );
-        await openTabAndForm(
-            /application admins/i,
-            /add application admin/i,
-            /add-application-admin/,
-            "14-add-application-admin"
-        );
+        /*
+            The delegated admin form with somebody chosen, not empty.
+
+            A reviewer asked for "the user plus the roles table": the roles only
+            appear once a person is selected, so an empty form is a picture of
+            the step before the one the text describes. Nothing is submitted.
+        */
+        await gotoProtected(page, "/manage-permissions");
+        await chooseApplication(page);
+        const delegatedTab = page.getByRole("tab").filter({ hasText: /delegated admins/i });
+        if (await delegatedTab.isVisible().catch(() => false)) {
+            await delegatedTab.click();
+            await tableSettled(page);
+            await page.getByRole("button", { name: /add delegated admin/i }).first().click();
+            await page.waitForURL(/add-delegated-admin/, { timeout: 60_000 });
+            await tableSettled(page);
+
+            if (TARGET_USER) {
+                const search = page.locator("#user-search-input");
+                await search.fill(TARGET_USER);
+                await page.getByRole("button", { name: "Search users" }).click();
+                const dialog = await openDialog(page);
+                const confirm = dialog.getByRole("button", { name: "Confirm" });
+                if (await confirm.isDisabled()) {
+                    await dialog.getByLabel(`Select ${TARGET_USER.toUpperCase()}`).check();
+                }
+                await confirm.click();
+                /*
+                    Wait for the dialog to go, not for the roles table to
+                    arrive. The roles table is already on the page behind the
+                    overlay, so asserting it is visible passed the instant it
+                    was called and the picture came out with the search results
+                    still covering the form the reviewer asked to see.
+                */
+                await expect(page.locator(".cds--modal.is-visible")).toBeHidden({
+                    timeout: 30_000,
+                });
+                await expect(page.locator(".role-multi-select-table")).toBeVisible({
+                    timeout: 30_000,
+                });
+                await tableSettled(page);
+            }
+            await shoot(page, "13-add-delegated-admin", { fullPage: true });
+        }
+
+        /*
+            The Application admins tab rather than its form.
+
+            Appointing one is a FAM administrator's to do now, so the guide tells
+            an application administrator who to ask rather than which button to
+            press - and the picture should be the roster they can see.
+        */
+        await gotoProtected(page, "/manage-permissions");
+        await chooseApplication(page);
+        const appAdminTab = page.getByRole("tab").filter({ hasText: /application admins/i });
+        if (await appAdminTab.isVisible().catch(() => false)) {
+            await appAdminTab.click();
+            await tableSettled(page);
+            await shoot(page, "14-add-application-admin");
+        }
 
         await gotoProtected(page, "/manage-permissions");
         await chooseApplication(page);
         await page.getByRole("button", { name: /bulk|upload/i }).first().click();
         await page.waitForURL(/bulk-upload/, { timeout: 60_000 });
+        /*
+            The new screen, not merely the new address.
+
+            waitForURL returns the moment the route changes, before React has
+            rendered what is at it - and tableSettled agrees, because a skeleton
+            that has not been rendered yet counts as zero the same way a
+            finished one does. The picture that reached the guide under the
+            caption "the bulk grant screen" was the users list it had just left.
+        */
+        await expect(
+            page.getByRole("heading", { name: /bulk upload permissions/i })
+        ).toBeVisible({ timeout: 60_000 });
         await tableSettled(page);
         await shoot(page, "15-bulk-grant");
+    });
+
+    test("user history", async ({ page }) => {
+        // The section a reviewer found missing from the guide.
+        await gotoProtected(page, "/user-history");
+        await chooseApplication(page).catch(() => undefined);
+        await tableSettled(page);
+        await shoot(page, "16-user-history");
     });
 
     test("my permissions", async ({ page }) => {

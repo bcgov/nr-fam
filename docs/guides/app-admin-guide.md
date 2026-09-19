@@ -14,24 +14,24 @@ You need permission before you can use FAM. If you do not have it, email
 [Heartwood@gov.bc.ca](mailto:Heartwood@gov.bc.ca).
 
 Once you have access, sign in at
-[forestaccess.nrs.gov.bc.ca](https://forestaccess.nrs.gov.bc.ca) with your IDIR or Business BCeID.
+[forestaccess.nrs.gov.bc.ca](https://forestaccess.nrs.gov.bc.ca) with your IDIR.
 
 ![The FAM sign-in screen](screenshots/01-sign-in.png)
 
 ## Choosing an application
 
-Select the application you want to manage from the drop-down at the top of
-Manage permissions. Only applications you administer appear in the list.
+Select the application you want to manage from the **Application** drop-down.
+You'll only see the applications you administer.
 
-Each entry shows the application's name and a pill naming the environment:
-Development, Test or Production. A CSS integration spans all three and they are
-administered separately — granting somebody access in Test does not give them
-access in Production.
+Each item in the list shows the application name and a coloured pill for the
+environment: Development, Test, or Production. Environments are managed
+separately, so you need access in each one. Giving someone access in Test does
+not give them access in Production.
+
+> **Note:** For security reasons, you can't change your own permissions. If you
+> need a role for yourself, ask another administrator to add it.
 
 ![The application picker, showing the environment pills](screenshots/03-application-picker.png)
-
-You cannot change your own permissions. Ask another administrator if you need a
-role yourself.
 
 ## The tabs
 
@@ -82,7 +82,10 @@ is the quick way to set up a team.
 
 ![Choosing roles and scopes](screenshots/07-choose-roles.png)
 
-FAM returns you to Manage permissions and confirms what it granted.
+FAM returns you to Manage permissions and confirms what it granted. A grant of
+one role to one person names both; a larger one is summarised — "5 roles granted
+to 15 users in FREP (TEST)" — rather than listed. If part of it failed, the
+banner says so and names what did not go through.
 
 ![The confirmation banner after a grant](screenshots/08-grant-confirmation.png)
 
@@ -92,16 +95,26 @@ A permission you have just granted appears at the top of the table with a green
 **New** pill.
 
 - To see everything that has happened to somebody's access, select the clock
-  icon under **Action**.
-- To change what they hold, select the edit icon.
-- To take the access away, select the trash can icon and confirm.
+  icon under the **Action** column.
+- To change what they hold, select the edit icon under the **Action** column.
+- To take the access away, select the trash can icon under the **Action**
+  column and confirm.
 
 ![The permissions table with a new grant at the top](screenshots/09-permissions-table.png)
 
 ## Adding a delegated administrator
 
-A delegated administrator may grant and revoke the roles you delegate to them,
-and nothing else. They cannot appoint other administrators.
+A delegated administrator can grant and revoke only the roles you delegate to
+them. They cannot appoint other administrators.
+
+Delegated administrators can be internal or external:
+
+- **External** — give someone in an external organization a delegated admin role
+  for a specific client number, so they can manage users within their own
+  organization.
+- **Internal** — give someone in the ministry a delegated admin role for their
+  area, for example a district user who manages access for other users in that
+  district.
 
 1. Choose the **Delegated admins** tab.
 2. Select **Add delegated admin**.
@@ -124,22 +137,46 @@ and nothing else. They cannot appoint other administrators.
    carries. They will be asked to accept the terms of use the first time they
    sign in.
 
-## Adding an application administrator
+## Application administrators
 
 An application administrator has the same authority you do, including appointing
-other administrators. Appoint one from the **Application admins** tab.
+delegated administrators. **Application administrators cannot create new
+application administrators.**
+
+The **Application admins** tab shows who administers this application. To have
+someone added or removed, email
+[Heartwood@gov.bc.ca](mailto:Heartwood@gov.bc.ca) — only a FAM administrator can
+change that list.
 
 Application administrators must be IDIR users.
 
-![Appointing an application administrator](screenshots/14-add-application-admin.png)
+![The Application admins tab](screenshots/14-add-application-admin.png)
 
-## Granting to many people at once
+## Bulk user upload
 
-To set up a lot of people in one go, use **Bulk grant** from Manage permissions.
-Upload a CSV, review what FAM proposes, then apply it. Rows for access somebody
-already holds are skipped rather than granted again.
+If you have a CSV file with many users to set up — for example, an export from
+ADAM — use **Bulk grant** from Manage permissions.
+
+1. Download the template and prepare your CSV. It names the user, the role, and
+   the scope it applies to.
+2. Upload the CSV.
+3. Review what FAM proposes.
+4. Apply it.
+
+Rows for access someone already holds are skipped rather than granted again.
 
 ![The bulk grant screen](screenshots/15-bulk-grant.png)
+
+## User history
+
+**User history** in the left-hand navigation shows what has happened to one
+person's access in an application: what was granted or removed, when, and who
+did it.
+
+Choose the application, then the person. The same history is reachable from the
+clock icon beside somebody's row on Manage permissions.
+
+![The User history screen](screenshots/16-user-history.png)
 
 ## Viewing your own permissions
 

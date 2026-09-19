@@ -1,8 +1,10 @@
-import { Logout } from "@carbon/icons-react";
+import { Document, Logout } from "@carbon/icons-react";
 import { SideNavLink } from "@carbon/react";
 import type { FC } from "react";
 import AvatarImage from "@/components/Layout/AvatarImage";
 import { useAuth } from "@/context/auth/useAuth";
+import { TERMS_PDF_PATH } from "@/components/TermsOfUse";
+import { isDelegatedAdmin } from "@/routes/routePaths";
 import "./HeaderPanelProfile.css";
 
 /**
@@ -72,6 +74,26 @@ export const HeaderPanelProfile: FC = () => {
             <hr className="divisory" />
             <nav className="account-nav">
                 <ul>
+                    {/*
+                        For a delegated administrator, the terms they accepted.
+
+                        They agreed on their organization's behalf and cannot
+                        reach the acceptance dialog again once it is answered, so
+                        without this the only copy is in whatever email announced
+                        it. Nobody else is bound by them, so nobody else is
+                        offered them.
+                    */}
+                    {isDelegatedAdmin(authState.accessRoles) ? (
+                        <SideNavLink
+                            id="terms-of-use-link"
+                            href={TERMS_PDF_PATH}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            renderIcon={Document}
+                        >
+                            Terms of use
+                        </SideNavLink>
+                    ) : null}
                     <SideNavLink
                         id="sign-out-link"
                         className="cursor-pointer"

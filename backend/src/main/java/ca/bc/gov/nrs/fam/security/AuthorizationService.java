@@ -202,6 +202,32 @@ public class AuthorizationService {
   }
 
   /**
+   * The caller must be able to appoint application administrators - FAM
+   * administrators only.
+   *
+   * <p>An application administrator may no longer appoint a peer. The argument
+   * for allowing it was that they can already grant every role the application
+   * defines, so a peer gains them nothing they could not do themselves. That is
+   * true of the roles, and beside the point for the tier: an administrator who
+   * can appoint peers can multiply themselves, and no one above them is asked.
+   * Removing somebody is the same act in reverse - two administrators could
+   * remove each other.
+   *
+   * <p>So the roster of who administers an application is a FAM administrator's
+   * to change, in the same way the DevOps roster already was. Application
+   * administrators keep everything else, including appointing the delegated
+   * administrators who do the day-to-day granting.
+   *
+   * <p>No application parameter: {@code FAM_ADMIN} is not scoped to one.
+   */
+  public void requireApplicationAdminManagement(Requester requester) {
+    if (requester == null || !requester.isFamAdmin()) {
+      throw FamHttpException.forbidden(ErrorCode.PERMISSION_REQUIRED,
+          "Only a FAM administrator may manage application administrators.");
+    }
+  }
+
+  /**
    * The caller must be able to define and remove this application's roles.
    *
    * <p>A FAM administrator anywhere, or a DevOps administrator of this exact

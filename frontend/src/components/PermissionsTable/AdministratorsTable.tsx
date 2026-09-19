@@ -45,6 +45,18 @@ type Props = {
     environment: string;
     tier: AdminRoleAuthGroup;
     appName: string;
+    /**
+     * Whether this caller may take the appointment away.
+     *
+     * <p>Defaults to true, which is what the delegated and DevOps rosters want -
+     * the tab only renders for somebody who may change them. The application
+     * admins tab is different: an application administrator sees who their peers
+     * are and may no longer appoint or remove one, so the roster is readable
+     * where the buttons are not.
+     *
+     * <p>Presentation only. The endpoint refuses them either way.
+     */
+    canRemove?: boolean;
 };
 
 const isDelegated = (tier: AdminRoleAuthGroup) => tier === "DELEGATED_ADMIN";
@@ -98,6 +110,7 @@ export const AdministratorsTable: FC<Props> = ({
     environment,
     tier,
     appName,
+    canRemove = true,
 }) => {
     const [removeError, setRemoveError] = useState<string | null>(null);
     const [pendingRemove, setPendingRemove] =
@@ -332,17 +345,27 @@ export const AdministratorsTable: FC<Props> = ({
                                     ) : null}
 
                                     <TableCell className="action-col">
-                                        <div className="nowrap-cell action-button-group">
-                                            <RemoveButton
-                                                accessible={`Remove ${row.username} as an administrator`}
-                                                disabledReason="This administrator cannot be identified, so they cannot be removed here"
-                                                disabled={
-                                                    !isRemovable(row) ||
-                                                    removeMutation.isPending
-                                                }
-                                                onClick={() => setPendingRemove(row)}
-                                            />
-                                        </div>
+                                        {/*
+                                            Absent, not disabled, for a caller
+                                            who may not remove: a greyed button
+                                            says "not now", and this is "not
+                                            yours". Disabling is kept for the row
+                                            that cannot be identified, which is a
+                                            different answer.
+                                        */}
+                                        {canRemove ? (
+                                            <div className="nowrap-cell action-button-group">
+                                                <RemoveButton
+                                                    accessible={`Remove ${row.username} as an administrator`}
+                                                    disabledReason="This administrator cannot be identified, so they cannot be removed here"
+                                                    disabled={
+                                                        !isRemovable(row) ||
+                                                        removeMutation.isPending
+                                                    }
+                                                    onClick={() => setPendingRemove(row)}
+                                                />
+                                            </div>
+                                        ) : null}
                                     </TableCell>
                                 </TableRow>
                             ))

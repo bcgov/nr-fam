@@ -222,12 +222,19 @@ export const App: FC = () => (
                                     </RequireGrantTarget>
                                 }
                             />
+                            {/*
+                                FAM administrators only, matching the tab that
+                                leads here: an application administrator may no
+                                longer appoint a peer.
+                            */}
                             <Route
                                 path={ROUTES.addApplicationAdmin}
                                 element={
-                                    <RequireGrantTarget>
-                                        <AddApplicationAdmin />
-                                    </RequireGrantTarget>
+                                    <RequireFamAdmin>
+                                        <RequireGrantTarget>
+                                            <AddApplicationAdmin />
+                                        </RequireGrantTarget>
+                                    </RequireFamAdmin>
                                 }
                             />
                             {/*
@@ -274,9 +281,11 @@ export const App: FC = () => (
                             <Route
                                 path={ROUTES.bulkGrantApplicationAdmins}
                                 element={
-                                    <RequireGrantTarget>
-                                        <BulkGrant kind="applicationAdmins" />
-                                    </RequireGrantTarget>
+                                    <RequireFamAdmin>
+                                        <RequireGrantTarget>
+                                            <BulkGrant kind="applicationAdmins" />
+                                        </RequireGrantTarget>
+                                    </RequireFamAdmin>
                                 }
                             />
                             {/*

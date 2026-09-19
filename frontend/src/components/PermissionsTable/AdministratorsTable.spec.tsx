@@ -65,7 +65,10 @@ const UNIDENTIFIED = {
 
 const CONFIRM_REMOVE = /Remove$/;
 
-const renderTable = (tier: AdminRoleAuthGroup) => {
+const renderTable = (
+    tier: AdminRoleAuthGroup,
+    options: { canRemove?: boolean } = {}
+) => {
     const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
     });
@@ -77,6 +80,7 @@ const renderTable = (tier: AdminRoleAuthGroup) => {
                     environment="dev"
                     tier={tier}
                     appName="FREP (DEV)"
+                    canRemove={options.canRemove ?? true}
                 />
             </NotificationProvider>
         </QueryClientProvider>
@@ -95,6 +99,19 @@ describe("AdministratorsTable", () => {
             .mockResolvedValue({ data: [DELEGATE] });
         deleteCssDelegatedAdmin.mockReset().mockResolvedValue({ data: {} });
         deleteCssApplicationAdmin.mockReset().mockResolvedValue({ data: {} });
+    });
+
+
+    it("shows no remove button when the caller may not remove", async () => {
+        // An application administrator reads the roster and may not change it -
+        // the button is absent rather than disabled, because disabled reads as
+        // "not now" where this is "not yours".
+        renderTable("APP_ADMIN", { canRemove: false });
+
+        expect(await screen.findByText("JSMITH")).toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: /^Remove / })
+        ).not.toBeInTheDocument();
     });
 
     it("shows what a delegated administrator may grant, and where", async () => {

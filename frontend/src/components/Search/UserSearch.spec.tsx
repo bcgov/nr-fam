@@ -218,6 +218,55 @@ describe("UserSearch", () => {
         expect(usernames()).toEqual(["JSMITH", "JSMYTHE"]);
     });
 
+    it("selects a person by clicking anywhere in their row", async () => {
+        // The radio is a small target beside four columns of text, and the row
+        // is what somebody is aiming at.
+        const { onSelectionChange } = renderSearch({ multiUserMode: false });
+
+        await search("smith");
+        const dialog = await openResults();
+
+        await userEvent.click(within(dialog).getByText("JSMYTHE"));
+        expect(within(dialog).getByLabelText("Select JSMYTHE")).toBeChecked();
+
+        await userEvent.click(
+            within(dialog).getByRole("button", { name: "Confirm" })
+        );
+        expect(onSelectionChange).toHaveBeenLastCalledWith([
+            expect.objectContaining({ userId: "JSMYTHE" }),
+        ]);
+    });
+
+    it("keeps a row selected when it is clicked again in single-user mode", async () => {
+        // Clicking the chosen row a second time should not silently deselect
+        // it and leave Confirm disabled.
+        renderSearch({ multiUserMode: false });
+
+        await search("smith");
+        const dialog = await openResults();
+
+        await userEvent.click(within(dialog).getByText("JSMITH"));
+        await userEvent.click(within(dialog).getByText("JSMITH"));
+
+        expect(within(dialog).getByLabelText("Select JSMITH")).toBeChecked();
+        expect(
+            within(dialog).getByRole("button", { name: "Confirm" })
+        ).toBeEnabled();
+    });
+
+    it("toggles a row off in multi-user mode", async () => {
+        renderSearch({ multiUserMode: true });
+
+        await search("smith");
+        const dialog = await openResults();
+
+        await userEvent.click(within(dialog).getByText("JSMITH"));
+        expect(within(dialog).getByLabelText("Select JSMITH")).toBeChecked();
+
+        await userEvent.click(within(dialog).getByText("JSMITH"));
+        expect(within(dialog).getByLabelText("Select JSMITH")).not.toBeChecked();
+    });
+
     it("says so when the filter matches nothing", async () => {
         renderSearch();
 
