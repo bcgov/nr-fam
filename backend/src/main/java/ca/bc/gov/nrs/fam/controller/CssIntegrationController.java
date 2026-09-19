@@ -412,9 +412,14 @@ public class CssIntegrationController {
     // rule. Without this a delegated admin could grant themselves
     // DELEGATED_ADMIN_<other app>_<env> - or APP_ADMIN - through the ordinary
     // grant path, and the tiers would mean nothing.
+    //
+    // Per tier, because they are not equally guarded: only a FAM administrator
+    // appoints an application or DevOps administrator, while an application
+    // administrator appoints delegated ones. Guarding them all the same way
+    // would leave the ordinary grant path as a way around
+    // requireApplicationAdminManagement.
     FamAdminRole.tierOf(request.roleName()).ifPresent(tier ->
-        authorizationService.requireDelegatedAdminManagement(
-            requester, integrationId, environment));
+        requireAdministratorAppointment(tier, requester, integrationId, environment));
 
     return cssIntegrationService.assignUserRoles(
         integrationId, environment, request, requester);
@@ -557,9 +562,10 @@ public class CssIntegrationController {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
 
+    // Same ladder as granting one: removing an administrator is appointing in
+    // reverse.
     FamAdminRole.tierOf(request.roleName()).ifPresent(tier ->
-        authorizationService.requireDelegatedAdminManagement(
-            requester, integrationId, environment));
+        requireAdministratorAppointment(tier, requester, integrationId, environment));
 
     cssIntegrationService.revokeUserRole(integrationId, environment, request, requester);
   }
@@ -584,5 +590,25 @@ public class CssIntegrationController {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
     return cssIntegrationService.getUserRoleAssignments(integrationId, environment, requester);
+  }
+
+  /**
+   * Who may appoint into a tier, for the paths that reach one by role name.
+   *
+   * <p>The single-appointment endpoints call the guards directly; this is for
+   * the ordinary grant and revoke endpoints, which see an administrative role
+   * only as a string and must apply the same rule the dedicated endpoint would.
+   */
+  private void requireAdministratorAppointment(
+      AdminRoleAuthGroup tier, Requester requester, int integrationId, String environment) {
+
+    switch (tier) {
+      case APP_ADMIN, FAM_ADMIN ->
+          authorizationService.requireApplicationAdminManagement(requester);
+      case DEVOPS_ADMIN -> authorizationService.requireDevopsAdminManagement(requester);
+      case DELEGATED_ADMIN ->
+          authorizationService.requireDelegatedAdminManagement(
+              requester, integrationId, environment);
+    }
   }
 }

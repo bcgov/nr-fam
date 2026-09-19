@@ -321,8 +321,34 @@ export const UserSearchResultsModal: FC<Props> = ({
                                 {pagedRows.map((user) => {
                                     const key = keyOf(user);
                                     const checked = selectedKeys.includes(key);
+                                    /*
+                                        The whole row selects, not just the
+                                        control: the row is what somebody is
+                                        reading and aiming at, and a radio button
+                                        is a small target beside four columns of
+                                        text.
+
+                                        In single-user mode a click always
+                                        selects - clicking the chosen row again
+                                        should not silently deselect and leave
+                                        Confirm disabled. In multi-user mode it
+                                        toggles, which is what a list of
+                                        checkboxes means.
+                                    */
+                                    const selectFromRow = () =>
+                                        toggle(user, multiUserMode ? !checked : true);
+
                                     return (
-                                        <TableRow key={key}>
+                                        <TableRow
+                                            key={key}
+                                            className="user-search-results__row"
+                                            // Keyboard users reach the radio or
+                                            // checkbox itself, which is still
+                                            // focusable and still announces the
+                                            // person, so the row is not a second
+                                            // tab stop saying the same thing.
+                                            onClick={selectFromRow}
+                                        >
                                             <TableCell>
                                                 {multiUserMode ? (
                                                     <Checkbox
@@ -333,6 +359,10 @@ export const UserSearchResultsModal: FC<Props> = ({
                                                         onChange={(_event, { checked: next }) =>
                                                             toggle(user, next)
                                                         }
+                                                        // The row handles the click too, and both
+                                                        // firing would toggle twice - back to where
+                                                        // it started.
+                                                        onClick={(event) => event.stopPropagation()}
                                                     />
                                                 ) : (
                                                     <RadioButton
@@ -342,6 +372,7 @@ export const UserSearchResultsModal: FC<Props> = ({
                                                         hideLabel
                                                         checked={checked}
                                                         onChange={() => toggle(user, true)}
+                                                        onClick={(event) => event.stopPropagation()}
                                                     />
                                                 )}
                                             </TableCell>

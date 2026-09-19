@@ -460,8 +460,9 @@ public class BulkGrantService {
 
     try {
       authorizationService.forbidSelfGrant(requester, resolved.userGuid(), environment);
-      authorizationService.requireDelegatedAdminManagement(
-          requester, integrationId, environment);
+      // FAM administrators only, as the single-appointment path requires - a
+      // file of a hundred rows must not be a way around it.
+      authorizationService.requireApplicationAdminManagement(requester);
       targetOrganizationGuard.requireSameOrganization(
           requester, apiInstanceEnvResolver.resolveDirectory(environment),
           resolved.userType(), resolved.userGuid());
@@ -753,7 +754,9 @@ public class BulkGrantService {
     // confirmation is honest rather than discovered halfway through applying.
     try {
       authorizationService.forbidSelfGrant(requester, resolved.userGuid(), environment);
-      if (kind == BulkUploadKind.DELEGATED_ADMINS) {
+      if (kind == BulkUploadKind.APP_ADMINS) {
+        authorizationService.requireApplicationAdminManagement(requester);
+      } else if (kind == BulkUploadKind.DELEGATED_ADMINS) {
         authorizationService.requireDelegatedAdminManagement(
             requester, integrationId, environment);
       } else {

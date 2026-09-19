@@ -219,6 +219,28 @@ export const ManagePermissions: FC = () => {
     }, [selectedApp, selfPermissionsQuery.data]);
 
     /*
+        Who may change the application admins roster: FAM administrators only.
+
+        An application administrator used to appoint a peer. That let the tier
+        grow itself with nobody above it asked, and let two of them remove each
+        other, so it moved to FAM administrators - as the DevOps roster already
+        had. The tab itself stays: seeing who else administers an application is
+        useful and harmless, and hiding the roster would answer a question nobody
+        asked.
+
+        Presentation only, as everywhere else here. The endpoints refuse an
+        application administrator regardless - see
+        AuthorizationService.requireApplicationAdminManagement.
+    */
+    const canManageAppAdmins = useMemo(
+        () =>
+            (selfPermissionsQuery.data ?? []).some(
+                (permission) => permission.role === "FAM_ADMIN"
+            ),
+        [selfPermissionsQuery.data]
+    );
+
+    /*
         The strip as this caller sees it, and where the chosen tab sits in it.
 
         Derived rather than corrected after the fact. Two effects used to reset a
@@ -460,32 +482,34 @@ export const ManagePermissions: FC = () => {
                                             icon={HelpDesk}
                                             description={`Who can grant any role in ${appName}, and appoint delegated admins`}
                                             actions={
-                                                <>
-                                                    <Button
-                                                        kind="tertiary"
-                                                        size="md"
-                                                        renderIcon={Add}
-                                                        onClick={() =>
-                                                            goTo(
-                                                                ROUTES.bulkGrantApplicationAdmins
-                                                            )
-                                                        }
-                                                    >
-                                                        Bulk upload
-                                                    </Button>
-                                                    <Button
-                                                        kind="primary"
-                                                        size="md"
-                                                        renderIcon={Add}
-                                                        onClick={() =>
-                                                            goTo(
-                                                                ROUTES.addApplicationAdmin
-                                                            )
-                                                        }
-                                                    >
-                                                        Add application admin
-                                                    </Button>
-                                                </>
+                                                canManageAppAdmins ? (
+                                                    <>
+                                                        <Button
+                                                            kind="tertiary"
+                                                            size="md"
+                                                            renderIcon={Add}
+                                                            onClick={() =>
+                                                                goTo(
+                                                                    ROUTES.bulkGrantApplicationAdmins
+                                                                )
+                                                            }
+                                                        >
+                                                            Bulk upload
+                                                        </Button>
+                                                        <Button
+                                                            kind="primary"
+                                                            size="md"
+                                                            renderIcon={Add}
+                                                            onClick={() =>
+                                                                goTo(
+                                                                    ROUTES.addApplicationAdmin
+                                                                )
+                                                            }
+                                                        >
+                                                            Add application admin
+                                                        </Button>
+                                                    </>
+                                                ) : null
                                             }
                                         >
                                             <AdministratorsTable
@@ -498,6 +522,7 @@ export const ManagePermissions: FC = () => {
                                                 }
                                                 tier="APP_ADMIN"
                                                 appName={appName}
+                                                canRemove={canManageAppAdmins}
                                             />
                                         </SectionTile>
                                     </TabPanel>

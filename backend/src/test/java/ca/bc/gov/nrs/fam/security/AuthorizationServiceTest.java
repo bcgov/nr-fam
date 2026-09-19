@@ -301,6 +301,36 @@ class AuthorizationServiceTest {
   }
 
   @Test
+  @DisplayName("managing application administrators is FAM administrators only")
+  void onlyFamAdminsManageApplicationAdmins() {
+    // An application administrator used to appoint a peer. That let the tier
+    // grow itself with nobody above it asked, and let two of them remove each
+    // other, so the roster moved to FAM administrators - as the DevOps one
+    // already was.
+    assertThatCode(() -> service.requireApplicationAdminManagement(
+        withRoles(FamAdminRole.FAM_ADMIN))).doesNotThrowAnyException();
+
+    for (Requester other : List.of(
+        withRoles(FamAdminRole.appAdmin(22264, "DEV")),
+        withRoles(FamAdminRole.delegation(22264, "DEV", "FREP_EDITOR")),
+        withRoles(FamAdminRole.devopsAdmin(22264, "DEV")),
+        withRoles())) {
+      assertThatThrownBy(() -> service.requireApplicationAdminManagement(other))
+          .isInstanceOf(FamHttpException.class)
+          .extracting("code").isEqualTo(ErrorCode.PERMISSION_REQUIRED);
+    }
+  }
+
+  @Test
+  @DisplayName("appointing delegated administrators stays with the application administrator")
+  void applicationAdminsStillAppointDelegates() {
+    // The change took one power away, not the tier's reason to exist.
+    assertThatCode(() -> service.requireDelegatedAdminManagement(
+        withRoles(FamAdminRole.appAdmin(22264, "DEV")), 22264, "DEV"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
   @DisplayName("managing DevOps administrators is FAM administrators only")
   void onlyFamAdminsManageDevopsAdmins() {
     // Not even a DevOps administrator of that application: holding the tier is

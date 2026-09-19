@@ -424,3 +424,6 @@ frontend/playwright-report/
 frontend/test-results/
 frontend/blob-report/
 frontend/playwright/.cache/
+
+# macOS folder metadata, which records directory contents.
+.DS_Store

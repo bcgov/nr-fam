@@ -76,12 +76,34 @@ code {
   A screenshot is evidence for the step beside it, so it must not drift onto the
   next page away from its text. The border stops a white-backed screenshot from
   bleeding into the page.
+
+  `break-before: avoid` is what keeps the pair together: rather than let the
+  image fall to the next page on its own, the browser moves the text down with
+  it. A reviewer found three places where the steps sat at the foot of one page
+  and the picture of them opened the next.
 */
 img {
     display: block;
     max-width: 100%;
     margin: 0.75rem 0 1rem;
     border: 1px solid #d5d5d5;
+    break-before: avoid;
+    break-inside: avoid;
+}
+
+/* A heading never ends a page. */
+h2,
+h3 {
+    break-after: avoid;
+}
+
+/*
+  And a short list of steps stays whole, so the screenshot it leads to can stay
+  with it. Safe here because the lists are steps - four or five items - rather
+  than long tables of content.
+*/
+ol,
+ul {
     break-inside: avoid;
 }
 

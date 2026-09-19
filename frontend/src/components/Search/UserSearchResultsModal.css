@@ -23,6 +23,11 @@
   font-size: var(--cds-label-01-font-size, 0.75rem);
 }
 
+/* The row is the target, so it has to look like one. */
+.user-search-results__row {
+  cursor: pointer;
+}
+
 .user-search-results__empty {
   color: var(--cds-text-secondary, #525252);
 }

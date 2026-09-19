@@ -23,23 +23,25 @@ Once you have access, sign in at
 ### Accepting the terms of use
 
 The first time you sign in as a delegated administrator, FAM shows the terms of
-use and asks you to accept them. You cannot manage access until you do. If the
-terms change later, you are asked again.
+use and asks you to accept them. You cannot manage access until you do.
+
+The terms set out what your organization agrees to when you manage access in
+FAM — keeping user access up to date, removing access for people who leave, and
+using FAM and the applications safely and lawfully. By accepting, you confirm you
+have authority to agree on your organization's behalf.
+
+You can read the terms again at any time from your profile menu in the top
+right. If the terms change later, you are asked to accept them again.
 
 ## Choosing an application
 
-Select the application you want to manage from the drop-down at the top of
-Manage permissions. Only applications you can grant access to appear in the
-list.
+Select the application you want to manage from the **Application** drop-down.
+You'll only see the applications you can grant access to.
 
-Each entry shows the application's name and a pill naming the environment:
-Development, Test or Production. These are separate: granting somebody access in
-Test does not give them access in Production.
+> **Note:** For security reasons, you can't change your own permissions. If you
+> need a role for yourself, ask another administrator to add it.
 
 ![The application picker, showing the environment pills](screenshots/03-application-picker.png)
-
-You cannot change your own permissions. Ask another administrator if you need a
-role yourself.
 
 ## Adding a user's permissions
 
@@ -65,31 +67,27 @@ can be hundreds of people. Use the filter above the results to narrow them, and
 sort by any column heading. Check the username and email before confirming —
 they are how you tell two people with the same name apart.
 
-![The user search results, filtered](screenshots/06-user-search-results.png)
-
 ### Choosing the roles
 
 1. Select the roles you want to grant. You can grant more than one at a time.
-2. If a role needs a district, region or organization, choose those as well. Use
-   the search box to find an organization by name or client number.
+2. If a role needs an organization, choose it as well. Use the search box to
+   find one by name or client number.
 3. Set an expiry date if the access should end on a particular day. Leave it
    empty for access that does not expire.
 4. Uncheck **Send email to notify user** if you do not want FAM to email them.
 5. Select **Grant permission**.
 
-![Choosing roles and scopes](screenshots/07-choose-roles.png)
+![The chosen user, with the roles listed for selection](screenshots/07-choose-roles.png)
 
-FAM returns you to Manage permissions and confirms what it granted.
+A permission you have just granted appears at the top of the table, marked with
+a green **New** pill, so you can see what you did without hunting for it.
 
 ![The confirmation banner after a grant](screenshots/08-grant-confirmation.png)
 
 ## Reviewing a user's permissions
 
-A permission you have just granted appears at the top of the table, marked with
-a green **New** pill, so you can see what you did without hunting for it.
-
 To see everything that has happened to somebody's access, select the clock icon
-under **Action** at the right of their row.
+under the **Action** column at the right of their row.
 
 ![The permissions table with a new grant at the top](screenshots/09-permissions-table.png)
 
@@ -98,12 +96,23 @@ under **Action** at the right of their row.
 1. Select the application from the drop-down.
 2. Find the person in the table. The search box above it matches names,
    usernames, emails, roles and scopes.
-3. Select the trash can icon under **Action** at the right of their row.
+3. Select the trash can icon under the **Action** column at the right of their
+   row.
 4. Confirm the removal.
 
 FAM confirms when the access has been removed.
 
 ![Removing a permission](screenshots/10-remove-permission.png)
+
+## User history
+
+**User history** in the left-hand navigation shows what has happened to one
+person's access: what was granted or removed, when, and who did it.
+
+Choose the application, then the person. The same history is reachable from the
+clock icon beside somebody's row on Manage permissions.
+
+![The User history screen](screenshots/16-user-history.png)
 
 ## Viewing your own permissions
 

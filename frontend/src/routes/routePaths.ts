@@ -88,6 +88,15 @@ const managesAccess = (roles: readonly string[]) =>
  * somebody may change who holds what. A DevOps administrator may not, but FAM
  * still has Manage roles for them, so they are admitted here and not there.
  */
+/**
+ * Whether these roles belong to a delegated administrator.
+ *
+ * <p>They are the people the FAM Terms of Use bind, and the only ones asked to
+ * accept them - see components/TermsOfUse.
+ */
+export const isDelegatedAdmin = (roles: readonly string[]) =>
+    roles.some((role) => role.startsWith(DELEGATED_ADMIN_PREFIX));
+
 export const hasAnyFamRole = (roles: readonly string[]) =>
     managesAccess(roles) ||
     roles.some((role) => role.startsWith(DEVOPS_ADMIN_PREFIX));
