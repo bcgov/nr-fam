@@ -285,7 +285,7 @@ jobs:
             --from-literal=fc-api-token-test="${FC_API_TOKEN_TEST}" \
             --from-literal=fc-api-token-prod="${FC_API_TOKEN_PROD}"
 
-      - uses: bcgov/action-deployer-openshift@27a85b7b157bfc9c3c9bf0aca53bcd288d4d2506 # v4.2.1
+      - uses: bcgov/action-deployer-openshift@bb9d143f4f03187239580c17c4b77da04cdb6e66 # v4.2.2
         id: deploy
         with:
           file: common/openshift.init.yml
@@ -400,7 +400,7 @@ jobs:
             echo "PARAMS"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: bcgov/action-deployer-openshift@27a85b7b157bfc9c3c9bf0aca53bcd288d4d2506 # v4.2.1
+      - uses: bcgov/action-deployer-openshift@bb9d143f4f03187239580c17c4b77da04cdb6e66 # v4.2.2
         id: deploy
         with:
           file: ${{ matrix.file }}
