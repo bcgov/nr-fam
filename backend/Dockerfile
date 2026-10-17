@@ -47,3 +47,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
        "-cp", "app.jar", "ca.bc.gov.nrs.fam.HealthCheck"]
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
+
