@@ -385,6 +385,24 @@ describe("UserSearch", () => {
         ).toHaveAttribute("type", "checkbox");
     });
 
+    it("ticks a checkbox clicked on its visible box", async () => {
+        // Carbon hides the input and draws the box on its label, so the label
+        // is what gets clicked. The row must not handle that click as well, or
+        // the row ticks the box and the label's forwarded click unticks it.
+        renderSearch({ multiUserMode: true });
+        await search("smith");
+
+        const dialog = await openResults();
+        const checkbox = within(dialog).getByLabelText("Select JSMITH");
+        const label = dialog.querySelector(`label[for="${checkbox.id}"]`)!;
+
+        await userEvent.click(label);
+        expect(checkbox).toBeChecked();
+
+        await userEvent.click(label);
+        expect(checkbox).not.toBeChecked();
+    });
+
     it("keeps the row in line while a validation message is showing", async () => {
         /*
             Carbon renders invalidText inside the input's wrapper, and this row

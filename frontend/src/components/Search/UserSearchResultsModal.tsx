@@ -15,7 +15,7 @@ import {
     TableHeader,
     TableRow,
 } from "@carbon/react";
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useState, type FC, type MouseEvent } from "react";
 import { PLACE_HOLDER } from "@/constants/constants";
 import type { SelectedUser } from "@/types/SelectUserType";
 import "./UserSearchResultsModal.css";
@@ -335,8 +335,20 @@ export const UserSearchResultsModal: FC<Props> = ({
                                         toggles, which is what a list of
                                         checkboxes means.
                                     */
-                                    const selectFromRow = () =>
+                                    const selectFromRow = (event: MouseEvent) => {
+                                        // A click on the control itself is the
+                                        // control's to handle. That includes its
+                                        // label: Carbon hides the input and draws
+                                        // the box on the label, so that is where
+                                        // the click lands. Letting it through, the
+                                        // row would tick the box and the label's
+                                        // forwarded click on the input would then
+                                        // untick it again.
+                                        if ((event.target as Element).closest("label, input")) {
+                                            return;
+                                        }
                                         toggle(user, multiUserMode ? !checked : true);
+                                    };
 
                                     return (
                                         <TableRow
