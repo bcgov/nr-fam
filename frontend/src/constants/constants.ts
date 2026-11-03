@@ -1,3 +1,5 @@
+import { THREE_MINUTES } from "@/constants/TimeUnits";
+
 export const PLACE_HOLDER = "—";
 
 export const DEFAULT_SKELETON_BORDER_RADIUS = "1rem";
@@ -28,3 +30,15 @@ export const TABLE_CURRENT_PAGE_REPORT_TEMPLATE =
 export const TABLE_ROWS_PER_PAGE = [10, 15, 20, 50, 100];
 
 export const MINIMUM_SEARCH_STR_LEN = 3;
+
+/**
+ * How long the browser waits for an integration's full assignment list.
+ *
+ * The backend reads CSS once per role, and scope-specific roles accumulate - an
+ * integration with hundreds of organisation-scoped roles needs far longer than
+ * the 10s axios default. Timing out does not stop that work: the backend
+ * finishes and then fails writing to a closed connection ("Broken pipe"), and
+ * React Query's retry starts the whole fan-out again. Must stay under the
+ * Route's haproxy timeout (5m, frontend/openshift.deploy.yml).
+ */
+export const ASSIGNMENT_LIST_TIMEOUT_MS = THREE_MINUTES;

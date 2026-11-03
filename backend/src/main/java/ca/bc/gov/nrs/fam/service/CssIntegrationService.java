@@ -36,6 +36,7 @@ import ca.bc.gov.nrs.fam.security.TargetOrganizationGuard;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -46,6 +47,11 @@ import java.util.stream.Collectors;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -88,6 +94,16 @@ public class CssIntegrationService {
    * roles accumulate permanently, so it is worth surfacing before it hurts.
    */
   private static final int FAN_OUT_WARN_THRESHOLD = 100;
+
+  /**
+   * How many role-membership reads one listing keeps in flight at once.
+   *
+   * <p>One at a time, an integration with a few hundred scoped roles took longer
+   * than the browser would wait, so the table never loaded. All at once, one
+   * page load becomes hundreds of simultaneous requests against a shared CSS.
+   * Eight matches the directory lookups in {@link AssignmentRowEnrichmentService}.
+   */
+  private static final int ROLE_READ_CONCURRENCY = 8;
 
   private final CssApiService cssApiService;
   private final PermissionAuditWriteService auditWriteService;
@@ -2080,16 +2096,19 @@ public class CssIntegrationService {
   private Map<ExpiryKey, LocalDate> readExpiries(
       int integrationId, String environment, List<CssRoleDto> roles) {
 
-    Map<ExpiryKey, LocalDate> expiries = new HashMap<>();
-
+    Map<String, CssRoleNaming.RoleExpiry> sidecars = new LinkedHashMap<>();
     for (CssRoleDto role : roles) {
-      Optional<CssRoleNaming.RoleExpiry> parsed = CssRoleNaming.parseExpiry(role.name());
-      if (parsed.isEmpty()) {
-        continue;
-      }
-      CssRoleNaming.RoleExpiry expiry = parsed.get();
-      for (CssApiService.CssUserDto user
-          : cssApiService.getUsersWithRole(integrationId, environment, role.name())) {
+      CssRoleNaming.parseExpiry(role.name())
+          .ifPresent(expiry -> sidecars.put(role.name(), expiry));
+    }
+
+    Map<String, List<CssApiService.CssUserDto>> holders =
+        usersByRole(integrationId, environment, sidecars.keySet());
+
+    Map<ExpiryKey, LocalDate> expiries = new HashMap<>();
+    for (Map.Entry<String, CssRoleNaming.RoleExpiry> sidecar : sidecars.entrySet()) {
+      CssRoleNaming.RoleExpiry expiry = sidecar.getValue();
+      for (CssApiService.CssUserDto user : holders.get(sidecar.getKey())) {
         // Earliest wins if somebody somehow holds two for the same role: the
         // grant that ends soonest is the honest answer to "until when".
         expiries.merge(
@@ -2099,6 +2118,62 @@ public class CssIntegrationService {
       }
     }
     return expiries;
+  }
+
+  /**
+   * Who holds each of these roles, read a few at a time.
+   *
+   * <p>CSS answers membership only per role, so a listing costs one request per
+   * role; those requests are independent and spend their time waiting on CSS.
+   * Virtual threads carry the waits and the semaphore bounds the load.
+   *
+   * <p>All or nothing, as the one-at-a-time version was: a role that could not
+   * be read would otherwise be a role whose holders silently vanish from the
+   * table. The first failure stops the reads that have not started and is
+   * rethrown as it was raised.
+   *
+   * @return every requested role, in the order given, mapped to its holders
+   */
+  private Map<String, List<CssApiService.CssUserDto>> usersByRole(
+      int integrationId, String environment, Collection<String> roleNames) {
+
+    Map<String, List<CssApiService.CssUserDto>> holders = new LinkedHashMap<>();
+    if (roleNames.isEmpty()) {
+      return holders;
+    }
+
+    Semaphore permits = new Semaphore(ROLE_READ_CONCURRENCY);
+    Map<String, Future<List<CssApiService.CssUserDto>>> pending = new LinkedHashMap<>();
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      for (String roleName : roleNames) {
+        pending.put(roleName, executor.submit(() -> {
+          permits.acquire();
+          try {
+            return cssApiService.getUsersWithRole(integrationId, environment, roleName);
+          } finally {
+            permits.release();
+          }
+        }));
+      }
+
+      for (Map.Entry<String, Future<List<CssApiService.CssUserDto>>> read : pending.entrySet()) {
+        try {
+          holders.put(read.getKey(), read.getValue().get());
+        } catch (ExecutionException e) {
+          executor.shutdownNow();
+          if (e.getCause() instanceof RuntimeException cause) {
+            throw cause;
+          }
+          throw new IllegalStateException("Reading role membership failed.", e.getCause());
+        } catch (InterruptedException e) {
+          executor.shutdownNow();
+          Thread.currentThread().interrupt();
+          throw new IllegalStateException("Interrupted while reading role membership.", e);
+        }
+      }
+    }
+    return holders;
   }
 
   public List<CssUserRoleRowDto> getUserRoleAssignments(
@@ -2128,7 +2203,7 @@ public class CssIntegrationService {
     */
     Map<ExpiryKey, LocalDate> expiries = readExpiries(integrationId, environment, roles);
 
-    List<CssUserRoleRowDto> rows = new ArrayList<>();
+    List<String> listed = new ArrayList<>();
     for (CssRoleDto role : roles) {
       // A sidecar holds a description and is granted to nobody. Skipping it saves
       // a request, and means a row could never appear for one if somebody
@@ -2142,10 +2217,17 @@ public class CssIntegrationService {
         continue;
       }
 
-      CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(role.name());
+      listed.add(role.name());
+    }
 
-      for (CssApiService.CssUserDto user
-          : cssApiService.getUsersWithRole(integrationId, environment, role.name())) {
+    Map<String, List<CssApiService.CssUserDto>> holders =
+        usersByRole(integrationId, environment, listed);
+
+    List<CssUserRoleRowDto> rows = new ArrayList<>();
+    for (String roleName : listed) {
+      CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(roleName);
+
+      for (CssApiService.CssUserDto user : holders.get(roleName)) {
 
         rows.add(new CssUserRoleRowDto(
             user.displayUsername(),
@@ -2157,7 +2239,7 @@ public class CssIntegrationService {
             parsed.baseRoleName(),
             displayNames.get(parsed.baseRoleName()),
             parsed.scopes().stream().map(ScopeDto::of).toList(),
-            expiries.get(new ExpiryKey(user.username(), role.name()))));
+            expiries.get(new ExpiryKey(user.username(), roleName))));
       }
     }
 

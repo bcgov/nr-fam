@@ -187,7 +187,7 @@ objects:
         # must stay at or above the client-side timeout in pages/BulkGrant
         # (BULK_TIMEOUT_MS), or the router decides the limit and the client
         # setting is decoration.
-        haproxy.router.openshift.io/timeout: 5m
+        haproxy.router.openshift.io/timeout: 20m
       labels:
         app: ${NAME}-${ZONE}
       name: ${NAME}-${ZONE}-${COMPONENT}

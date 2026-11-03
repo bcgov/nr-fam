@@ -27,7 +27,10 @@ import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { AdminMgmtApiService, AppActlApiService } from "@/services/ApiServiceFactory";
 import { ROUTES } from "@/routes/routePaths";
-import { FOREST_CLIENT_SEARCH_MIN_LENGTH } from "@/constants/constants";
+import {
+    ASSIGNMENT_LIST_TIMEOUT_MS,
+    FOREST_CLIENT_SEARCH_MIN_LENGTH,
+} from "@/constants/constants";
 import { describeApiError } from "@/utils/ApiUtils";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import {
@@ -95,7 +98,9 @@ export const EditAppPermission: FC = () => {
         queryKey: ["css-user-role-assignments", integrationId, environment],
         queryFn: () =>
             AdminMgmtApiService.cssIntegrationsApi
-                .getCssUserRoleAssignments(integrationId, environment)
+                .getCssUserRoleAssignments(integrationId, environment, {
+                    timeout: ASSIGNMENT_LIST_TIMEOUT_MS,
+                })
                 .then((res) => res.data),
         refetchOnMount: true,
     });
