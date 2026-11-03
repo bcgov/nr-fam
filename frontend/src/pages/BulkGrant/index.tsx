@@ -19,7 +19,7 @@ import { RemoveButton } from "@/components/RemoveButton";
 import { InlineSpinner } from "@/components/InlineSpinner";
 import { PageTitle } from "@/components/PageTitle";
 import { domainLabel } from "@/utils/UserUtils";
-import { FIVE_MINUTES } from "@/constants/TimeUnits";
+import { TWENTY_MINUTES } from "@/constants/TimeUnits";
 import { StepContainer } from "@/components/StepContainer";
 import { PLACE_HOLDER } from "@/constants/constants";
 import { useSelectedApp } from "@/context/application/useSelectedApp";
@@ -68,8 +68,12 @@ import "./BulkGrant.css";
     Re-uploading is safe - the preview marks rows the person already holds and
     apply skips them - but the person doing it has no way to know that from a
     timeout.
+
+    Sized for the row cap (fam.bulk-grant.max-rows, 1000), not a typical file:
+    five minutes was not enough for 500 rows, because the grants themselves run
+    one CSS call at a time.
 */
-const BULK_TIMEOUT_MS = FIVE_MINUTES;
+const BULK_TIMEOUT_MS = TWENTY_MINUTES;
 
 export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
     const copy = BULK_COPY[kind];

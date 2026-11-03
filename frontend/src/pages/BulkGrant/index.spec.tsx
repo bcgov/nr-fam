@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FIVE_MINUTES } from "@/constants/TimeUnits";
+import { TWENTY_MINUTES } from "@/constants/TimeUnits";
 
 /**
  * Granting from a CSV.
@@ -463,7 +463,7 @@ describe("BulkGrant", () => {
             createCssBulkGrants.mock.calls[0],
         ]) {
             expect(call[3]).toEqual(
-                expect.objectContaining({ timeout: FIVE_MINUTES })
+                expect.objectContaining({ timeout: TWENTY_MINUTES })
             );
         }
     });

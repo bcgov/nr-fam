@@ -27,6 +27,7 @@ import {
     PLACE_HOLDER,
     TABLE_ROWS_PER_PAGE,
 } from "@/constants/constants";
+import { ASSIGNMENT_LIST_TIMEOUT_MS } from "@/constants/constants";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { ROUTES } from "@/routes/routePaths";
@@ -206,7 +207,9 @@ export const CssPermissionsTable: FC<Props> = ({
         queryKey: ["css-user-role-assignments", integrationId, environment],
         queryFn: () =>
             AdminMgmtApiService.cssIntegrationsApi
-                .getCssUserRoleAssignments(integrationId, environment)
+                .getCssUserRoleAssignments(integrationId, environment, {
+                    timeout: ASSIGNMENT_LIST_TIMEOUT_MS,
+                })
                 .then((res) => res.data),
         refetchOnMount: true,
     });

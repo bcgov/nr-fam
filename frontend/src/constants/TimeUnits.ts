@@ -24,6 +24,8 @@ export const FIVE_MINUTES = 5 * ONE_MINUTE;
 
 export const FIFTEEN_MINUTES = 15 * ONE_MINUTE;
 
+export const TWENTY_MINUTES = 20 * ONE_MINUTE;
+
 export const HALF_HOUR = 30 * ONE_MINUTE;
 
 export const ONE_HOUR = 60 * ONE_MINUTE;

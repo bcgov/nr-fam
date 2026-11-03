@@ -79,8 +79,19 @@ public class CssApiService {
    * the class with no guard, which under a thread-per-request server would race.
    */
   private final ReentrantLock tokenLock = new ReentrantLock();
-  private String token;
-  private Instant tokenExpiresAt = Instant.EPOCH;
+
+  /**
+   * The token and its expiry, published together. One volatile reference rather
+   * than two fields, because the fast path reads outside the lock and must never
+   * pair one token with another's expiry.
+   */
+  private volatile CachedToken cachedToken;
+
+  private record CachedToken(String value, Instant expiresAt) {
+    boolean isUsable() {
+      return Instant.now().isBefore(expiresAt);
+    }
+  }
 
   @PostConstruct
   void initClients() {
@@ -412,14 +423,16 @@ public class CssApiService {
    * behind it finds the fresh token rather than each minting their own.
    */
   private String accessToken() {
-    if (token != null && Instant.now().isBefore(tokenExpiresAt)) {
-      return token;
+    CachedToken current = cachedToken;
+    if (current != null && current.isUsable()) {
+      return current.value();
     }
 
     tokenLock.lock();
     try {
-      if (token != null && Instant.now().isBefore(tokenExpiresAt)) {
-        return token;
+      current = cachedToken;
+      if (current != null && current.isUsable()) {
+        return current.value();
       }
 
       log.debug("CssApiService: requesting a new access token");
@@ -448,9 +461,9 @@ public class CssApiService {
           ? DEFAULT_TOKEN_LIFETIME
           : Duration.ofSeconds(parsed.expiresIn());
 
-      token = parsed.accessToken();
-      tokenExpiresAt = Instant.now().plus(lifetime).minus(TOKEN_EXPIRY_BUFFER);
-      return token;
+      cachedToken = new CachedToken(
+          parsed.accessToken(), Instant.now().plus(lifetime).minus(TOKEN_EXPIRY_BUFFER));
+      return parsed.accessToken();
 
     } finally {
       tokenLock.unlock();
