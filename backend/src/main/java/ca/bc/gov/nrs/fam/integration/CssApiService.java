@@ -16,6 +16,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
@@ -346,9 +347,51 @@ public class CssApiService {
   public List<CssUserDto> getUsersWithRole(
       int integrationId, String environment, String roleName) {
 
-    return getList("/integrations/{id}/{env}/roles/{role}/users", CssUserDto.class,
-        integrationId, environment, roleName);
+    /*
+      Paged upstream, and read to the end here.
+
+      CSS returns a role's members fifty at a time unless asked for another page.
+      This read used to take the first page and stop, so every role with more
+      than fifty holders silently lost the rest: the permissions table and its
+      export showed exactly fifty, the expiry sweep could not see anyone past
+      fifty to remove them, and member counts stopped at fifty. A bulk upload
+      found them all because it asks per user, which is how the gap showed.
+
+      A short page is the end. A page that repeats the one before it means CSS
+      ignored `page`; stopping there keeps the first fifty rather than the same
+      fifty two hundred times over. The page cap is the last resort.
+    */
+    List<CssUserDto> users = new ArrayList<>();
+    String previousFirst = null;
+    for (int page = 1; page <= ROLE_MEMBER_MAX_PAGES; page++) {
+      List<CssUserDto> batch = getList(
+          "/integrations/{id}/{env}/roles/{role}/users?page={page}&max={max}",
+          CssUserDto.class, integrationId, environment, roleName, page,
+          ROLE_MEMBER_PAGE_SIZE);
+      if (!batch.isEmpty() && batch.get(0).username() != null
+          && batch.get(0).username().equals(previousFirst)) {
+        log.warn("CSS returned the same page twice for members of {} on integration {} ({}); "
+            + "the listing may be incomplete.", roleName, integrationId, environment);
+        return users;
+      }
+      users.addAll(batch);
+      if (batch.size() < ROLE_MEMBER_PAGE_SIZE) {
+        return users;
+      }
+      previousFirst = batch.get(0).username();
+    }
+
+    log.warn("Stopped reading members of {} on integration {} ({}) after {} pages; the "
+        + "listing may be incomplete.", roleName, integrationId, environment,
+        ROLE_MEMBER_MAX_PAGES);
+    return users;
   }
+
+  /** CSS's own default page size for role members, stated so the end can be seen. */
+  static final int ROLE_MEMBER_PAGE_SIZE = 50;
+
+  /** Ten thousand holders of one role: far past any real application. */
+  private static final int ROLE_MEMBER_MAX_PAGES = 200;
 
   /**
    * The roles one user holds in one integration environment.

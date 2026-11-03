@@ -177,6 +177,58 @@ class CssApiServiceTest {
   }
 
   @Test
+  @DisplayName("reads every page of a role's members, not just the first fifty")
+  void getUsersWithRoleReadsEveryPage() throws Exception {
+    enqueueToken();
+    enqueueJson(usersPage(0, CssApiService.ROLE_MEMBER_PAGE_SIZE));
+    enqueueJson(usersPage(CssApiService.ROLE_MEMBER_PAGE_SIZE, 42));
+
+    // FSPTS_REVIEWER had 92 holders and the table showed exactly 50.
+    List<CssApiService.CssUserDto> users = service.getUsersWithRole(1, "prod", "FSPTS_REVIEWER");
+
+    assertThat(users).hasSize(CssApiService.ROLE_MEMBER_PAGE_SIZE + 42);
+    assertThat(users.get(users.size() - 1).username()).isEqualTo("user91@idir");
+
+    server.takeRequest(); // token
+    assertThat(server.takeRequest().getPath()).contains("page=1").contains("max=50");
+    assertThat(server.takeRequest().getPath()).contains("page=2").contains("max=50");
+    assertThat(server.getRequestCount()).isEqualTo(3);
+  }
+
+  @Test
+  @DisplayName("an exactly full last page costs one more, empty, read and no more")
+  void getUsersWithRoleStopsOnEmptyPage() {
+    enqueueToken();
+    enqueueJson(usersPage(0, CssApiService.ROLE_MEMBER_PAGE_SIZE));
+    enqueueJson("{\"data\":[]}");
+
+    assertThat(service.getUsersWithRole(1, "prod", "R")).hasSize(CssApiService.ROLE_MEMBER_PAGE_SIZE);
+    assertThat(server.getRequestCount()).isEqualTo(3);
+  }
+
+  @Test
+  @DisplayName("stops rather than duplicating when CSS ignores the page parameter")
+  void getUsersWithRoleStopsOnRepeatedPage() {
+    enqueueToken();
+    enqueueJson(usersPage(0, CssApiService.ROLE_MEMBER_PAGE_SIZE));
+    enqueueJson(usersPage(0, CssApiService.ROLE_MEMBER_PAGE_SIZE));
+
+    assertThat(service.getUsersWithRole(1, "prod", "R")).hasSize(CssApiService.ROLE_MEMBER_PAGE_SIZE);
+    assertThat(server.getRequestCount()).isEqualTo(3);
+  }
+
+  private static String usersPage(int from, int count) {
+    StringBuilder json = new StringBuilder("{\"data\":[");
+    for (int i = 0; i < count; i++) {
+      if (i > 0) {
+        json.append(',');
+      }
+      json.append("{\"username\":\"user").append(from + i).append("@idir\"}");
+    }
+    return json.append("]}").toString();
+  }
+
+  @Test
   @DisplayName("treats 409 on role creation as success, since the role now exists")
   void createRoleTreats409AsSuccess() {
     enqueueToken();
