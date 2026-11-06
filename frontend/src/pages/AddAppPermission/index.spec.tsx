@@ -152,8 +152,8 @@ const chooseUser = async () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() =>
         expect(
-            screen.getByRole("heading", { name: "Select the roles to grant" })
-        ).toBeInTheDocument()
+            screen.getByRole("checkbox", { name: "Viewer" })
+        ).toBeEnabled()
     );
 };
 
@@ -298,20 +298,18 @@ describe("AddAppPermission", () => {
         expect(toast.textContent).toContain("FREP (DEV)");
     });
 
-    it("withholds the role step until somebody is chosen", async () => {
-        // It put a role table and an empty scope picker in front of somebody who
-        // had not yet said who this was for.
+    it("shows the role step before anybody is chosen, but disabled", async () => {
         renderPage();
-
-        expect(
-            screen.queryByRole("heading", { name: "Select the roles to grant" })
-        ).not.toBeInTheDocument();
-
-        await chooseUser();
 
         expect(
             screen.getByRole("heading", { name: "Select the roles to grant" })
         ).toBeInTheDocument();
+        const viewer = await screen.findByRole("checkbox", { name: "Viewer" });
+        expect(viewer).toBeDisabled();
+
+        await chooseUser();
+
+        expect(screen.getByRole("checkbox", { name: "Viewer" })).toBeEnabled();
     });
 
     it("opens the scope fields inside the role's own row when it is ticked", async () => {

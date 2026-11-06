@@ -163,7 +163,10 @@ export const AddApplicationAdmin: FC = () => {
                         renderIcon={
                             appointMutation.isPending ? InlineSpinner : undefined
                         }
-                        disabled={appointMutation.isPending}
+                        // Nothing to appoint until somebody is chosen.
+                        disabled={
+                            appointMutation.isPending || !selectedUser?.guid
+                        }
                     >
                         Add application admin
                     </Button>

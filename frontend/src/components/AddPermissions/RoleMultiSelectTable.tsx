@@ -53,6 +53,13 @@ type Props = {
     regionSubtitle?: string;
     clientTitle?: string;
     clientSubtitle?: string;
+    /**
+     * Shown but not usable - the screens offer roles before anybody has been
+     * chosen, so the step can be read ahead, but nothing can be picked until
+     * there is somebody to pick it for. A role already ticked keeps its tick,
+     * with its scope fields folded away until the table is usable again.
+     */
+    disabled?: boolean;
     /** Per-role complaints, keyed by role name. */
     errors?: Record<
         string,
@@ -84,6 +91,7 @@ export const RoleMultiSelectTable: FC<Props> = ({
     onRegionsChange,
     onForestClientsChange,
     errors = {},
+    disabled = false,
     ...wording
 }) => {
     /*
@@ -152,6 +160,7 @@ export const RoleMultiSelectTable: FC<Props> = ({
                                                 labelText={label}
                                                 hideLabel
                                                 checked={selection !== undefined}
+                                                disabled={disabled}
                                                 onChange={() => onToggle(role)}
                                             />
                                         </TableCell>
@@ -180,7 +189,7 @@ export const RoleMultiSelectTable: FC<Props> = ({
                                     </>
                                 );
 
-                                if (!scoped || !selection) {
+                                if (!scoped || !selection || disabled) {
                                     return [
                                         <TableRow key={role.name} className={rowClass}>
                                             <TableCell className="no-expand-col" />
