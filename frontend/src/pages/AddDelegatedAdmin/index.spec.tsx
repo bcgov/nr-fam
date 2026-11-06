@@ -145,8 +145,8 @@ const chooseUser = async () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() =>
         expect(
-            screen.getByRole("heading", { name: "Select the roles they may grant" })
-        ).toBeInTheDocument()
+            screen.getByRole("checkbox", { name: "Viewer" })
+        ).toBeEnabled()
     );
 };
 
@@ -225,22 +225,18 @@ describe("AddDelegatedAdmin", () => {
         );
     });
 
-    it("withholds the role step until somebody is chosen", async () => {
+    it("shows the role step before anybody is chosen, but disabled", async () => {
         renderPage();
 
         expect(
-            screen.queryByRole("heading", {
-                name: "Select the roles they may grant",
-            })
-        ).not.toBeInTheDocument();
+            screen.getByRole("heading", { name: "Select the roles they may grant" })
+        ).toBeInTheDocument();
+        const viewer = await screen.findByRole("checkbox", { name: "Viewer" });
+        expect(viewer).toBeDisabled();
 
         await chooseUser();
 
-        expect(
-            screen.getByRole("heading", {
-                name: "Select the roles they may grant",
-            })
-        ).toBeInTheDocument();
+        expect(screen.getByRole("checkbox", { name: "Viewer" })).toBeEnabled();
     });
 
     it("counts delegations, not permissions", async () => {

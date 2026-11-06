@@ -65,6 +65,13 @@ export const ExpiryDateField: FC<Props> = ({ value, onChange, invalidText }) => 
                 id="expiry-date"
                 labelText="Expiry date (optional)"
                 placeholder="yyyy-mm-dd"
+                /*
+                    Must agree with dateFormat above. Carbon's default is
+                    mm/dd/yyyy, and the browser enforces it on submit - so a
+                    date in our own format was refused with "Please match the
+                    requested format" before the form ever saw it.
+                */
+                pattern="\d{4}-\d{2}-\d{2}"
                 size="md"
                 invalid={Boolean(invalidText)}
                 invalidText={invalidText}

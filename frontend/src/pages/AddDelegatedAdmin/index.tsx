@@ -292,63 +292,63 @@ export const AddDelegatedAdmin: FC = () => {
                 </StepContainer>
 
                 {/*
-                    Withheld until there is somebody to delegate to. The roles are
-                    only meaningful as "what this person may hand out", and the
-                    step reads as an unanswerable question without them.
+                    Shown from the start so the whole form can be read ahead, but
+                    disabled until somebody is chosen: the roles are what those
+                    people are being given, so there is nothing to pick them for
+                    yet.
                 */}
-                {users.length > 0 ? (
-                    <StepContainer
-                        title="Select the roles they may grant"
-                        divider
-                    >
-                        <p className="step-note">
-                            A delegated admin can grant and revoke the roles
-                            chosen here, and nothing else. Pick as many as they
-                            should be able to hand out.
-                        </p>
+                <StepContainer
+                    title="Select the roles they may grant"
+                    divider
+                >
+                    <p className="step-note">
+                        A delegated admin can grant and revoke the roles
+                        chosen here, and nothing else. Pick as many as they
+                        should be able to hand out.
+                    </p>
 
-                        {errors.roles ? (
-                            <span className="field-error">{errors.roles}</span>
-                        ) : null}
+                    {errors.roles ? (
+                        <span className="field-error">{errors.roles}</span>
+                    ) : null}
 
-                        <RoleMultiSelectTable
-                            roleOptions={roleOptions}
-                            selections={roles}
-                            onToggle={toggleRole}
-                            environment={environment}
-                            onDistrictsChange={(roleName, districts) =>
-                                updateSelection(roleName, { districts })
-                            }
-                            onRegionsChange={(roleName, regions) =>
-                                updateSelection(roleName, { regions })
-                            }
-                            onForestClientsChange={(roleName, forestClients) =>
-                                updateSelection(roleName, { forestClients })
-                            }
-                            districtTitle={"Districts they may grant it for"}
-                            districtSubtitle={"They will be able to grant this role for these districts, and no others"}
-                            regionTitle={"Regions they may grant it for"}
-                            regionSubtitle={"They will be able to grant this role for these regions, and no others"}
-                            clientTitle={"Organizations they may grant it for"}
-                            clientSubtitle={"They will be able to grant this role for these organizations, and no others"}
-                            errors={errors.perRole}
-                        />
+                    <RoleMultiSelectTable
+                        roleOptions={roleOptions}
+                        selections={roles}
+                        onToggle={toggleRole}
+                        environment={environment}
+                        onDistrictsChange={(roleName, districts) =>
+                            updateSelection(roleName, { districts })
+                        }
+                        onRegionsChange={(roleName, regions) =>
+                            updateSelection(roleName, { regions })
+                        }
+                        onForestClientsChange={(roleName, forestClients) =>
+                            updateSelection(roleName, { forestClients })
+                        }
+                        districtTitle={"Districts they may grant it for"}
+                        districtSubtitle={"They will be able to grant this role for these districts, and no others"}
+                        regionTitle={"Regions they may grant it for"}
+                        regionSubtitle={"They will be able to grant this role for these regions, and no others"}
+                        clientTitle={"Organizations they may grant it for"}
+                        clientSubtitle={"They will be able to grant this role for these organizations, and no others"}
+                        errors={errors.perRole}
+                        disabled={users.length === 0}
+                    />
 
-                        {unscopedSelections.length > 0 ? (
-                            <div className="unscoped-summary">
-                                <span className="unscoped-label">
-                                    Granted for the whole application:
-                                </span>
-                                {unscopedSelections.map((selection) => (
-                                    <Chip
-                                        key={selection.role.name}
-                                        label={roleLabel(selection.role)}
-                                    />
-                                ))}
-                            </div>
-                        ) : null}
-                    </StepContainer>
-                ) : null}
+                    {unscopedSelections.length > 0 ? (
+                        <div className="unscoped-summary">
+                            <span className="unscoped-label">
+                                Granted for the whole application:
+                            </span>
+                            {unscopedSelections.map((selection) => (
+                                <Chip
+                                    key={selection.role.name}
+                                    label={roleLabel(selection.role)}
+                                />
+                            ))}
+                        </div>
+                    ) : null}
+                </StepContainer>
 
 
                 {/*

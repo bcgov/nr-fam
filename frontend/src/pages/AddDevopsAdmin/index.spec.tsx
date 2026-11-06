@@ -154,6 +154,20 @@ describe("AddDevopsAdmin", () => {
         expect(domain).toBeDisabled();
     });
 
+    it("keeps the appoint button disabled until somebody is chosen", async () => {
+        renderPage();
+
+        expect(
+            screen.getByRole("button", { name: "Add DevOps admin" })
+        ).toBeDisabled();
+
+        await chooseUser();
+
+        expect(
+            screen.getByRole("button", { name: "Add DevOps admin" })
+        ).toBeEnabled();
+    });
+
     it("appoints the chosen person as an IDIR user", async () => {
         renderPage();
 

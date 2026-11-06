@@ -282,74 +282,71 @@ export const AddAppPermission: FC = () => {
                 </StepContainer>
 
                 {/*
-                    Nothing beyond the first step is worth showing before somebody
-                    is chosen. The roles and their scope are what those people are
-                    being given, so the step reads as an unanswerable question
-                    without them - and it put a role table and an empty scope
-                    picker in front of somebody who had not yet said who this was
-                    for.
+                    Shown from the start so the whole form can be read ahead, but
+                    disabled until somebody is chosen: the roles are what those
+                    people are being given, so there is nothing to pick them for
+                    yet.
                 */}
-                {users.length > 0 ? (
-                    <StepContainer title="Select the roles to grant">
-                        <p className="step-note">
-                            Everybody chosen above gets every role selected here.
-                            Pick as many as they should have.
-                        </p>
+                <StepContainer title="Select the roles to grant">
+                    <p className="step-note">
+                        Everybody chosen above gets every role selected here.
+                        Pick as many as they should have.
+                    </p>
 
-                        {errors.roles ? (
-                            <span className="field-error">{errors.roles}</span>
-                        ) : null}
+                    {errors.roles ? (
+                        <span className="field-error">{errors.roles}</span>
+                    ) : null}
 
-                        <RoleMultiSelectTable
-                            roleOptions={roleOptions}
-                            selections={roles}
-                            onToggle={toggleRole}
-                            environment={environment}
-                            onDistrictsChange={(roleName, districts) =>
-                                updateSelection(roleName, { districts })
-                            }
-                            onRegionsChange={(roleName, regions) =>
-                                updateSelection(roleName, { regions })
-                            }
-                            onForestClientsChange={(roleName, forestClients) =>
-                                updateSelection(roleName, { forestClients })
-                            }
-                            districtTitle={"Districts this role is granted for"}
-                            districtSubtitle={"Select one or more districts for this role"}
-                            regionTitle={"Regions this role is granted for"}
-                            regionSubtitle={"Select one or more regions for this role"}
-                            clientTitle={"Organizations this role is granted for"}
-                            clientSubtitle={"Add one or more organizations for this role"}
-                            errors={errors.perRole}
-                        />
+                    <RoleMultiSelectTable
+                        roleOptions={roleOptions}
+                        selections={roles}
+                        onToggle={toggleRole}
+                        environment={environment}
+                        onDistrictsChange={(roleName, districts) =>
+                            updateSelection(roleName, { districts })
+                        }
+                        onRegionsChange={(roleName, regions) =>
+                            updateSelection(roleName, { regions })
+                        }
+                        onForestClientsChange={(roleName, forestClients) =>
+                            updateSelection(roleName, { forestClients })
+                        }
+                        districtTitle={"Districts this role is granted for"}
+                        districtSubtitle={"Select one or more districts for this role"}
+                        regionTitle={"Regions this role is granted for"}
+                        regionSubtitle={"Select one or more regions for this role"}
+                        clientTitle={"Organizations this role is granted for"}
+                        clientSubtitle={"Add one or more organizations for this role"}
+                        errors={errors.perRole}
+                        disabled={users.length === 0}
+                    />
 
-                        {/*
-                            The roles that need nothing further, listed here
-                            rather than given an empty card below. A card with no
-                            pickers in it reads as one that failed to load.
-                        */}
-                        {unscopedSelections.length > 0 ? (
-                            <div className="unscoped-summary">
-                                <span className="unscoped-label">
-                                    Granted for the whole application:
-                                </span>
-                                {unscopedSelections.map((selection) => (
-                                    <Chip
-                                        key={selection.role.name}
-                                        label={roleLabel(selection.role)}
-                                    />
-                                ))}
-                            </div>
-                        ) : null}
-                    </StepContainer>
-                ) : null}
+                    {/*
+                        The roles that need nothing further, listed here
+                        rather than given an empty card below. A card with no
+                        pickers in it reads as one that failed to load.
+                    */}
+                    {unscopedSelections.length > 0 ? (
+                        <div className="unscoped-summary">
+                            <span className="unscoped-label">
+                                Granted for the whole application:
+                            </span>
+                            {unscopedSelections.map((selection) => (
+                                <Chip
+                                    key={selection.role.name}
+                                    label={roleLabel(selection.role)}
+                                />
+                            ))}
+                        </div>
+                    ) : null}
+                </StepContainer>
 
                 {/*
                     Asked once for the whole grant, not once per role: the
                     question is how long this access should last, and a
                     four-role grant should not ask it four times.
                 */}
-                {roles.length > 0 ? (
+                {users.length > 0 && roles.length > 0 ? (
                     <StepContainer
                         title="Set an expiry date"
                         className="expiry-step"

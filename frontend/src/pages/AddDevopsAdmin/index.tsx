@@ -168,7 +168,10 @@ export const AddDevopsAdmin: FC = () => {
                         renderIcon={
                             appointMutation.isPending ? InlineSpinner : undefined
                         }
-                        disabled={appointMutation.isPending}
+                        // Nothing to appoint until somebody is chosen.
+                        disabled={
+                            appointMutation.isPending || !selectedUser?.guid
+                        }
                     >
                         Add DevOps admin
                     </Button>
