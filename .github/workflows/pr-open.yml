@@ -21,7 +21,10 @@ jobs:
     strategy:
       matrix:
         package: [backend, frontend]
-    timeout-minutes: 10
+    # The backend compiles to a native image, which takes ten to twenty minutes
+    # on a standard runner - the frontend still finishes in two. Ten minutes was
+    # enough for a jar and would kill the native build every time.
+    timeout-minutes: 40
     steps:
       - uses: bcgov/action-builder-ghcr@cb2629351c87dd1c2130073e4ebb7233a9653a63 # v4.4.1
         with:

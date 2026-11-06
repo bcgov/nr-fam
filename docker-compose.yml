@@ -37,6 +37,10 @@ services:
     container_name: fam-backend
     build:
       context: ./backend
+      # The jar on a JVM, not the native binary the deploy uses. Compiling
+      # ahead of time takes ten to twenty minutes, which is not a thing to put
+      # between `docker compose up` and a running stack - see backend/Dockerfile.
+      target: dev
     environment:
       <<: *postgres-vars
       POSTGRES_SCHEMA: app_fam
