@@ -30,9 +30,9 @@ import { CssAdministratorRowDto } from '../model';
 // @ts-ignore
 import { CssApplicationOptionDto } from '../model';
 // @ts-ignore
-import { CssBulkGrantPreviewDto } from '../model';
+import { CssBulkGrantAcceptedDto } from '../model';
 // @ts-ignore
-import { CssBulkGrantRowDto } from '../model';
+import { CssBulkGrantPreviewDto } from '../model';
 // @ts-ignore
 import { CssDelegatedAdminRequest } from '../model';
 // @ts-ignore
@@ -203,7 +203,7 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
         },
         /**
          * 
-         * @summary Appoint every valid row of a bulk administrator CSV
+         * @summary Accept a bulk administrator CSV and appoint its valid rows in the background
          * @param {number} integrationId 
          * @param {string} environment 
          * @param {AdminRoleAuthGroup} tier 
@@ -255,7 +255,7 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
         },
         /**
          * 
-         * @summary Grant every valid row of a bulk grant CSV
+         * @summary Accept a bulk grant CSV and grant its valid rows in the background
          * @param {number} integrationId 
          * @param {string} environment 
          * @param {string} body 
@@ -1082,7 +1082,7 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Appoint every valid row of a bulk administrator CSV
+         * @summary Accept a bulk administrator CSV and appoint its valid rows in the background
          * @param {number} integrationId 
          * @param {string} environment 
          * @param {AdminRoleAuthGroup} tier 
@@ -1090,7 +1090,7 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CssBulkGrantRowDto>>> {
+        async createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssBulkGrantAcceptedDto>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createCssBulkAdmins(integrationId, environment, tier, body, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssBulkAdmins']?.[localVarOperationServerIndex]?.url;
@@ -1098,14 +1098,14 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Grant every valid row of a bulk grant CSV
+         * @summary Accept a bulk grant CSV and grant its valid rows in the background
          * @param {number} integrationId 
          * @param {string} environment 
          * @param {string} body 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async createCssBulkGrants(integrationId: number, environment: string, body: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<CssBulkGrantRowDto>>> {
+        async createCssBulkGrants(integrationId: number, environment: string, body: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssBulkGrantAcceptedDto>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.createCssBulkGrants(integrationId, environment, body, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.createCssBulkGrants']?.[localVarOperationServerIndex]?.url;
@@ -1390,7 +1390,7 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
         },
         /**
          * 
-         * @summary Appoint every valid row of a bulk administrator CSV
+         * @summary Accept a bulk administrator CSV and appoint its valid rows in the background
          * @param {number} integrationId 
          * @param {string} environment 
          * @param {AdminRoleAuthGroup} tier 
@@ -1398,19 +1398,19 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: any): AxiosPromise<Array<CssBulkGrantRowDto>> {
+        createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: any): AxiosPromise<CssBulkGrantAcceptedDto> {
             return localVarFp.createCssBulkAdmins(integrationId, environment, tier, body, options).then((request) => request(axios, basePath));
         },
         /**
          * 
-         * @summary Grant every valid row of a bulk grant CSV
+         * @summary Accept a bulk grant CSV and grant its valid rows in the background
          * @param {number} integrationId 
          * @param {string} environment 
          * @param {string} body 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createCssBulkGrants(integrationId: number, environment: string, body: string, options?: any): AxiosPromise<Array<CssBulkGrantRowDto>> {
+        createCssBulkGrants(integrationId: number, environment: string, body: string, options?: any): AxiosPromise<CssBulkGrantAcceptedDto> {
             return localVarFp.createCssBulkGrants(integrationId, environment, body, options).then((request) => request(axios, basePath));
         },
         /**
@@ -1643,7 +1643,7 @@ export interface CSSIntegrationsApiInterface {
 
     /**
      * 
-     * @summary Appoint every valid row of a bulk administrator CSV
+     * @summary Accept a bulk administrator CSV and appoint its valid rows in the background
      * @param {number} integrationId 
      * @param {string} environment 
      * @param {AdminRoleAuthGroup} tier 
@@ -1652,11 +1652,11 @@ export interface CSSIntegrationsApiInterface {
      * @throws {RequiredError}
      * @memberof CSSIntegrationsApiInterface
      */
-    createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssBulkGrantRowDto>>;
+    createCssBulkAdmins(integrationId: number, environment: string, tier: AdminRoleAuthGroup, body: string, options?: RawAxiosRequestConfig): AxiosPromise<CssBulkGrantAcceptedDto>;
 
     /**
      * 
-     * @summary Grant every valid row of a bulk grant CSV
+     * @summary Accept a bulk grant CSV and grant its valid rows in the background
      * @param {number} integrationId 
      * @param {string} environment 
      * @param {string} body 
@@ -1664,7 +1664,7 @@ export interface CSSIntegrationsApiInterface {
      * @throws {RequiredError}
      * @memberof CSSIntegrationsApiInterface
      */
-    createCssBulkGrants(integrationId: number, environment: string, body: string, options?: RawAxiosRequestConfig): AxiosPromise<Array<CssBulkGrantRowDto>>;
+    createCssBulkGrants(integrationId: number, environment: string, body: string, options?: RawAxiosRequestConfig): AxiosPromise<CssBulkGrantAcceptedDto>;
 
     /**
      * 
@@ -1902,7 +1902,7 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
 
     /**
      * 
-     * @summary Appoint every valid row of a bulk administrator CSV
+     * @summary Accept a bulk administrator CSV and appoint its valid rows in the background
      * @param {number} integrationId 
      * @param {string} environment 
      * @param {AdminRoleAuthGroup} tier 
@@ -1917,7 +1917,7 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
 
     /**
      * 
-     * @summary Grant every valid row of a bulk grant CSV
+     * @summary Accept a bulk grant CSV and grant its valid rows in the background
      * @param {number} integrationId 
      * @param {string} environment 
      * @param {string} body 

@@ -101,9 +101,13 @@ public class CssIntegrationService {
    * <p>One at a time, an integration with a few hundred scoped roles took longer
    * than the browser would wait, so the table never loaded. All at once, one
    * page load becomes hundreds of simultaneous requests against a shared CSS.
-   * Eight matches the directory lookups in {@link AssignmentRowEnrichmentService}.
+   *
+   * <p>Sixteen, up from eight: with {@link RoleMembershipCache} in front, this
+   * fan-out runs in full only on a cold listing - the first after a deploy, or
+   * after an application has gone unvisited past the cache's max-stale - and
+   * that is the one somebody is waiting on.
    */
-  private static final int ROLE_READ_CONCURRENCY = 8;
+  private static final int ROLE_READ_CONCURRENCY = 16;
 
   private final CssApiService cssApiService;
   private final PermissionAuditWriteService auditWriteService;
@@ -116,6 +120,7 @@ public class CssIntegrationService {
       forestClientIntegrationService;
   private final ApiInstanceEnvResolver apiInstanceEnvResolver;
   private final CssNameSnapshot cssNameSnapshot;
+  private final RoleMembershipCache roleMembershipCache;
 
   /**
    * Applications available to administer, one per integration/environment pair.
@@ -2121,7 +2126,80 @@ public class CssIntegrationService {
   }
 
   /**
-   * Who holds each of these roles, read a few at a time.
+   * Who holds each of these roles.
+   *
+   * @return every requested role, in the order given, mapped to its holders
+   */
+  private Map<String, List<CssApiService.CssUserDto>> usersByRole(
+      int integrationId, String environment, Collection<String> roleNames) {
+
+    /*
+        Served from RoleMembershipCache where it can be, which is what keeps a
+        large application's table to a few seconds: only roles never read, or
+        read too long ago to show, wait on CSS. Roles shown from a stale entry
+        are refreshed after the answer goes back, so the next visit is current.
+    */
+    Map<String, List<CssApiService.CssUserDto>> cached = new LinkedHashMap<>();
+    List<String> missing = new ArrayList<>();
+    List<String> stale = new ArrayList<>();
+
+    for (String roleName : roleNames) {
+      Optional<RoleMembershipCache.Cached> hit =
+          roleMembershipCache.lookup(integrationId, environment, roleName);
+      if (hit.isEmpty()) {
+        missing.add(roleName);
+        continue;
+      }
+      cached.put(roleName, hit.get().users());
+      if (!hit.get().fresh()) {
+        stale.add(roleName);
+      }
+    }
+
+    Map<String, List<CssApiService.CssUserDto>> read =
+        readUsersByRole(integrationId, environment, missing);
+
+    if (!stale.isEmpty()) {
+      refreshInBackground(integrationId, environment, stale);
+    }
+
+    Map<String, List<CssApiService.CssUserDto>> holders = new LinkedHashMap<>();
+    for (String roleName : roleNames) {
+      holders.put(roleName, read.containsKey(roleName) ? read.get(roleName) : cached.get(roleName));
+    }
+    return holders;
+  }
+
+  /**
+   * Re-read roles shown from stale entries, after the listing has answered.
+   *
+   * <p>One refresh per application at a time: a table opened by five people at
+   * once should not become five copies of the same fan-out. A refresh that fails
+   * leaves the stale entries where they are, to be tried again next visit.
+   */
+  private void refreshInBackground(
+      int integrationId, String environment, List<String> roleNames) {
+
+    if (!roleMembershipCache.tryBeginRefresh(integrationId, environment)) {
+      return;
+    }
+    Thread.ofVirtual().name("css-membership-refresh-" + integrationId).start(() -> {
+      try {
+        readUsersByRole(integrationId, environment, roleNames);
+        log.debug("Refreshed {} stale role membership(s) for {} ({}).",
+            roleNames.size(), integrationId, environment);
+      } catch (RuntimeException e) {
+        log.warn("Background refresh of role membership for {} ({}) failed: {}",
+            integrationId, environment, e.getMessage());
+      } finally {
+        roleMembershipCache.endRefresh(integrationId, environment);
+      }
+    });
+  }
+
+  /**
+   * Who holds each of these roles, read from CSS a few at a time, and
+   * remembered in {@link RoleMembershipCache} as each answer arrives.
    *
    * <p>CSS answers membership only per role, so a listing costs one request per
    * role; those requests are independent and spend their time waiting on CSS.
@@ -2134,7 +2212,7 @@ public class CssIntegrationService {
    *
    * @return every requested role, in the order given, mapped to its holders
    */
-  private Map<String, List<CssApiService.CssUserDto>> usersByRole(
+  private Map<String, List<CssApiService.CssUserDto>> readUsersByRole(
       int integrationId, String environment, Collection<String> roleNames) {
 
     Map<String, List<CssApiService.CssUserDto>> holders = new LinkedHashMap<>();
@@ -2150,7 +2228,11 @@ public class CssIntegrationService {
         pending.put(roleName, executor.submit(() -> {
           permits.acquire();
           try {
-            return cssApiService.getUsersWithRole(integrationId, environment, roleName);
+            long started = roleMembershipCache.beginRead();
+            List<CssApiService.CssUserDto> users =
+                cssApiService.getUsersWithRole(integrationId, environment, roleName);
+            roleMembershipCache.store(integrationId, environment, roleName, users, started);
+            return users;
           } finally {
             permits.release();
           }
@@ -2178,6 +2260,11 @@ public class CssIntegrationService {
 
   public List<CssUserRoleRowDto> getUserRoleAssignments(
       int integrationId, String environment, Requester requester) {
+
+    // Before anything is read: drops whatever another pod has changed since this
+    // one last looked, so a grant made a moment ago is never shown missing.
+    roleMembershipCache.syncWithAuditTrail(integrationId, environment);
+
     List<CssRoleDto> roles = cssApiService.getRoles(integrationId, environment);
 
     // Viewing FAM itself shows only FAM's own access, not the bookkeeping it

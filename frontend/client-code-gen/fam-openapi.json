@@ -391,7 +391,7 @@
     "/css-applications/{integrationId}/{environment}/bulk-grants" : {
       "post" : {
         "tags" : [ "CSS Integrations" ],
-        "summary" : "Grant every valid row of a bulk grant CSV",
+        "summary" : "Accept a bulk grant CSV and grant its valid rows in the background",
         "operationId" : "create_css_bulk_grants",
         "parameters" : [ {
           "name" : "integrationId",
@@ -425,15 +425,12 @@
           "required" : true
         },
         "responses" : {
-          "200" : {
-            "description" : "OK",
+          "202" : {
+            "description" : "Accepted",
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/CssBulkGrantRowDto"
-                  }
+                  "$ref" : "#/components/schemas/CssBulkGrantAcceptedDto"
                 }
               }
             }
@@ -494,7 +491,7 @@
     "/css-applications/{integrationId}/{environment}/bulk-admins/{tier}" : {
       "post" : {
         "tags" : [ "CSS Integrations" ],
-        "summary" : "Appoint every valid row of a bulk administrator CSV",
+        "summary" : "Accept a bulk administrator CSV and appoint its valid rows in the background",
         "operationId" : "create_css_bulk_admins",
         "parameters" : [ {
           "name" : "integrationId",
@@ -535,15 +532,12 @@
           "required" : true
         },
         "responses" : {
-          "200" : {
-            "description" : "OK",
+          "202" : {
+            "description" : "Accepted",
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/CssBulkGrantRowDto"
-                  }
+                  "$ref" : "#/components/schemas/CssBulkGrantAcceptedDto"
                 }
               }
             }
@@ -1598,6 +1592,34 @@
         },
         "required" : [ "role_name", "user_guid", "user_type" ]
       },
+      "CssBulkGrantAcceptedDto" : {
+        "properties" : {
+          "row_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "row_count" ]
+      },
+      "CssBulkGrantPreviewDto" : {
+        "properties" : {
+          "rows" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/CssBulkGrantRowDto"
+            }
+          },
+          "valid_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "error_count" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "error_count", "rows", "valid_count" ]
+      },
       "CssBulkGrantRowDto" : {
         "properties" : {
           "line_number" : {
@@ -1660,25 +1682,6 @@
           }
         },
         "required" : [ "already_granted", "line_number", "role_code", "user_name", "valid" ]
-      },
-      "CssBulkGrantPreviewDto" : {
-        "properties" : {
-          "rows" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/components/schemas/CssBulkGrantRowDto"
-            }
-          },
-          "valid_count" : {
-            "type" : "integer",
-            "format" : "int32"
-          },
-          "error_count" : {
-            "type" : "integer",
-            "format" : "int32"
-          }
-        },
-        "required" : [ "error_count", "rows", "valid_count" ]
       },
       "AdminRoleAuthGroup" : {
         "type" : "string",

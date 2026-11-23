@@ -69,6 +69,10 @@ import "./BulkGrant.css";
     apply skips them - but the person doing it has no way to know that from a
     timeout.
 
+    The apply no longer needs it: it answers as soon as the file is received
+    and grants in the background. The preview still works a row at a time
+    while somebody waits, so it keeps the long timeout.
+
     Sized for the row cap (fam.bulk-grant.max-rows, 1000), not a typical file:
     five minutes was not enough for 500 rows, because the grants themselves run
     one CSS call at a time.
@@ -111,7 +115,10 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
     const [csv, setCsv] = useState<string>("");
     const [rows, setRows] = useState<CssBulkGrantRowDto[]>([]);
     const [uploadError, setUploadError] = useState<string | null>(null);
-    /** Set once granting has run; the table then shows outcomes, not a preview. */
+    /**
+     * Set once the upload has been received. The rows are then applied in the
+     * background, and the table stays as the record of what was sent.
+     */
     const [applied, setApplied] = useState(false);
 
     const confirmRef = useRef<HTMLDivElement | null>(null);
@@ -119,7 +126,7 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
      * Whether the page has already moved to the confirmation for this file.
      *
      * <p>Without it the effect below fires on every render that touches the
-     * rows - including the one that replaces the preview with outcomes - and the
+     * rows - including the one that marks the upload received - and the
      * page would yank itself back down while somebody was reading.
      */
     const [broughtIntoView, setBroughtIntoView] = useState(false);
@@ -174,47 +181,27 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                       options
                   )
             ).then((res) => res.data),
-        onSuccess: (outcomes) => {
-            setRows(outcomes);
-            setApplied(true);
-            // The permissions table is now stale.
-            invalidateAfterAccessChange(queryClient, integrationId, environment);
-
+        onSuccess: () => {
             /*
-                Said out loud as well as in the table.
+                Received, not done.
 
-                The table below changes from "Ready" to "Granted" row by row,
-                which is easy to miss on a long file - and the rows are the only
-                thing on screen that moved. The toast is the same one the single
-                grant screens raise, so a grant reads the same however it was
-                made.
+                The backend answers as soon as it has the file and applies it in
+                the background: a couple of hundred rows took longer than the
+                connection would stay open, and the screen reported a failure
+                for grants that then landed. So this says what is true at this
+                moment - the rows are on their way - and where to look for them.
 
-                A warning rather than a success when some rows did not make it:
-                the table names them, but a green toast over a partial result
-                reads as "all done". Warnings wait to be dismissed rather than
-                timing out - see NotificationProvider.
+                The preview rows stay on screen as the record of what was sent.
+                Rows already held or in error were never going to be applied,
+                and are still marked as such.
             */
-            const granted = outcomes.filter((row) => row.valid).length;
-            const failed = outcomes.length - granted;
-
-            if (failed === 0) {
-                permissionToast.succeeded(
-                    "Permissions granted",
-                    `${granted} permission(s) granted in ${applicationName}.`
-                );
-            } else if (granted === 0) {
-                permissionToast.partiallySucceeded(
-                    "Nothing was granted",
-                    `None of the ${outcomes.length} row(s) could be granted - ` +
-                        "each says why below."
-                );
-            } else {
-                permissionToast.partiallySucceeded(
-                    "Some permissions were not granted",
-                    `${granted} of ${outcomes.length} row(s) granted in ` +
-                        `${applicationName}. The rest say why below.`
-                );
-            }
+            setApplied(true);
+            invalidateAfterAccessChange(queryClient, integrationId, environment);
+            permissionToast.succeeded(
+                "Upload received",
+                `${copy.received(validRows.length)} in ${applicationName} ` +
+                    "within a few minutes. Refresh the users list to see them."
+            );
         },
         onError: (error: unknown) => setUploadError(describeUploadError(error)),
     });
@@ -425,10 +412,12 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
 
                     {rows.length > 0 ? (
                         <div className="bulk-grant-card" ref={confirmRef}>
-                            <StepContainer title={applied ? "Result" : "Confirm"}>
+                            <StepContainer title={applied ? "Received" : "Confirm"}>
                                 <p className="step-note">
                                     {applied
-                                        ? `${validRows.length} of ${rows.length} row(s) granted.`
+                                        ? `Received. ${copy.received(validRows.length)} within a few minutes - ` +
+                                          "refresh the users list to see them. If any are missing after that, " +
+                                          "upload the same file again: rows already granted are skipped."
                                         : `${validRows.length} permission(s) will be granted.` +
                                           (alreadyRows.length
                                               ? ` ${alreadyRows.length} row(s) are already granted and will be skipped.`
@@ -482,7 +471,7 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                         </>
                                                     ) : null}
                                                     <TableHeader>
-                                                        {applied ? "Outcome" : "Status"}
+                                                        Status
                                                     </TableHeader>
                                                     {applied ? null : (
                                                         <TableHeader>Action</TableHeader>
@@ -607,7 +596,7 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                                     color="green"
                                                                     label={
                                                                         applied
-                                                                            ? "Granted"
+                                                                            ? "Submitted"
                                                                             : "Ready"
                                                                     }
                                                                 />

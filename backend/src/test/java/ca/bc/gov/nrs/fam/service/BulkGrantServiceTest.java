@@ -867,6 +867,95 @@ class BulkGrantServiceTest {
   }
 
   @Test
+  @DisplayName("grants CSS's spelling of the role, not the file's")
+  void grantsTheCanonicalRoleName() {
+    // The role is matched case-insensitively, but the grant creates whatever
+    // name it is handed - a lower-case one would be a second, useless role.
+    when(cssIntegrationService.assignUserRoles(anyInt(), anyString(), any(), any()))
+        .thenReturn(List.of(new CssUserRoleAssignmentResult(
+            "FSPTS_VIEW_ALL", false, true, null, EmailSendingStatus.NOT_REQUIRED)));
+
+    service.apply(INTEGRATION, ENV, USERNAME + ",IDIR,fspts_view_all", UPLOADER);
+
+    org.mockito.ArgumentCaptor<CssUserRoleAssignmentRequest> captor =
+        org.mockito.ArgumentCaptor.forClass(CssUserRoleAssignmentRequest.class);
+    verify(cssIntegrationService)
+        .assignUserRoles(anyInt(), anyString(), captor.capture(), any());
+
+    assertThat(captor.getValue().roleName()).isEqualTo("FSPTS_VIEW_ALL");
+  }
+
+  @Test
+  @DisplayName("a lower-case role in the file is still recognised as already held")
+  void lowerCaseRoleIsStillAlreadyHeld() {
+    when(cssIntegrationService.rolesHeldBy(INTEGRATION, ENV, GUID, UserType.IDIR))
+        .thenReturn(java.util.Set.of("FSPTS_VIEW_ALL"));
+
+    assertThat(preview(USERNAME + ",IDIR,fspts_view_all"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.alreadyGranted()).isTrue();
+          assertThat(row.roleCode()).isEqualTo("FSPTS_VIEW_ALL");
+        });
+  }
+
+  @Nested
+  @DisplayName("accepting an upload for the background")
+  class Submit {
+
+    @Test
+    @DisplayName("answers with the row count straight away, then grants every valid row")
+    void acceptsThenGrants() {
+      when(cssIntegrationService.assignUserRoles(anyInt(), anyString(), any(), any()))
+          .thenReturn(List.of(new CssUserRoleAssignmentResult(
+              "FSPTS_VIEW_ALL", false, true, null, EmailSendingStatus.NOT_REQUIRED)));
+
+      assertThat(service.submit(BulkUploadKind.USERS, INTEGRATION, ENV,
+          USERNAME + ",IDIR,FSPTS_VIEW_ALL\n\nOTHER,IDIR,FSPTS_VIEW_ALL", UPLOADER).rowCount())
+          .isEqualTo(2);
+
+      // The work itself happens off the request thread.
+      verify(cssIntegrationService, org.mockito.Mockito.timeout(5_000))
+          .assignUserRoles(eq(INTEGRATION), eq(ENV), any(), eq(UPLOADER));
+    }
+
+    @Test
+    @DisplayName("refuses an empty file while the person is still looking at it")
+    void refusesEmptyFileUpFront() {
+      assertThatThrownBy(() -> service.submit(BulkUploadKind.USERS, INTEGRATION, ENV,
+          "\n\n", UPLOADER))
+          .isInstanceOf(FamHttpException.class)
+          .hasMessageContaining("no rows");
+    }
+
+    @Test
+    @DisplayName("refuses an oversized file up front")
+    void refusesOversizedFileUpFront() {
+      String csv = String.join("\n",
+          java.util.Collections.nCopies(MAX_ROWS + 1, USERNAME + ",IDIR,FSPTS_VIEW_ALL"));
+
+      assertThatThrownBy(() -> service.submit(BulkUploadKind.USERS, INTEGRATION, ENV,
+          csv, UPLOADER))
+          .isInstanceOf(FamHttpException.class);
+    }
+
+    @Test
+    @DisplayName("refuses an administrator file from somebody who may not appoint at that tier")
+    void refusesTierUpFront() {
+      // Otherwise every row would be refused out of sight, after "received".
+      org.mockito.Mockito.doThrow(FamHttpException.forbidden(
+              ca.bc.gov.nrs.fam.constants.ErrorCode.PERMISSION_REQUIRED, "no"))
+          .when(authorizationService).requireApplicationAdminManagement(UPLOADER);
+
+      assertThatThrownBy(() -> service.submit(BulkUploadKind.APP_ADMINS, INTEGRATION, ENV,
+          USERNAME, UPLOADER))
+          .isInstanceOf(FamHttpException.class);
+      verify(cssIntegrationService, org.mockito.Mockito.after(200).never())
+          .appointApplicationAdmin(anyInt(), anyString(), any(), any());
+    }
+  }
+
+  @Test
   @DisplayName("refuses a user the directory can name but has no GUID for")
   void refusesAUserWithNoGuid() {
     // Nothing to provision against. Granting anyway would report success over a
@@ -1060,6 +1149,41 @@ class BulkGrantServiceTest {
     }
 
     @Test
+    @DisplayName("an existing organisation-scoped delegation is shown and skipped")
+    void alreadyDelegatedTheSameScopedRole() {
+      when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+          .thenReturn(List.of(role("FOM_SUBMITTER", false, true)));
+      givenClient("00169257", "ACME FORESTRY", "ACT");
+      when(cssIntegrationService.getAdministrators(
+          INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+          .thenReturn(List.of(administrator(GUID, "FOM_SUBMITTER_FOREST_CLIENT-00169257")));
+
+      assertThat(previewAs(
+          BulkUploadKind.DELEGATED_ADMINS, USERNAME + ",IDIR,FOM_SUBMITTER,,00169257"))
+          .singleElement()
+          .satisfies(row -> assertThat(row.alreadyGranted()).isTrue());
+    }
+
+    @Test
+    @DisplayName("the same role for a different organisation is a different delegation")
+    void aDifferentOrganisationIsADifferentDelegation() {
+      when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+          .thenReturn(List.of(role("FOM_SUBMITTER", false, true)));
+      givenClient("00082820", "OTHER FORESTRY", "ACT");
+      when(cssIntegrationService.getAdministrators(
+          INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+          .thenReturn(List.of(administrator(GUID, "FOM_SUBMITTER_FOREST_CLIENT-00169257")));
+
+      assertThat(previewAs(
+          BulkUploadKind.DELEGATED_ADMINS, USERNAME + ",IDIR,FOM_SUBMITTER,,00082820"))
+          .singleElement()
+          .satisfies(row -> {
+            assertThat(row.alreadyGranted()).isFalse();
+            assertThat(row.valid()).isTrue();
+          });
+    }
+
+    @Test
     @DisplayName("a delegation of a different role still goes ahead")
     void adifferentRoleIsADifferentDelegation() {
       when(cssIntegrationService.getRoles(INTEGRATION, ENV)).thenReturn(List.of(
@@ -1096,12 +1220,25 @@ class BulkGrantServiceTest {
           .assignUserRoles(anyInt(), anyString(), any(), any());
     }
 
-    private CssAdministratorRowDto administrator(String userGuid, String delegatedRoleName) {
+    /**
+     * Shaped the way getAdministrators really returns one: the full appointment
+     * role in roleName, and only the BASE role in delegatedRoleName - the scope
+     * travels separately. A helper that put the concrete role in both is what
+     * let a scoped re-upload go unflagged.
+     */
+    private CssAdministratorRowDto administrator(String userGuid, String delegatedRole) {
+      if (delegatedRole == null) {
+        return new CssAdministratorRowDto(
+            "JANES", userGuid, "IDIR", "Jane", "Smith", "jane@gov.bc.ca",
+            AdminRoleAuthGroup.APP_ADMIN, FamAdminRole.appAdmin(INTEGRATION, ENV),
+            null, null, List.of());
+      }
+      String baseRole = ca.bc.gov.nrs.fam.dto.CssRoleNaming.parse(delegatedRole).baseRoleName();
       return new CssAdministratorRowDto(
           "JANES", userGuid, "IDIR", "Jane", "Smith", "jane@gov.bc.ca",
-          delegatedRoleName == null
-              ? AdminRoleAuthGroup.APP_ADMIN : AdminRoleAuthGroup.DELEGATED_ADMIN,
-          "ROLE", delegatedRoleName, delegatedRoleName, List.of());
+          AdminRoleAuthGroup.DELEGATED_ADMIN,
+          FamAdminRole.delegation(INTEGRATION, ENV, delegatedRole),
+          baseRole, baseRole, List.of());
     }
   }
 }

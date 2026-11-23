@@ -21,6 +21,12 @@ export type BulkKindCopy = {
     description: string;
     /** The verb on the apply button, e.g. "Grant 12 permissions". */
     action: (count: number) => string;
+    /**
+     * What will happen to the rows once the upload has been received, e.g.
+     * "12 permissions will be granted". The upload is applied in the
+     * background, so this is said in the future tense.
+     */
+    received: (count: number) => string;
     /** Header row of the template, and of what the parser expects. */
     header: string;
     /** A filled-in example, shown beside the download. */
@@ -39,6 +45,8 @@ export const BULK_COPY: Record<BulkKind, BulkKindCopy> = {
             "Grant roles to many people at once, from a spreadsheet.",
         action: (count) =>
             `Grant ${count} permission${count === 1 ? "" : "s"}`,
+        received: (count) =>
+            `${count} permission${count === 1 ? "" : "s"} will be granted`,
         header: USER_COLUMNS,
         example: `${USER_COLUMNS}
 JSMITH,IDIR,FSPTS_VIEW_ALL,,,
@@ -54,6 +62,8 @@ RSINGH,IDIR,FREP_REGIONAL_LEAD,,,CARIBOO`,
             "Appoint many delegated admins at once, each for the role their row names.",
         action: (count) =>
             `Appoint ${count} delegated admin${count === 1 ? "" : "s"}`,
+        received: (count) =>
+            `${count} delegated admin${count === 1 ? "" : "s"} will be appointed`,
         /*
             The same columns as a permissions file, and read the same way. A
             delegation authorises exactly one concrete role, so "Editor for
@@ -73,6 +83,8 @@ ACMEFORESTRY,BCEID,FOM_SUBMITTER,,00001012,`,
             "Appoint many application admins at once. IDIR accounts only.",
         action: (count) =>
             `Appoint ${count} application admin${count === 1 ? "" : "s"}`,
+        received: (count) =>
+            `${count} application admin${count === 1 ? "" : "s"} will be appointed`,
         /*
             One column, not six. The tier is the whole appointment - an
             application admin can already grant every role the application

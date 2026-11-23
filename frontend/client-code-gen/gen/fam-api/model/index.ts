@@ -2,6 +2,7 @@ export * from './admin-role-auth-group';
 export * from './css-administrator-appoint-request';
 export * from './css-administrator-row-dto';
 export * from './css-application-option-dto';
+export * from './css-bulk-grant-accepted-dto';
 export * from './css-bulk-grant-preview-dto';
 export * from './css-bulk-grant-row-dto';
 export * from './css-delegated-admin-request';

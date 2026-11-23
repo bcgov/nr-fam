@@ -85,8 +85,13 @@ public class AssignmentRowEnrichmentService {
    * about how stale a renamed person may look, not whether the row is right.
    * The access shown is always read fresh from CSS; only the label beside it is
    * remembered.
+   *
+   * <p>A day, up from fifteen minutes. Every bulk-uploaded person is somebody
+   * who has not signed in, so on a large application this was hundreds of
+   * directory calls on the first visit of every quarter hour - while the table
+   * waited - to re-learn names that had not changed.
    */
-  private static final Duration RESOLVED_TTL = Duration.ofMinutes(15);
+  private static final Duration RESOLVED_TTL = Duration.ofHours(24);
 
   /** Past this many held names, expired ones are swept before adding more. */
   private static final int RESOLVED_SWEEP_THRESHOLD = 5_000;
