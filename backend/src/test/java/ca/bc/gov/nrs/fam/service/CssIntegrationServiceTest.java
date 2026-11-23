@@ -72,6 +72,7 @@ class CssIntegrationServiceTest {
       forestClientIntegrationService;
   @Mock private ApiInstanceEnvResolver apiInstanceEnvResolver;
   @Mock private CssNameSnapshot cssNameSnapshot;
+  @Mock private RoleMembershipCache roleMembershipCache;
 
   /**
    * Real config rather than a mock: the IDIR alias is the thing most likely to
@@ -1188,6 +1189,78 @@ class CssIntegrationServiceTest {
     assertThat(rows).hasSize(3);
     assertThat(rows).extracting(CssUserRoleRowDto::domain)
         .containsExactly("IDIR", "BCEID", "IDIR");
+  }
+
+  @org.junit.jupiter.api.Nested
+  @DisplayName("with role membership cached")
+  class CachedListing {
+
+    private final List<Object[]> auditRows = new java.util.ArrayList<>();
+    private CssIntegrationService cachedService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void realCache() {
+      ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository audit =
+          org.mockito.Mockito.mock(
+              ca.bc.gov.nrs.fam.repository.FamPrivilegeChangeAuditRepository.class);
+      when(audit.findChangesSince(org.mockito.ArgumentMatchers.anyInt(), anyString(), any()))
+          .thenAnswer(i -> List.copyOf(auditRows));
+
+      RoleMembershipCache cache = new RoleMembershipCache(audit,
+          new com.fasterxml.jackson.databind.ObjectMapper().setPropertyNamingStrategy(
+              com.fasterxml.jackson.databind.PropertyNamingStrategies.SNAKE_CASE),
+          java.time.Duration.ofMinutes(2), java.time.Duration.ofHours(12));
+
+      cachedService = new CssIntegrationService(cssApiService, auditWriteService,
+          authorizationService, famProperties, accessGrantedEmailService,
+          assignmentVisibilityService, targetOrganizationGuard, forestClientIntegrationService,
+          apiInstanceEnvResolver, cssNameSnapshot, cache);
+
+      givenRoles(role("FOM_REVIEWER", false), role("FOM_SUBMITTER_FOREST_CLIENT-00169257", false));
+      when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "FOM_REVIEWER"))
+          .thenReturn(List.of(new CssApiService.CssUserDto("a@azureidir", null, null, null, null)));
+      when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "FOM_SUBMITTER_FOREST_CLIENT-00169257"))
+          .thenReturn(List.of(new CssApiService.CssUserDto("b@bceidbusiness", null, null, null, null)));
+    }
+
+    @Test
+    @DisplayName("a second visit is answered without reading role membership again")
+    void secondVisitIsCached() {
+      cachedService.getUserRoleAssignments(INTEGRATION, ENV, DEFINER);
+      List<CssUserRoleRowDto> again =
+          cachedService.getUserRoleAssignments(INTEGRATION, ENV, DEFINER);
+
+      assertThat(again).hasSize(2);
+      verify(cssApiService, org.mockito.Mockito.times(1))
+          .getUsersWithRole(INTEGRATION, ENV, "FOM_REVIEWER");
+      verify(cssApiService, org.mockito.Mockito.times(1))
+          .getUsersWithRole(INTEGRATION, ENV, "FOM_SUBMITTER_FOREST_CLIENT-00169257");
+    }
+
+    @Test
+    @DisplayName("a grant made through FAM - on any pod - is shown on the next visit")
+    void auditedGrantIsReadAgain() {
+      cachedService.getUserRoleAssignments(INTEGRATION, ENV, DEFINER);
+
+      // Another pod grants a second submitter for this organisation.
+      when(cssApiService.getUsersWithRole(INTEGRATION, ENV, "FOM_SUBMITTER_FOREST_CLIENT-00169257"))
+          .thenReturn(List.of(
+              new CssApiService.CssUserDto("b@bceidbusiness", null, null, null, null),
+              new CssApiService.CssUserDto("c@bceidbusiness", null, null, null, null)));
+      auditRows.add(new Object[] {java.util.UUID.randomUUID(), java.time.LocalDateTime.now(),
+          "{\"permission_type\":\"End User\",\"roles\":[{\"role\":\"FOM_SUBMITTER\","
+              + "\"scopes\":[{\"scope_type\":\"Client\",\"client_id\":\"00169257\"}]}]}"});
+
+      List<CssUserRoleRowDto> rows =
+          cachedService.getUserRoleAssignments(INTEGRATION, ENV, DEFINER);
+
+      assertThat(rows).hasSize(3);
+      // Only the role that changed was read again.
+      verify(cssApiService, org.mockito.Mockito.times(1))
+          .getUsersWithRole(INTEGRATION, ENV, "FOM_REVIEWER");
+      verify(cssApiService, org.mockito.Mockito.times(2))
+          .getUsersWithRole(INTEGRATION, ENV, "FOM_SUBMITTER_FOREST_CLIENT-00169257");
+    }
   }
 
   @Test

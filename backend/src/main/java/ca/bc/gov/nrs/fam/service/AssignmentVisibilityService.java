@@ -9,13 +9,21 @@ import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import ca.bc.gov.nrs.fam.constants.DirectoryEnv;
 import ca.bc.gov.nrs.fam.integration.UserLookupClient;
 import ca.bc.gov.nrs.fam.security.Requester;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -58,8 +66,34 @@ public class AssignmentVisibilityService {
 
   private static final String BCEID_DOMAIN = "BCEID";
 
+  /** Directory calls in flight at once for one listing, as in the enrichment service. */
+  private static final int LOOKUP_CONCURRENCY = 8;
+
+  /**
+   * How long a BCeID user's organisation is reused.
+   *
+   * <p>An hour. A Business BCeID account belongs to one organisation for its
+   * whole life - somebody who moves gets a new account and a new GUID - but
+   * this answer decides what a BCeID administrator may see, so it is held for
+   * less time than a display name. Only answers are kept: a GUID the directory
+   * did not recognise is asked about again next time.
+   */
+  private static final Duration RESOLVED_TTL = Duration.ofHours(1);
+
+  /** Past this many held answers, expired ones are swept before adding more. */
+  private static final int RESOLVED_SWEEP_THRESHOLD = 10_000;
+
   private final UserLookupClient userLookupClient;
   private final AssignmentRowEnrichmentService enrichmentService;
+
+  /** BCeID users already resolved, by directory and GUID. */
+  private final Map<String, Cached> resolvedByGuid = new ConcurrentHashMap<>();
+
+  private record Cached(UserLookupBceidUserDto user, Instant readAt) {
+    boolean isFresh(Instant now) {
+      return readAt.plus(RESOLVED_TTL).isAfter(now);
+    }
+  }
 
   /**
    * The rows this requester may see, named as far as possible.
@@ -141,14 +175,81 @@ public class AssignmentVisibilityService {
       guidOf(row).ifPresent(guids::add);
     }
 
-    Map<String, UserLookupBceidUserDto> resolved = new HashMap<>();
+    Map<String, UserLookupBceidUserDto> resolved = new ConcurrentHashMap<>();
+    List<String> toLookUp = new ArrayList<>();
+    Instant now = Instant.now();
     for (String guid : guids) {
-      // Deliberately unguarded: a failure here must reach the caller as an
-      // error, not become a row quietly missing from the listing.
-      userLookupClient.getBusinessBceid(directory, UserLookupClient.SearchBy.USER_GUID, guid)
-          .ifPresent(user -> resolved.put(guid, user));
+      Cached cached = resolvedByGuid.get(cacheKey(directory, guid));
+      if (cached != null && cached.isFresh(now)) {
+        resolved.put(guid, cached.user());
+      } else {
+        toLookUp.add(guid);
+      }
+    }
+    if (toLookUp.isEmpty()) {
+      return resolved;
+    }
+
+    /*
+        A few at a time, and remembered.
+
+        This was one directory call per BCeID user, in turn, on every visit - so
+        a Business BCeID administrator of an application with a few hundred
+        BCeID users waited minutes for their table. Which organisation a BCeID
+        account belongs to does not change, so the answer is kept for a while.
+
+        Still deliberately unguarded: a failure reaches the caller as an error,
+        not as a row quietly missing from the listing. The first failure stops
+        the lookups that have not started.
+    */
+    Semaphore permits = new Semaphore(LOOKUP_CONCURRENCY);
+    List<Future<?>> pending = new ArrayList<>();
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      for (String guid : toLookUp) {
+        pending.add(executor.submit(() -> {
+          permits.acquireUninterruptibly();
+          try {
+            userLookupClient
+                .getBusinessBceid(directory, UserLookupClient.SearchBy.USER_GUID, guid)
+                .ifPresent(user -> {
+                  resolved.put(guid, user);
+                  remember(directory, guid, user);
+                });
+          } finally {
+            permits.release();
+          }
+        }));
+      }
+      for (Future<?> lookup : pending) {
+        try {
+          lookup.get();
+        } catch (ExecutionException e) {
+          executor.shutdownNow();
+          if (e.getCause() instanceof RuntimeException cause) {
+            throw cause;
+          }
+          throw new IllegalStateException("Directory lookup failed.", e.getCause());
+        } catch (InterruptedException e) {
+          executor.shutdownNow();
+          Thread.currentThread().interrupt();
+          throw new IllegalStateException("Interrupted during directory lookups.", e);
+        }
+      }
     }
     return resolved;
+  }
+
+  private void remember(DirectoryEnv directory, String guid, UserLookupBceidUserDto user) {
+    if (resolvedByGuid.size() >= RESOLVED_SWEEP_THRESHOLD) {
+      Instant now = Instant.now();
+      resolvedByGuid.values().removeIf(cached -> !cached.isFresh(now));
+    }
+    resolvedByGuid.put(cacheKey(directory, guid), new Cached(user, Instant.now()));
+  }
+
+  /** Per directory: a BCeID GUID means nothing in another environment. */
+  private static String cacheKey(DirectoryEnv directory, String guid) {
+    return directory + "|" + guid.toUpperCase(Locale.ROOT);
   }
 
   /**

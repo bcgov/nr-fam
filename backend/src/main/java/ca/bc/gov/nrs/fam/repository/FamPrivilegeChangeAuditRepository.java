@@ -58,4 +58,24 @@ public interface FamPrivilegeChangeAuditRepository
       @Param("cssIntegrationId") Integer cssIntegrationId,
       @Param("cssEnvironment") String cssEnvironment);
 
+  /**
+   * Every change recorded against one application since a moment: id, date and
+   * the privilege details, which name the role and scopes touched.
+   *
+   * <p>Read before each users listing, so every pod can drop the role
+   * membership it holds for roles another pod has just changed. See
+   * {@code RoleMembershipCache}.
+   */
+  @Query("""
+      select a.privilegeChangeAuditId, a.changeDate, a.privilegeDetails
+      from FamPrivilegeChangeAudit a
+      where a.cssIntegrationId = :cssIntegrationId
+        and upper(a.cssEnvironment) = upper(:cssEnvironment)
+        and a.changeDate > :since
+      """)
+  List<Object[]> findChangesSince(
+      @Param("cssIntegrationId") Integer cssIntegrationId,
+      @Param("cssEnvironment") String cssEnvironment,
+      @Param("since") java.time.LocalDateTime since);
+
 }

@@ -11,6 +11,7 @@ import ca.bc.gov.nrs.fam.constants.District;
 import ca.bc.gov.nrs.fam.constants.Region;
 import ca.bc.gov.nrs.fam.constants.UserType;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
+import ca.bc.gov.nrs.fam.dto.CssBulkGrantAcceptedDto;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantPreviewDto;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantRowDto;
 import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
@@ -34,8 +35,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -87,6 +92,18 @@ public class BulkGrantService {
    * without a release - {@code FAM_BULK_MAX_ROWS}.
    */
   private final int maxRows;
+
+  /**
+   * How long a stopping pod waits for uploads in flight.
+   *
+   * <p>What is left of OpenShift's default 30 second termination grace once
+   * Spring's own graceful shutdown phase - up to 20 seconds, see
+   * spring.lifecycle.timeout-per-shutdown-phase - has had its turn.
+   */
+  private static final java.time.Duration SHUTDOWN_GRACE = java.time.Duration.ofSeconds(8);
+
+  /** Where accepted uploads are applied. One virtual thread per upload. */
+  private final ExecutorService background = Executors.newVirtualThreadPerTaskExecutor();
 
   /**
    * The UTF-8 byte-order mark a spreadsheet writes at the start of a CSV.
@@ -175,6 +192,84 @@ public class BulkGrantService {
         kind, integrationId, environment, granted, outcomes.size(), requester.userName());
 
     return outcomes;
+  }
+
+  /**
+   * Accept an upload and apply it in the background.
+   *
+   * <p><b>Why not wait for it.</b> Applying is re-validation - a directory
+   * lookup per person and a read of what they hold - then a CSS call per row.
+   * Around two hundred rows ran past what the connection between the browser
+   * and FAM would hold open, so the screen reported a failure for an upload
+   * whose grants then landed anyway. The person was told the wrong thing, and
+   * invited to try again.
+   *
+   * <p>So the answer is "received", given as soon as the file is known to be
+   * one that can be applied: rows present, not too many, and - for an
+   * administrator file - a requester allowed to appoint at that tier at all,
+   * which would otherwise refuse every row out of sight.
+   *
+   * <p>The work is exactly {@link #apply}: the same re-validation, the same
+   * per-row rules and audit. Its outcome is logged; each grant shows in the
+   * users table and the person's history, and a re-upload marks what landed as
+   * already held. A pod stopping mid-file finishes what it can in the shutdown
+   * grace period - see {@link #drainOnShutdown} - and re-uploading picks up the
+   * rest.
+   */
+  public CssBulkGrantAcceptedDto submit(
+      BulkUploadKind kind, int integrationId, String environment, String csv,
+      Requester requester) {
+
+    int rowCount = parseChecked(kind, csv).size();
+
+    if (kind == BulkUploadKind.APP_ADMINS) {
+      authorizationService.requireApplicationAdminManagement(requester);
+    } else if (kind == BulkUploadKind.DELEGATED_ADMINS) {
+      authorizationService.requireDelegatedAdminManagement(
+          requester, integrationId, environment);
+    }
+
+    background.submit(() -> {
+      try {
+        List<CssBulkGrantRowDto> outcomes =
+            apply(kind, integrationId, environment, csv, requester);
+        outcomes.stream()
+            .filter(row -> !row.valid() && !row.alreadyGranted())
+            .forEach(row -> log.warn("Bulk {} on integration {} ({}) by {}: row {} ({}) "
+                    + "was not applied: {}",
+                kind, integrationId, environment, requester.userName(),
+                row.lineNumber(), row.userName(), row.error()));
+      } catch (RuntimeException e) {
+        log.error("Bulk {} on integration {} ({}) by {} failed before completing: {}",
+            kind, integrationId, environment, requester.userName(), e.getMessage(), e);
+      }
+    });
+
+    log.info("Accepted bulk {} of {} row(s) on integration {} ({}) from {}.",
+        kind, rowCount, integrationId, environment, requester.userName());
+    return new CssBulkGrantAcceptedDto(rowCount);
+  }
+
+  /**
+   * Give uploads in flight the shutdown grace period to finish.
+   *
+   * <p>A rolling deploy or a scale-down stops pods while somebody's file may be
+   * half applied. What is not finished in time is logged rather than lost
+   * silently; the rows that landed are already granted and audited.
+   */
+  @PreDestroy
+  void drainOnShutdown() {
+    background.shutdown();
+    try {
+      if (!background.awaitTermination(SHUTDOWN_GRACE.toSeconds(), TimeUnit.SECONDS)) {
+        log.warn("Stopping with bulk uploads still being applied; their remaining rows "
+            + "were not attempted. Re-uploading the file applies only what is missing.");
+        background.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      background.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
   }
 
   private CssBulkGrantRowDto grantOne(
@@ -313,15 +408,14 @@ public class BulkGrantService {
   // Validation
   // ---------------------------------------------------------------------------
 
-  private List<CssBulkGrantRowDto> validate(
-      int integrationId, String environment, String csv, Requester requester) {
-    return validate(BulkUploadKind.USERS, integrationId, environment, csv, requester);
-  }
-
-  private List<CssBulkGrantRowDto> validate(
-      BulkUploadKind kind, int integrationId, String environment, String csv,
-      Requester requester) {
-
+  /**
+   * The file's rows, refused outright if there are none or too many.
+   *
+   * <p>Cheap - no upstream call - so it runs before an upload is accepted for
+   * the background as well as at the start of validation: a file that can never
+   * be applied is answered while the person is still looking at it.
+   */
+  private List<ParsedRow> parseChecked(BulkUploadKind kind, String csv) {
     List<ParsedRow> parsed = parse(csv);
 
     if (parsed.isEmpty()) {
@@ -335,6 +429,19 @@ public class BulkGrantService {
           "The file has %d rows; the most that can be uploaded at once is %d."
               .formatted(parsed.size(), maxRows));
     }
+    return parsed;
+  }
+
+  private List<CssBulkGrantRowDto> validate(
+      int integrationId, String environment, String csv, Requester requester) {
+    return validate(BulkUploadKind.USERS, integrationId, environment, csv, requester);
+  }
+
+  private List<CssBulkGrantRowDto> validate(
+      BulkUploadKind kind, int integrationId, String environment, String csv,
+      Requester requester) {
+
+    List<ParsedRow> parsed = parseChecked(kind, csv);
 
     // One read of the application's roles for the whole file, rather than per row.
     // Skipped for an application-admin file, which names no role at all.
@@ -489,11 +596,25 @@ public class BulkGrantService {
         ? AdminRoleAuthGroup.APP_ADMIN
         : AdminRoleAuthGroup.DELEGATED_ADMIN;
 
+    /*
+        The concrete delegated role is read back out of the appointment role's
+        own name, not from `delegatedRoleName`. That field is the BASE role -
+        FOM_SUBMITTER, not FOM_SUBMITTER_FOREST_CLIENT-00169257 - because the
+        admin tabs show the scope separately. Comparing against it matched
+        unscoped delegations and silently missed every scoped one, so a
+        re-uploaded file of organisation-scoped submitters showed every row as
+        new.
+
+        A plain tier marker with no delegation yields no role, and so a key that
+        no delegation row can collide with.
+    */
     return cssIntegrationService.getAdministrators(integrationId, environment, tier).stream()
         .filter(existing -> existing.userGuid() != null)
         .map(existing -> appointmentKey(
             existing.userGuid(),
-            kind == BulkUploadKind.APP_ADMINS ? null : existing.delegatedRoleName()))
+            kind == BulkUploadKind.APP_ADMINS
+                ? null
+                : FamAdminRole.delegatedRoleOf(existing.roleName()).orElse(null)))
         .collect(Collectors.toSet());
   }
 
@@ -707,8 +828,15 @@ public class BulkGrantService {
               .formatted(row.userName()));
     }
 
+    /*
+        CSS's spelling of the role, not the file's. The role was matched without
+        regard to case, but the grant and the delegation both create and assign
+        whatever name this row carries - so `fom_submitter` from a file would
+        become a second, lower-case role beside FOM_SUBMITTER that no application
+        authorises on, and the already-held check above would never recognise it.
+    */
     CssBulkGrantRowDto candidate = new CssBulkGrantRowDto(
-        row.lineNumber(), resolved.userGuid(), row.roleCode(),
+        row.lineNumber(), resolved.userGuid(), role.name(),
         resolved.userType(), resolved.userName(), resolved.firstName(), resolved.lastName(),
         resolved.email(), resolved.organization(),
         role.displayName(),

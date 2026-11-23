@@ -8,8 +8,8 @@ import ca.bc.gov.nrs.fam.exception.FamHttpException;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorAppointRequest;
 import ca.bc.gov.nrs.fam.dto.CssAdministratorRowDto;
 import ca.bc.gov.nrs.fam.dto.CssApplicationOptionDto;
+import ca.bc.gov.nrs.fam.dto.CssBulkGrantAcceptedDto;
 import ca.bc.gov.nrs.fam.dto.CssBulkGrantPreviewDto;
-import ca.bc.gov.nrs.fam.dto.CssBulkGrantRowDto;
 import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleBulkCreateResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
@@ -451,24 +451,28 @@ public class CssIntegrationController {
   }
 
   /**
-   * Apply a bulk upload.
+   * Apply a bulk upload, in the background.
    *
-   * <p>Re-validates the file rather than trusting a previewed payload back from
-   * the browser, and reports one outcome per row - a file where one row fails
-   * still grants the rest, because the rows are unrelated people.
+   * <p>Answers 202 once the file is known to be applicable, then re-validates
+   * it - rather than trusting a previewed payload back from the browser - and
+   * grants every valid row. Not waited on: a file of a couple of hundred people
+   * outlasted the connection, and the screen reported a failure for grants that
+   * then landed. See {@link BulkGrantService#submit}.
    */
   @PostMapping(value = "/{integrationId}/{environment}/bulk-grants",
       consumes = {"text/csv", "text/plain"})
+  @ResponseStatus(HttpStatus.ACCEPTED)
   @Operation(operationId = "create_css_bulk_grants",
-      summary = "Grant every valid row of a bulk grant CSV")
-  public List<CssBulkGrantRowDto> createCssBulkGrants(
+      summary = "Accept a bulk grant CSV and grant its valid rows in the background")
+  public CssBulkGrantAcceptedDto createCssBulkGrants(
       @PathVariable int integrationId,
       @PathVariable String environment,
       @RequestBody String csv,
       Requester requester) {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
-    return bulkGrantService.apply(integrationId, environment, csv, requester);
+    return bulkGrantService.submit(
+        BulkUploadKind.USERS, integrationId, environment, csv, requester);
   }
 
   /**
@@ -499,17 +503,18 @@ public class CssIntegrationController {
   }
 
   /**
-   * Apply a bulk administrator upload.
+   * Apply a bulk administrator upload, in the background.
    *
-   * <p>Re-validates rather than trusting a previewed payload back from the
-   * browser, and reports one outcome per row - the rows are unrelated people, so
-   * one refusal does not stop the rest.
+   * <p>As {@link #createCssBulkGrants}: 202 once the file is applicable and the
+   * requester may appoint at this tier, then re-validated and applied row by
+   * row - one refusal does not stop the rest.
    */
   @PostMapping(value = "/{integrationId}/{environment}/bulk-admins/{tier}",
       consumes = {"text/csv", "text/plain"})
+  @ResponseStatus(HttpStatus.ACCEPTED)
   @Operation(operationId = "create_css_bulk_admins",
-      summary = "Appoint every valid row of a bulk administrator CSV")
-  public List<CssBulkGrantRowDto> createCssBulkAdmins(
+      summary = "Accept a bulk administrator CSV and appoint its valid rows in the background")
+  public CssBulkGrantAcceptedDto createCssBulkAdmins(
       @PathVariable int integrationId,
       @PathVariable String environment,
       @PathVariable AdminRoleAuthGroup tier,
@@ -517,7 +522,7 @@ public class CssIntegrationController {
       Requester requester) {
 
     authorizationService.requireApplicationAccess(requester, integrationId, environment);
-    return bulkGrantService.apply(
+    return bulkGrantService.submit(
         bulkKindOf(tier), integrationId, environment, csv, requester);
   }
 

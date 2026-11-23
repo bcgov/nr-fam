@@ -20,6 +20,7 @@ model/admin-role-auth-group.ts
 model/css-administrator-appoint-request.ts
 model/css-administrator-row-dto.ts
 model/css-application-option-dto.ts
+model/css-bulk-grant-accepted-dto.ts
 model/css-bulk-grant-preview-dto.ts
 model/css-bulk-grant-row-dto.ts
 model/css-delegated-admin-request.ts

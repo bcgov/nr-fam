@@ -188,6 +188,45 @@ class AssignmentVisibilityServiceTest {
   }
 
   @Test
+  @DisplayName("remembers who belongs where between visits")
+  void remembersBetweenVisits() {
+    directoryReports("AAA1", OWN_ORG);
+
+    service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R1")));
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST,
+        List.of(bceidRow("AAA1", "R1")))).hasSize(1);
+
+    verify(userLookupClient, times(1)).getBusinessBceid(any(), any(), anyString());
+  }
+
+  @Test
+  @DisplayName("asks again about a user the directory did not recognise")
+  void doesNotRememberAMiss() {
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(Optional.empty());
+
+    service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R")));
+    service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, List.of(bceidRow("AAA1", "R")));
+
+    verify(userLookupClient, times(2)).getBusinessBceid(any(), any(), anyString());
+  }
+
+  @Test
+  @DisplayName("resolves many users, keeping each to its own organisation")
+  void resolvesManyUsers() {
+    List<CssUserRoleRowDto> rows = new java.util.ArrayList<>();
+    for (int i = 0; i < 40; i++) {
+      String guid = "G" + i;
+      directoryReports(guid, i % 2 == 0 ? OWN_ORG : OTHER_ORG);
+      rows.add(bceidRow(guid, "R"));
+    }
+
+    assertThat(service.visibleTo(bceidAdmin(OWN_ORG), DirectoryEnv.TEST, rows))
+        .hasSize(20)
+        .allSatisfy(row -> assertThat(Integer.parseInt(row.userGuid().substring(1)) % 2)
+            .isZero());
+  }
+
+  @Test
   @DisplayName("compares organisations regardless of case")
   void comparesCaseInsensitively() {
     directoryReports("AAA1", OWN_ORG.toLowerCase());

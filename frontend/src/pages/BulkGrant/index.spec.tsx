@@ -157,8 +157,9 @@ describe("BulkGrant", () => {
         previewCssBulkGrants
             .mockReset()
             .mockResolvedValue({ data: { rows: [GOOD_ROW, BAD_ROW] } });
+        // Received, not applied: the backend grants in the background.
         createCssBulkGrants.mockReset().mockResolvedValue({
-            data: [{ ...GOOD_ROW }, BAD_ROW],
+            data: { row_count: 2 },
         });
         navigate.mockReset();
     });
@@ -332,7 +333,7 @@ describe("BulkGrant", () => {
                 await userEvent.click(
                     screen.getByRole("button", { name: /^Grant / })
                 );
-                await screen.findByText("Granted");
+                await screen.findByText("Submitted");
 
                 expect(scrollIntoView).toHaveBeenCalledTimes(1);
             } finally {
@@ -655,7 +656,7 @@ describe("BulkGrant", () => {
             await userEvent.click(
                 await screen.findByRole("button", { name: /^Grant / })
             );
-            await screen.findByText("Granted");
+            await screen.findByText("Submitted");
 
             expect(
                 screen.queryByRole("button", { name: /Remove line/ })
@@ -805,70 +806,51 @@ describe("BulkGrant", () => {
         expect(createCssBulkGrants.mock.calls[0][2]).toBe(CSV);
     });
 
-    describe("saying so when the grant lands", () => {
-        it("raises a toast, not just a table that changed under you", async () => {
-            // The rows going from "Ready" to "Granted" is the only thing on
-            // screen that moved, and on a long file it is easy to miss.
-            createCssBulkGrants.mockResolvedValue({
-                data: [{ ...GOOD_ROW, valid: true }],
-            });
-
+    describe("saying so when the upload is received", () => {
+        it("raises a toast saying the rows are on their way", async () => {
+            // Applied in the background, so the honest message is "received"
+            // and where to look - not "granted", which is not yet true.
             renderPage();
             await upload();
             await userEvent.click(
                 await screen.findByRole("button", { name: /^Grant / })
             );
 
-            const toast = await screen.findByText("Permissions granted");
-            expect(toast).toBeInTheDocument();
+            expect(await screen.findByText("Upload received")).toBeInTheDocument();
+            expect(
+                screen.getAllByText(/1 permission will be granted .*within a few minutes/)
+                    .length
+            ).toBeGreaterThan(0);
+            expect(screen.queryByText("Permissions granted")).not.toBeInTheDocument();
         });
 
-        it("warns rather than congratulates when some rows did not make it", async () => {
-            // A green toast over a partial result reads as "all done".
+        it("keeps rows that will not be applied marked as such", async () => {
+            // The preview stays as the record of what was sent; an error row
+            // was never going to be granted and must not now read as submitted.
             renderPage();
             await upload();
             await userEvent.click(
                 await screen.findByRole("button", { name: /^Grant / })
             );
 
-            expect(
-                await screen.findByText("Some permissions were not granted")
-            ).toBeInTheDocument();
-            expect(
-                screen.queryByText("Permissions granted")
-            ).not.toBeInTheDocument();
-        });
-
-        it("says nothing was granted when nothing was", async () => {
-            createCssBulkGrants.mockResolvedValue({
-                data: [{ ...BAD_ROW }],
-            });
-
-            renderPage();
-            await upload();
-            await userEvent.click(
-                await screen.findByRole("button", { name: /^Grant / })
-            );
-
-            expect(
-                await screen.findByText("Nothing was granted")
-            ).toBeInTheDocument();
+            await screen.findByText("Submitted");
+            expect(screen.getAllByText("Submitted")).toHaveLength(1);
+            expect(screen.getByText(BAD_ROW.error as string)).toBeInTheDocument();
         });
     });
 
-    it("turns the table into outcomes once granting has run", async () => {
+    it("turns the table into a record of what was sent once received", async () => {
         renderPage();
         await upload();
         await userEvent.click(
             await screen.findByRole("button", { name: "Grant 1 permission" })
         );
 
-        // "Ready" was a promise; "Granted" is a report, and the heading says so.
-        expect(await screen.findByText("Granted")).toBeInTheDocument();
-        // On the card - the toast says the same thing, and says it briefly.
+        expect(await screen.findByText("Submitted")).toBeInTheDocument();
         const card = document.querySelectorAll(".bulk-grant-card")[1] as HTMLElement;
+        expect(within(card).getByText("Received")).toBeInTheDocument();
         expect(
-            within(card).getByText(/1 of 2 row\(s\) granted/)
+            within(card).getByText(/upload the same file again/)
         ).toBeInTheDocument();
         expect(
             screen.getByRole("button", { name: "Done" })
