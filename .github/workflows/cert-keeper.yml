@@ -1,0 +1,52 @@
+name: Cert Keeper
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run. True = validate only, false = apply."
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "false"
+
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  cert-keeper:
+    name: Cert Keeper (dry_run=${{ inputs.dry_run }})
+    environment: prod
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - name: Require pre-supplied TLS secrets
+        env:
+          TLS_CERTIFICATE: ${{ secrets.TLS_CERTIFICATE }}
+          TLS_PRIVATE_KEY: ${{ secrets.TLS_PRIVATE_KEY }}
+          TLS_CA_CERTIFICATE: ${{ secrets.TLS_CA_CERTIFICATE }}
+        run: |
+          if [ -z "$TLS_CERTIFICATE" ] || [ -z "$TLS_PRIVATE_KEY" ] || [ -z "$TLS_CA_CERTIFICATE" ]; then
+            echo "::error::Pre-supplied mode requires non-empty TLS_CERTIFICATE, TLS_PRIVATE_KEY, and TLS_CA_CERTIFICATE secrets in the prod environment."
+            exit 1
+          fi
+
+      - uses: bcgov/actions-openshift/cert-keeper@47805d2fc4e919382757c1fbeb68d39313abe64f # v0.11.0
+        with:
+          hostname: forestaccess.nrs.gov.bc.ca
+          route_name: nr-fam-vanity-url
+          target_service: nr-fam-prod-frontend
+          tls_certificate: ${{ secrets.TLS_CERTIFICATE }}
+          tls_private_key: ${{ secrets.TLS_PRIVATE_KEY }}
+          tls_ca_certificate: ${{ secrets.TLS_CA_CERTIFICATE }}
+          dry_run: ${{ inputs.dry_run }}
+          oc_namespace: ${{ secrets.OC_NAMESPACE }}
+          oc_server: ${{ vars.OC_SERVER }}
+          oc_token: ${{ secrets.OC_TOKEN }}
