@@ -188,6 +188,30 @@ public class PermissionAuditWriteService {
   }
 
   /**
+   * Record that a role's name or description changed.
+   *
+   * <p>No target user, like the other role changes. The previous text is kept
+   * because CSS keeps none: after the swap, this row is the only place the old
+   * name survives.
+   */
+  @Transactional
+  public void storeRoleUpdated(
+      Requester requester,
+      int cssIntegrationId,
+      String cssEnvironment,
+      String roleCode,
+      String roleName,
+      String description,
+      String previousRoleName,
+      String previousDescription) {
+
+    save(requester, null, null, cssIntegrationId, cssEnvironment,
+        PrivilegeChangeType.UPDATE_ROLE,
+        ca.bc.gov.nrs.fam.dto.RoleUpdateDetailsDto.of(
+            roleCode, roleName, description, previousRoleName, previousDescription));
+  }
+
+  /**
    * Null for an unscoped role, rather than the CLIENT default the grant path
    * uses: there, a role is always scoped by something and CLIENT is the older of
    * the two. Here "no scope required" is a real answer and must not read as

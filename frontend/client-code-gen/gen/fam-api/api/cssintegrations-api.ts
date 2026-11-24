@@ -38,6 +38,8 @@ import { CssDelegatedAdminRequest } from '../model';
 // @ts-ignore
 import { CssRoleBulkCreateResultDto } from '../model';
 // @ts-ignore
+import { CssRoleBulkUpdateResultDto } from '../model';
+// @ts-ignore
 import { CssRoleCreateRequest } from '../model';
 // @ts-ignore
 import { CssRoleDeleteResultDto } from '../model';
@@ -47,6 +49,8 @@ import { CssRoleManagementApplicationDto } from '../model';
 import { CssRoleMemberCountDto } from '../model';
 // @ts-ignore
 import { CssRoleOptionDto } from '../model';
+// @ts-ignore
+import { CssRoleUpdateRequest } from '../model';
 // @ts-ignore
 import { CssUserRoleAssignmentRequest } from '../model';
 // @ts-ignore
@@ -1026,6 +1030,106 @@ export const CSSIntegrationsApiAxiosParamCreator = function (configuration?: Con
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary Change a role\'s name and description; the role code is unchanged
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {string} roleName 
+         * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateCssApplicationRole: async (integrationId: number, environment: string, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('updateCssApplicationRole', 'integrationId', integrationId)
+            // verify required parameter 'environment' is not null or undefined
+            assertParamExists('updateCssApplicationRole', 'environment', environment)
+            // verify required parameter 'roleName' is not null or undefined
+            assertParamExists('updateCssApplicationRole', 'roleName', roleName)
+            // verify required parameter 'cssRoleUpdateRequest' is not null or undefined
+            assertParamExists('updateCssApplicationRole', 'cssRoleUpdateRequest', cssRoleUpdateRequest)
+            const localVarPath = `/css-applications/{integrationId}/{environment}/roles/{roleName}`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"environment"}}`, encodeURIComponent(String(environment)))
+                .replace(`{${"roleName"}}`, encodeURIComponent(String(roleName)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssRoleUpdateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Change a role\'s name and description in every environment
+         * @param {number} integrationId 
+         * @param {string} roleName 
+         * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateCssApplicationRoleAllEnvironments: async (integrationId: number, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'integrationId' is not null or undefined
+            assertParamExists('updateCssApplicationRoleAllEnvironments', 'integrationId', integrationId)
+            // verify required parameter 'roleName' is not null or undefined
+            assertParamExists('updateCssApplicationRoleAllEnvironments', 'roleName', roleName)
+            // verify required parameter 'cssRoleUpdateRequest' is not null or undefined
+            assertParamExists('updateCssApplicationRoleAllEnvironments', 'cssRoleUpdateRequest', cssRoleUpdateRequest)
+            const localVarPath = `/css-applications/{integrationId}/roles/{roleName}`
+                .replace(`{${"integrationId"}}`, encodeURIComponent(String(integrationId)))
+                .replace(`{${"roleName"}}`, encodeURIComponent(String(roleName)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'PUT', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication bearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(cssRoleUpdateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -1343,6 +1447,37 @@ export const CSSIntegrationsApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.previewCssBulkGrants']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * 
+         * @summary Change a role\'s name and description; the role code is unchanged
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {string} roleName 
+         * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateCssApplicationRole(integrationId: number, environment: string, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssRoleOptionDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateCssApplicationRole(integrationId, environment, roleName, cssRoleUpdateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.updateCssApplicationRole']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Change a role\'s name and description in every environment
+         * @param {number} integrationId 
+         * @param {string} roleName 
+         * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateCssApplicationRoleAllEnvironments(integrationId: number, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<CssRoleBulkUpdateResultDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateCssApplicationRoleAllEnvironments(integrationId, roleName, cssRoleUpdateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['CSSIntegrationsApi.updateCssApplicationRoleAllEnvironments']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -1597,6 +1732,31 @@ export const CSSIntegrationsApiFactory = function (configuration?: Configuration
         previewCssBulkGrants(integrationId: number, environment: string, body: string, options?: any): AxiosPromise<CssBulkGrantPreviewDto> {
             return localVarFp.previewCssBulkGrants(integrationId, environment, body, options).then((request) => request(axios, basePath));
         },
+        /**
+         * 
+         * @summary Change a role\'s name and description; the role code is unchanged
+         * @param {number} integrationId 
+         * @param {string} environment 
+         * @param {string} roleName 
+         * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateCssApplicationRole(integrationId: number, environment: string, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: any): AxiosPromise<CssRoleOptionDto> {
+            return localVarFp.updateCssApplicationRole(integrationId, environment, roleName, cssRoleUpdateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Change a role\'s name and description in every environment
+         * @param {number} integrationId 
+         * @param {string} roleName 
+         * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateCssApplicationRoleAllEnvironments(integrationId: number, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: any): AxiosPromise<CssRoleBulkUpdateResultDto> {
+            return localVarFp.updateCssApplicationRoleAllEnvironments(integrationId, roleName, cssRoleUpdateRequest, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -1849,6 +2009,31 @@ export interface CSSIntegrationsApiInterface {
      * @memberof CSSIntegrationsApiInterface
      */
     previewCssBulkGrants(integrationId: number, environment: string, body: string, options?: RawAxiosRequestConfig): AxiosPromise<CssBulkGrantPreviewDto>;
+
+    /**
+     * 
+     * @summary Change a role\'s name and description; the role code is unchanged
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {string} roleName 
+     * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    updateCssApplicationRole(integrationId: number, environment: string, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleOptionDto>;
+
+    /**
+     * 
+     * @summary Change a role\'s name and description in every environment
+     * @param {number} integrationId 
+     * @param {string} roleName 
+     * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApiInterface
+     */
+    updateCssApplicationRoleAllEnvironments(integrationId: number, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<CssRoleBulkUpdateResultDto>;
 
 }
 
@@ -2143,6 +2328,35 @@ export class CSSIntegrationsApi extends BaseAPI implements CSSIntegrationsApiInt
      */
     public previewCssBulkGrants(integrationId: number, environment: string, body: string, options?: RawAxiosRequestConfig) {
         return CSSIntegrationsApiFp(this.configuration).previewCssBulkGrants(integrationId, environment, body, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Change a role\'s name and description; the role code is unchanged
+     * @param {number} integrationId 
+     * @param {string} environment 
+     * @param {string} roleName 
+     * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public updateCssApplicationRole(integrationId: number, environment: string, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).updateCssApplicationRole(integrationId, environment, roleName, cssRoleUpdateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Change a role\'s name and description in every environment
+     * @param {number} integrationId 
+     * @param {string} roleName 
+     * @param {CssRoleUpdateRequest} cssRoleUpdateRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CSSIntegrationsApi
+     */
+    public updateCssApplicationRoleAllEnvironments(integrationId: number, roleName: string, cssRoleUpdateRequest: CssRoleUpdateRequest, options?: RawAxiosRequestConfig) {
+        return CSSIntegrationsApiFp(this.configuration).updateCssApplicationRoleAllEnvironments(integrationId, roleName, cssRoleUpdateRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

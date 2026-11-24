@@ -857,6 +857,46 @@ describe("BulkGrant", () => {
         ).toBeInTheDocument();
     });
 
+    it("names the role and organization on a row refused over the person", async () => {
+        // Only the person was wrong; the role and organization were found, so
+        // they read the same as on the rows around it.
+        previewCssBulkGrants.mockResolvedValue({
+            data: {
+                rows: [
+                    {
+                        line_number: 2,
+                        user_name: "RDeines1",
+                        role_code: "FOM_SUBMITTER",
+                        role_display_name: "Submitter",
+                        forest_client_number: "00197427",
+                        forest_client_name: "SKWO:WECH FORESTRY LIMITED PARTNERSHIP",
+                        valid: false,
+                        already_granted: false,
+                        error: "No Business BCeID user is named RDeines1.",
+                    },
+                ],
+            },
+        });
+
+        renderPage();
+        await upload();
+
+        expect(await screen.findByText("Submitter")).toBeInTheDocument();
+        expect(screen.queryByText("FOM_SUBMITTER")).not.toBeInTheDocument();
+        expect(
+            screen.getByText("SKWO:WECH FORESTRY LIMITED PARTNERSHIP")
+        ).toBeInTheDocument();
+    });
+
+    it("shows the code as typed when the role itself does not exist", async () => {
+        previewCssBulkGrants.mockResolvedValue({ data: { rows: [BAD_ROW] } });
+
+        renderPage();
+        await upload();
+
+        expect(await screen.findByText("NOPE")).toBeInTheDocument();
+    });
+
     it("reports a whole-file refusal", async () => {
         // Empty, or too many rows - reported here rather than per row.
         previewCssBulkGrants.mockRejectedValue({

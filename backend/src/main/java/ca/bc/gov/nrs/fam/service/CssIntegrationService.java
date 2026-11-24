@@ -15,6 +15,8 @@ import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
 import ca.bc.gov.nrs.fam.dto.CssIntegrationDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleBulkCreateResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
+import ca.bc.gov.nrs.fam.dto.CssRoleBulkUpdateResultDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleUpdateRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleDeleteResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleMemberCountDto;
@@ -735,6 +737,289 @@ public class CssIntegrationService {
         describeScopes(definition.scopeTypes()));
 
     return created;
+  }
+
+  /**
+   * Change a role's name and description, leaving its code alone.
+   *
+   * <p><b>Safe by construction.</b> The text lives on two sidecar roles -
+   * {@code FAM:LABEL:<CODE>:<name>} and {@code FAM:DESC:<CODE>:<description>} -
+   * which are assigned to nobody and composed into nothing. Replacing them does
+   * not touch the role people hold, any role derived from it, or anybody's
+   * token. That is the reason the text was put on sidecars in the first place.
+   *
+   * <p><b>Swapped, not edited.</b> CSS can only create and delete a role's name,
+   * so the new sidecars are created first and the old ones deleted after. Two
+   * label sidecars for one code would make the displayed name a matter of which
+   * CSS lists last, so a failure part-way is undone - see
+   * {@link #applySidecarSwap}.
+   *
+   * <p>One environment. Roles are defined per environment in CSS, and the same
+   * code may carry different text in each; {@link #updateRoleInAllEnvironments}
+   * changes them together.
+   *
+   * @return the role as the picker will now see it
+   */
+  public CssRoleOptionDto updateRole(
+      int integrationId, String environment, String roleCode,
+      CssRoleUpdateRequest request, Requester requester) {
+
+    refuseSelfRoleManagement(integrationId);
+    RoleText text = validateRoleText(roleCode, request);
+
+    SidecarSwap swap = planSidecarSwap(integrationId, environment, roleCode, text)
+        .orElseThrow(() -> FamHttpException.notFound(ErrorCode.INVALID_OPERATION,
+            "No role named %s exists in this application.".formatted(roleCode)));
+
+    if (swap.unchanged()) {
+      // Nothing changed. No write, and no audit row for a change that did not happen.
+      return requireRoleOption(integrationId, environment, roleCode);
+    }
+
+    applySidecarSwap(integrationId, swap);
+    recordRename(integrationId, swap, text, requester);
+    return requireRoleOption(integrationId, environment, roleCode);
+  }
+
+  /**
+   * Change a role's name and description in every environment the application has.
+   *
+   * <p>The counterpart of {@link #createRoleInAllEnvironments}, and held to the
+   * same rules:
+   *
+   * <ul>
+   *   <li><b>Authority over every environment.</b> This writes to all of them, so
+   *       holding DEV alone must not rename the role in PROD.</li>
+   *   <li><b>Everything checked before anything is written.</b> A code missing
+   *       from one environment refuses the whole request, naming where - renaming
+   *       what fits would leave the environments disagreeing about what the role
+   *       is called, which is the drift this option exists to prevent.</li>
+   *   <li><b>All or nothing.</b> Should a later environment fail anyway, the ones
+   *       already renamed are put back, and the audit is written only once every
+   *       environment has succeeded.</li>
+   * </ul>
+   *
+   * <p>An environment whose text already matches is left alone and gets no audit
+   * row, so bringing one stray environment into line records one change, not three.
+   */
+  public CssRoleBulkUpdateResultDto updateRoleInAllEnvironments(
+      int integrationId, String roleCode, CssRoleUpdateRequest request, Requester requester) {
+
+    refuseSelfRoleManagement(integrationId);
+    RoleText text = validateRoleText(roleCode, request);
+    List<String> environments = environmentsOf(integrationId);
+
+    // Authorised here, not in the controller: only here are the environments known.
+    for (String environment : environments) {
+      authorizationService.requireRoleManagement(requester, integrationId, environment);
+    }
+
+    Map<String, SidecarSwap> swaps = new LinkedHashMap<>();
+    List<String> missing = new ArrayList<>();
+    for (String environment : environments) {
+      planSidecarSwap(integrationId, environment, roleCode, text).ifPresentOrElse(
+          swap -> swaps.put(environment, swap),
+          () -> missing.add(environment));
+    }
+    if (!missing.isEmpty()) {
+      throw FamHttpException.conflict(ErrorCode.INVALID_OPERATION,
+          ("There is no role named %s in %s, so it cannot be renamed in every environment. "
+              + "Nothing was changed.").formatted(roleCode, String.join(", ", missing)));
+    }
+
+    List<String> updated = new ArrayList<>();
+    List<String> unchanged = new ArrayList<>();
+    Map<String, SwapResult> applied = new LinkedHashMap<>();
+    for (SidecarSwap swap : swaps.values()) {
+      if (swap.unchanged()) {
+        unchanged.add(swap.environment());
+        continue;
+      }
+      try {
+        applied.put(swap.environment(), applySidecarSwap(integrationId, swap));
+        updated.add(swap.environment());
+      } catch (FamHttpException e) {
+        // This environment undid itself; put back the ones before it.
+        applied.forEach((environment, result) ->
+            undoSidecarSwap(integrationId, environment, result.created(), result.deleted()));
+        throw FamHttpException.internalError(ErrorCode.UNKNOWN_STATE,
+            ("The role could not be renamed in %s, so every environment has been left as "
+                + "it was. Try again in a moment.").formatted(swap.environment()));
+      }
+    }
+
+    // Only now, so a rolled-back attempt leaves no audit claiming it happened.
+    for (String environment : updated) {
+      recordRename(integrationId, swaps.get(environment), text, requester);
+    }
+
+    return new CssRoleBulkUpdateResultDto(roleCode, text.displayName(), updated, unchanged);
+  }
+
+  /** The integration's environments, as CSS lists them. */
+  private List<String> environmentsOf(int integrationId) {
+    List<String> environments = cssApiService.getIntegrations().stream()
+        .filter(integration -> integration.id() != null && integration.id() == integrationId)
+        .findFirst()
+        .map(CssIntegrationDto::environments)
+        .orElseThrow(() -> FamHttpException.notFound(ErrorCode.INVALID_APPLICATION_ID,
+            "No CSS integration %d.".formatted(integrationId)));
+    if (environments.isEmpty()) {
+      throw FamHttpException.badRequest(ErrorCode.INVALID_OPERATION,
+          "Integration %d has no environments.".formatted(integrationId));
+    }
+    return environments;
+  }
+
+  /** A rename's new text, trimmed; a blank description is none. */
+  private record RoleText(String displayName, String description) {}
+
+  private static RoleText validateRoleText(String roleCode, CssRoleUpdateRequest request) {
+    if (roleCode == null || roleCode.isBlank()
+        || CssRoleNaming.MARKERS.contains(roleCode) || CssRoleNaming.isSidecarRole(roleCode)) {
+      throw FamHttpException.badRequest(ErrorCode.INVALID_OPERATION,
+          "Only an application's own roles can be renamed.");
+    }
+    String displayName = request.roleName().trim();
+    String description = request.description() == null || request.description().isBlank()
+        ? null : request.description().trim();
+
+    for (String sidecar : sidecarsFor(roleCode, displayName, description)) {
+      if (sidecar.length() > CssRoleNaming.MAX_ROLE_NAME_LENGTH) {
+        throw FamHttpException.badRequest(ErrorCode.INVALID_REQUEST_PARAMETER,
+            "That name or description is too long to store for %s. Shorten it and try again."
+                .formatted(roleCode));
+      }
+    }
+    return new RoleText(displayName, description);
+  }
+
+  private static List<String> sidecarsFor(String roleCode, String displayName, String description) {
+    List<String> sidecars = new ArrayList<>();
+    sidecars.add(CssRoleNaming.buildLabelRoleName(roleCode, displayName));
+    if (description != null) {
+      sidecars.add(CssRoleNaming.buildDescriptionRoleName(roleCode, description));
+    }
+    return sidecars;
+  }
+
+  /** What renaming a role in one environment would replace, read before anything is written. */
+  private record SidecarSwap(
+      String environment, String roleCode, List<String> oldSidecars, List<String> newSidecars,
+      Set<String> existing, String previousName, String previousDescription) {
+
+    boolean unchanged() {
+      return new HashSet<>(oldSidecars).equals(new HashSet<>(newSidecars));
+    }
+  }
+
+  /** What one applied swap created and deleted, so it can be put back. */
+  private record SwapResult(List<String> created, List<String> deleted) {}
+
+  /**
+   * Read what renaming would change in one environment. Writes nothing.
+   *
+   * @return empty when the role does not exist in that environment
+   */
+  private Optional<SidecarSwap> planSidecarSwap(
+      int integrationId, String environment, String roleCode, RoleText text) {
+
+    List<CssRoleDto> roles = cssApiService.getRoles(integrationId, environment);
+    if (roles.stream().noneMatch(role -> roleCode.equals(role.name()))) {
+      return Optional.empty();
+    }
+
+    // Every sidecar this code has, not just the first: a hand-made duplicate, or
+    // a swap that failed before this code existed, goes too.
+    List<String> oldSidecars = roles.stream()
+        .map(CssRoleDto::name)
+        .filter(name -> CssRoleNaming.parseLabel(name)
+                .or(() -> CssRoleNaming.parseDescription(name))
+                .filter(label -> roleCode.equals(label.roleCode()))
+                .isPresent())
+        .toList();
+
+    return Optional.of(new SidecarSwap(
+        environment, roleCode, oldSidecars,
+        sidecarsFor(roleCode, text.displayName(), text.description()),
+        roles.stream().map(CssRoleDto::name).collect(java.util.stream.Collectors.toSet()),
+        sidecarText(roles, CssRoleNaming::parseLabel).get(roleCode),
+        sidecarText(roles, CssRoleNaming::parseDescription).get(roleCode)));
+  }
+
+  /**
+   * Create the new sidecars, then delete the old ones.
+   *
+   * <p>A failure part-way is undone before returning - what was created is
+   * deleted, what was deleted is created again - so the environment is left with
+   * its old text, and the caller is told it did not take.
+   */
+  private SwapResult applySidecarSwap(int integrationId, SidecarSwap swap) {
+    List<String> created = new ArrayList<>();
+    List<String> deleted = new ArrayList<>();
+    try {
+      for (String sidecar : swap.newSidecars()) {
+        if (!swap.existing().contains(sidecar)
+            && cssApiService.createRole(integrationId, swap.environment(), sidecar)) {
+          created.add(sidecar);
+        }
+      }
+      for (String sidecar : swap.oldSidecars()) {
+        if (!swap.newSidecars().contains(sidecar)) {
+          cssApiService.deleteRole(integrationId, swap.environment(), sidecar);
+          deleted.add(sidecar);
+        }
+      }
+    } catch (RuntimeException e) {
+      undoSidecarSwap(integrationId, swap.environment(), created, deleted);
+      log.warn("Could not update the name of {} on integration {} ({}); the previous name "
+          + "was put back: {}", swap.roleCode(), integrationId, swap.environment(),
+          e.getMessage());
+      throw FamHttpException.internalError(ErrorCode.UNKNOWN_STATE,
+          "The role's name could not be changed in CSS, so it has been left as it was. "
+              + "Try again in a moment.");
+    }
+    return new SwapResult(created, deleted);
+  }
+
+  private void recordRename(
+      int integrationId, SidecarSwap swap, RoleText text, Requester requester) {
+    log.info("Renamed {} on integration {} ({}) from \"{}\" to \"{}\".",
+        swap.roleCode(), integrationId, swap.environment(), swap.previousName(),
+        text.displayName());
+    auditWriteService.storeRoleUpdated(requester, integrationId, swap.environment(),
+        swap.roleCode(), text.displayName(), text.description(),
+        swap.previousName(), swap.previousDescription());
+  }
+
+  /**
+   * Put the old sidecars back after a swap that failed part-way.
+   *
+   * <p>Best effort, and logged loudly when it cannot be done: at that point the
+   * role may show the wrong name, or none, until someone fixes it in the console.
+   */
+  private void undoSidecarSwap(
+      int integrationId, String environment, List<String> created, List<String> deleted) {
+    for (String sidecar : deleted) {
+      try {
+        cssApiService.createRole(integrationId, environment, sidecar);
+      } catch (RuntimeException e) {
+        log.error("Could not restore {} on integration {} ({}) after a failed rename: {}. "
+            + "Recreate it in the CSS console.", sidecar, integrationId, environment,
+            e.getMessage());
+      }
+    }
+    rollback(integrationId, environment, created);
+  }
+
+  /** One role as the picker sees it, read back after a change. */
+  private CssRoleOptionDto requireRoleOption(
+      int integrationId, String environment, String roleCode) {
+    return getRoles(integrationId, environment).stream()
+        .filter(option -> roleCode.equals(option.name()))
+        .findFirst()
+        .orElseThrow(() -> FamHttpException.notFound(ErrorCode.INVALID_OPERATION,
+            "No role named %s exists in this application.".formatted(roleCode)));
   }
 
   /**

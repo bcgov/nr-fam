@@ -35,5 +35,15 @@ public enum PrivilegeChangeType {
    * in Keycloak takes it away from everyone holding it - so the row records how
    * many held it, which is the only place that number survives.
    */
-  DELETE_ROLE
+  DELETE_ROLE,
+
+  /**
+   * A role's name or description was changed.
+   *
+   * <p>Like the other two role types it has no target user. The role code - what
+   * people hold and applications authorise on - is never changed by this; only
+   * the text FAM shows beside it. The row records the text before and after,
+   * because CSS keeps no history of either.
+   */
+  UPDATE_ROLE
 }

@@ -22,6 +22,143 @@
     "bearerAuth" : [ ]
   } ],
   "paths" : {
+    "/css-applications/{integrationId}/{environment}/roles/{roleName}" : {
+      "put" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Change a role's name and description; the role code is unchanged",
+        "operationId" : "update_css_application_role",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "roleName",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssRoleUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssRoleOptionDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Remove a role, its sidecar and any roles derived from it",
+        "operationId" : "delete_css_application_role",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "environment",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "roleName",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssRoleDeleteResultDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/css-applications/{integrationId}/roles/{roleName}" : {
+      "put" : {
+        "tags" : [ "CSS Integrations" ],
+        "summary" : "Change a role's name and description in every environment",
+        "operationId" : "update_css_application_role_all_environments",
+        "parameters" : [ {
+          "name" : "integrationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "roleName",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CssRoleUpdateRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CssRoleBulkUpdateResultDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/css-applications/{integrationId}/{environment}/user-role-assignments" : {
       "get" : {
         "tags" : [ "CSS Integrations" ],
@@ -1320,52 +1457,131 @@
           }
         }
       }
-    },
-    "/css-applications/{integrationId}/{environment}/roles/{roleName}" : {
-      "delete" : {
-        "tags" : [ "CSS Integrations" ],
-        "summary" : "Remove a role, its sidecar and any roles derived from it",
-        "operationId" : "delete_css_application_role",
-        "parameters" : [ {
-          "name" : "integrationId",
-          "in" : "path",
-          "required" : true,
-          "schema" : {
-            "type" : "integer",
-            "format" : "int32"
-          }
-        }, {
-          "name" : "environment",
-          "in" : "path",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        }, {
-          "name" : "roleName",
-          "in" : "path",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "OK",
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/CssRoleDeleteResultDto"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components" : {
     "schemas" : {
+      "CssRoleUpdateRequest" : {
+        "properties" : {
+          "role_name" : {
+            "type" : "string",
+            "example" : "View All",
+            "maxLength" : 150,
+            "minLength" : 0
+          },
+          "description" : {
+            "type" : "string",
+            "example" : "Allows users to view all the FSPs but not edit",
+            "maxLength" : 180,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "role_name" ]
+      },
+      "CssRoleOptionDto" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "display_name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "role_code" : {
+            "type" : "string"
+          },
+          "composite" : {
+            "type" : "boolean"
+          },
+          "composites" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "role_type_district" : {
+            "type" : "boolean"
+          },
+          "role_type_region" : {
+            "type" : "boolean"
+          },
+          "role_type_client" : {
+            "type" : "boolean"
+          },
+          "grantable_districts" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "grantable_regions" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "grantable_forest_clients" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FamForestClientDto"
+            }
+          }
+        },
+        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district", "role_type_region" ]
+      },
+      "FamForestClientDto" : {
+        "properties" : {
+          "client_name" : {
+            "type" : "string"
+          },
+          "forest_client_number" : {
+            "type" : "string"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusDto"
+          }
+        },
+        "required" : [ "forest_client_number" ]
+      },
+      "FamForestClientStatusDto" : {
+        "properties" : {
+          "status_code" : {
+            "$ref" : "#/components/schemas/FamForestClientStatusType"
+          },
+          "description" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FamForestClientStatusType" : {
+        "type" : "string",
+        "enum" : [ "A", "I" ]
+      },
+      "CssRoleBulkUpdateResultDto" : {
+        "properties" : {
+          "role_code" : {
+            "type" : "string"
+          },
+          "role_name" : {
+            "type" : "string"
+          },
+          "updated_environments" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "unchanged_environments" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "role_code", "role_name", "unchanged_environments", "updated_environments" ]
+      },
       "CssScopeSelection" : {
         "properties" : {
           "type" : {
@@ -1476,87 +1692,6 @@
           }
         },
         "required" : [ "role_code", "role_name" ]
-      },
-      "CssRoleOptionDto" : {
-        "properties" : {
-          "name" : {
-            "type" : "string"
-          },
-          "display_name" : {
-            "type" : "string"
-          },
-          "description" : {
-            "type" : "string"
-          },
-          "role_code" : {
-            "type" : "string"
-          },
-          "composite" : {
-            "type" : "boolean"
-          },
-          "composites" : {
-            "type" : "array",
-            "items" : {
-              "type" : "string"
-            }
-          },
-          "role_type_district" : {
-            "type" : "boolean"
-          },
-          "role_type_region" : {
-            "type" : "boolean"
-          },
-          "role_type_client" : {
-            "type" : "boolean"
-          },
-          "grantable_districts" : {
-            "type" : "array",
-            "items" : {
-              "type" : "string"
-            }
-          },
-          "grantable_regions" : {
-            "type" : "array",
-            "items" : {
-              "type" : "string"
-            }
-          },
-          "grantable_forest_clients" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/components/schemas/FamForestClientDto"
-            }
-          }
-        },
-        "required" : [ "composite", "composites", "name", "role_type_client", "role_type_district", "role_type_region" ]
-      },
-      "FamForestClientDto" : {
-        "properties" : {
-          "client_name" : {
-            "type" : "string"
-          },
-          "forest_client_number" : {
-            "type" : "string"
-          },
-          "status" : {
-            "$ref" : "#/components/schemas/FamForestClientStatusDto"
-          }
-        },
-        "required" : [ "forest_client_number" ]
-      },
-      "FamForestClientStatusDto" : {
-        "properties" : {
-          "status_code" : {
-            "$ref" : "#/components/schemas/FamForestClientStatusType"
-          },
-          "description" : {
-            "type" : "string"
-          }
-        }
-      },
-      "FamForestClientStatusType" : {
-        "type" : "string",
-        "enum" : [ "A", "I" ]
       },
       "CssAdministratorAppointRequest" : {
         "properties" : {
@@ -1807,7 +1942,7 @@
       },
       "PrivilegeChangeType" : {
         "type" : "string",
-        "enum" : [ "GRANT", "REVOKE", "UPDATE", "CREATE_ROLE", "DELETE_ROLE" ]
+        "enum" : [ "GRANT", "REVOKE", "UPDATE", "CREATE_ROLE", "DELETE_ROLE", "UPDATE_ROLE" ]
       },
       "PrivilegeDetailsDto" : {
         "properties" : {

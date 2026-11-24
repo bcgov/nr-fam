@@ -34,7 +34,23 @@ export const validateRoleForm = (form: ManageRolesFormType): RoleFormErrors => {
             "Use letters, digits and underscores only, starting with a letter, e.g. FREP_ADMINISTRATOR";
     }
 
-    const name = form.roleName.trim();
+    return { ...errors, ...validateRoleText(form.roleName, form.description) };
+};
+
+/**
+ * The name and description rules alone.
+ *
+ * Shared by the create form and the edit modal. Editing never touches the
+ * code - existing roles may predate the code pattern, and the code is what
+ * people hold - so the edit modal checks only these.
+ */
+export const validateRoleText = (
+    roleName: string,
+    description: string
+): RoleFormErrors => {
+    const errors: RoleFormErrors = {};
+
+    const name = roleName.trim();
     if (!name) {
         errors.roleName = "A role name is required";
     } else if (name.length > MAX_ROLE_NAME_LENGTH) {
@@ -42,7 +58,7 @@ export const validateRoleForm = (form: ManageRolesFormType): RoleFormErrors => {
     }
 
     // Optional: a role whose name says enough needs no sentence.
-    if (form.description.trim().length > MAX_DESCRIPTION_LENGTH) {
+    if (description.trim().length > MAX_DESCRIPTION_LENGTH) {
         errors.description = `Keep the description under ${MAX_DESCRIPTION_LENGTH} characters`;
     }
 
