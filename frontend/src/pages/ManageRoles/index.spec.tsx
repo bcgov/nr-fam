@@ -18,6 +18,8 @@ const getCssApplicationRoleMemberCounts = vi.fn();
 const createCssApplicationRole = vi.fn();
 const createCssApplicationRoleAllEnvironments = vi.fn();
 const deleteCssApplicationRole = vi.fn();
+const updateCssApplicationRole = vi.fn();
+const updateCssApplicationRoleAllEnvironments = vi.fn();
 
 vi.mock("@/services/ApiServiceFactory", () => ({
     AdminMgmtApiService: {
@@ -42,6 +44,10 @@ vi.mock("@/services/ApiServiceFactory", () => ({
                 environment: string,
                 roleName: string
             ) => deleteCssApplicationRole(integrationId, environment, roleName),
+            updateCssApplicationRole: (...args: unknown[]) =>
+                updateCssApplicationRole(...args),
+            updateCssApplicationRoleAllEnvironments: (...args: unknown[]) =>
+                updateCssApplicationRoleAllEnvironments(...args),
         },
     },
     AppActlApiService: {},
@@ -137,6 +143,174 @@ describe("ManageRoles", () => {
         deleteCssApplicationRole
             .mockReset()
             .mockResolvedValue({ data: { role_name: "FREP_EDITOR" } });
+        updateCssApplicationRole.mockReset().mockResolvedValue({
+            data: { ...EDITOR, display_name: "District editor" },
+        });
+        updateCssApplicationRoleAllEnvironments.mockReset().mockResolvedValue({
+            data: {
+                role_code: "FREP_EDITOR",
+                role_name: "District editor",
+                updated_environments: ["dev", "test"],
+                unchanged_environments: ["prod"],
+            },
+        });
+    });
+
+    describe("editing a role", () => {
+        const openEdit = async () => {
+            renderPage();
+            await chooseApplication();
+            await userEvent.click(
+                await screen.findByRole("button", { name: "Edit FREP_EDITOR" })
+            );
+            return screen.findByRole("dialog", { name: /Edit role/ });
+        };
+
+        it("opens with the role's current text, and the code read-only", async () => {
+            const dialog = await openEdit();
+
+            expect(within(dialog).getByLabelText("Role code")).toHaveValue(
+                "FREP_EDITOR"
+            );
+            expect(
+                within(dialog).getByLabelText("Role code")
+            ).toHaveAttribute("readonly");
+            expect(within(dialog).getByLabelText("Role name")).toHaveValue(
+                "Editor"
+            );
+            expect(
+                within(dialog).getByLabelText("Description (Optional)")
+            ).toHaveValue("Edit within a district");
+        });
+
+        it("offers no save until something has changed", async () => {
+            const dialog = await openEdit();
+
+            expect(
+                within(dialog).getByRole("button", { name: "Save" })
+            ).toBeDisabled();
+        });
+
+        it("saves the new name and description, never the code", async () => {
+            const dialog = await openEdit();
+            const name = within(dialog).getByLabelText("Role name");
+            await userEvent.clear(name);
+            await userEvent.type(name, "District editor");
+
+            await userEvent.click(
+                within(dialog).getByRole("button", { name: "Save" })
+            );
+
+            await waitFor(() =>
+                expect(updateCssApplicationRole).toHaveBeenCalledWith(
+                    6538,
+                    "dev",
+                    "FREP_EDITOR",
+                    {
+                        role_name: "District editor",
+                        description: "Edit within a district",
+                    }
+                )
+            );
+            expect(await screen.findByText("Role updated")).toBeInTheDocument();
+            await waitFor(() =>
+                expect(
+                    screen.queryByRole("dialog", { name: /Edit role/ })
+                ).not.toBeInTheDocument()
+            );
+        });
+
+        it("renames it in every environment when asked, saying where it changed", async () => {
+            const dialog = await openEdit();
+            await userEvent.click(
+                within(dialog).getByLabelText("Update in all environments")
+            );
+            const name = within(dialog).getByLabelText("Role name");
+            await userEvent.clear(name);
+            await userEvent.type(name, "District editor");
+
+            await userEvent.click(
+                within(dialog).getByRole("button", {
+                    name: "Save in all environments",
+                })
+            );
+
+            await waitFor(() =>
+                expect(
+                    updateCssApplicationRoleAllEnvironments
+                ).toHaveBeenCalledWith(6538, "FREP_EDITOR", {
+                    role_name: "District editor",
+                    description: "Edit within a district",
+                })
+            );
+            expect(updateCssApplicationRole).not.toHaveBeenCalled();
+            // Only where it changed - prod already matched.
+            expect(
+                await screen.findByText(/District editor in dev, test\./)
+            ).toBeInTheDocument();
+        });
+
+        it("may save everywhere even when this environment already matches", async () => {
+            // Bringing a stray environment into line is the point of the option.
+            const dialog = await openEdit();
+            const save = within(dialog).getByRole("button", { name: "Save" });
+            expect(save).toBeDisabled();
+
+            await userEvent.click(
+                within(dialog).getByLabelText("Update in all environments")
+            );
+
+            expect(
+                within(dialog).getByRole("button", {
+                    name: "Save in all environments",
+                })
+            ).toBeEnabled();
+        });
+
+        it("does not offer every environment to someone who cannot manage them all", async () => {
+            getCssApplicationsForRoleManagement.mockResolvedValue({
+                data: [{ ...FREP, every_environment: false }],
+            });
+            const dialog = await openEdit();
+
+            expect(
+                within(dialog).queryByLabelText("Update in all environments")
+            ).not.toBeInTheDocument();
+        });
+
+        it("refuses an empty name without sending it", async () => {
+            const dialog = await openEdit();
+            await userEvent.clear(within(dialog).getByLabelText("Role name"));
+
+            await userEvent.click(
+                within(dialog).getByRole("button", { name: "Save" })
+            );
+
+            expect(
+                await within(dialog).findByText("A role name is required")
+            ).toBeInTheDocument();
+            expect(updateCssApplicationRole).not.toHaveBeenCalled();
+        });
+
+        it("keeps the modal open with the reason when saving fails", async () => {
+            updateCssApplicationRole.mockRejectedValue(new Error("boom"));
+            const dialog = await openEdit();
+            await userEvent.type(
+                within(dialog).getByLabelText("Role name"),
+                " (district)"
+            );
+
+            await userEvent.click(
+                within(dialog).getByRole("button", { name: "Save" })
+            );
+
+            expect(
+                await within(dialog).findByText(/could not be updated|boom/)
+            ).toBeInTheDocument();
+            expect(
+                screen.getByRole("dialog", { name: /Edit role/ })
+            ).toBeInTheDocument();
+        });
     });
 
     it("shows nothing but the picker until an application is chosen", async () => {

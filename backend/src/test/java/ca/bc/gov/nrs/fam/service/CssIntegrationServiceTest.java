@@ -1275,6 +1275,226 @@ class CssIntegrationServiceTest {
   }
 
   // ---------------------------------------------------------------------------
+  // Renaming a role
+  // ---------------------------------------------------------------------------
+
+  @org.junit.jupiter.api.Nested
+  @DisplayName("renaming a role")
+  class RenameRole {
+
+    private static final String LABEL = "FAM:LABEL:FOM_SUBMITTER:Submitter";
+    private static final String DESC = "FAM:DESC:FOM_SUBMITTER:Submits FOMs";
+
+    @org.junit.jupiter.api.BeforeEach
+    void existingRole() {
+      givenRoles(role("FOM_SUBMITTER", true), role(LABEL, false), role(DESC, false),
+          role("FOM_SUBMITTER_FOREST_CLIENT-00169257", false));
+    }
+
+    private ca.bc.gov.nrs.fam.dto.CssRoleUpdateRequest request(String name, String description) {
+      return new ca.bc.gov.nrs.fam.dto.CssRoleUpdateRequest(name, description);
+    }
+
+    @Test
+    @DisplayName("swaps the sidecars and never touches the role people hold")
+    void swapsSidecars() {
+      service.updateRole(INTEGRATION, ENV, "FOM_SUBMITTER",
+          request("Licensee submitter", "Submits FOMs for a licensee"), DEFINER);
+
+      verify(cssApiService).createRole(INTEGRATION, ENV,
+          "FAM:LABEL:FOM_SUBMITTER:Licensee submitter");
+      verify(cssApiService).createRole(INTEGRATION, ENV,
+          "FAM:DESC:FOM_SUBMITTER:Submits FOMs for a licensee");
+      verify(cssApiService).deleteRole(INTEGRATION, ENV, LABEL);
+      verify(cssApiService).deleteRole(INTEGRATION, ENV, DESC);
+
+      // The code, and every role derived from it, are what people hold.
+      verify(cssApiService, never()).deleteRole(INTEGRATION, ENV, "FOM_SUBMITTER");
+      verify(cssApiService, never())
+          .deleteRole(INTEGRATION, ENV, "FOM_SUBMITTER_FOREST_CLIENT-00169257");
+      verify(cssApiService, never()).assignUserRoles(anyInt(), anyString(), anyString(), anyList());
+    }
+
+    @Test
+    @DisplayName("records the text before and after, since CSS keeps neither")
+    void auditsBeforeAndAfter() {
+      service.updateRole(INTEGRATION, ENV, "FOM_SUBMITTER",
+          request("Licensee submitter", "Submits FOMs for a licensee"), DEFINER);
+
+      verify(auditWriteService).storeRoleUpdated(DEFINER, INTEGRATION, ENV, "FOM_SUBMITTER",
+          "Licensee submitter", "Submits FOMs for a licensee", "Submitter", "Submits FOMs");
+    }
+
+    @Test
+    @DisplayName("a blank description removes the description sidecar")
+    void blankDescriptionRemovesIt() {
+      service.updateRole(INTEGRATION, ENV, "FOM_SUBMITTER", request("Submitter", "  "), DEFINER);
+
+      verify(cssApiService).deleteRole(INTEGRATION, ENV, DESC);
+      verify(cssApiService, never()).deleteRole(INTEGRATION, ENV, LABEL);
+      verify(cssApiService, never()).createRole(anyInt(), anyString(), startsWith("FAM:DESC:"));
+    }
+
+    @Test
+    @DisplayName("nothing changed is nothing written and nothing audited")
+    void unchangedIsANoOp() {
+      service.updateRole(INTEGRATION, ENV, "FOM_SUBMITTER",
+          request(" Submitter ", "Submits FOMs"), DEFINER);
+
+      verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+      verify(cssApiService, never()).deleteRole(anyInt(), anyString(), anyString());
+      verify(auditWriteService, never()).storeRoleUpdated(
+          any(), anyInt(), anyString(), anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("a failure part-way puts the old name back")
+    void failurePartWayIsUndone() {
+      when(cssApiService.createRole(anyInt(), anyString(), anyString())).thenReturn(true);
+      doThrow(new IllegalStateException("CSS is down"))
+          .when(cssApiService).deleteRole(INTEGRATION, ENV, DESC);
+
+      assertThatThrownBy(() -> service.updateRole(INTEGRATION, ENV, "FOM_SUBMITTER",
+          request("Licensee submitter", "Submits FOMs for a licensee"), DEFINER))
+          .isInstanceOf(ca.bc.gov.nrs.fam.exception.FamHttpException.class)
+          .hasMessageContaining("left as it was");
+
+      // The label was deleted before the description failed: it comes back, and
+      // the new pair goes.
+      verify(cssApiService).createRole(INTEGRATION, ENV, LABEL);
+      verify(cssApiService).deleteRole(INTEGRATION, ENV,
+          "FAM:LABEL:FOM_SUBMITTER:Licensee submitter");
+      verify(cssApiService).deleteRole(INTEGRATION, ENV,
+          "FAM:DESC:FOM_SUBMITTER:Submits FOMs for a licensee");
+      verify(auditWriteService, never()).storeRoleUpdated(
+          any(), anyInt(), anyString(), anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("refuses a role that does not exist")
+    void unknownRole() {
+      assertThatThrownBy(() -> service.updateRole(INTEGRATION, ENV, "NOPE",
+          request("Name", null), DEFINER))
+          .isInstanceOf(ca.bc.gov.nrs.fam.exception.FamHttpException.class)
+          .hasMessageContaining("No role named NOPE");
+    }
+
+    @Test
+    @DisplayName("refuses to rename a sidecar or a scope marker")
+    void refusesNonRoles() {
+      assertThatThrownBy(() -> service.updateRole(INTEGRATION, ENV, LABEL,
+          request("Name", null), DEFINER))
+          .isInstanceOf(ca.bc.gov.nrs.fam.exception.FamHttpException.class);
+      assertThatThrownBy(() -> service.updateRole(INTEGRATION, ENV, "HAS_FOREST_CLIENT",
+          request("Name", null), DEFINER))
+          .isInstanceOf(ca.bc.gov.nrs.fam.exception.FamHttpException.class);
+    }
+  }
+
+  @org.junit.jupiter.api.Nested
+  @DisplayName("renaming a role in every environment")
+  class RenameRoleEverywhere {
+
+    private static final List<String> ENVIRONMENTS = List.of("dev", "test", "prod");
+
+    private String label(String name) {
+      return "FAM:LABEL:FOM_SUBMITTER:" + name;
+    }
+
+    /** One environment's roles: the role, and its name as given. */
+    private void givenIn(String environment, String name) {
+      when(cssApiService.getRoles(INTEGRATION, environment)).thenReturn(List.of(
+          role("FOM_SUBMITTER", true), role(label(name), false)));
+    }
+
+    private ca.bc.gov.nrs.fam.dto.CssRoleBulkUpdateResultDto rename(String name) {
+      return service.updateRoleInAllEnvironments(INTEGRATION, "FOM_SUBMITTER",
+          new ca.bc.gov.nrs.fam.dto.CssRoleUpdateRequest(name, null), DEFINER);
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void threeEnvironments() {
+      when(cssApiService.getIntegrations()).thenReturn(List.of(new CssIntegrationDto(
+          INTEGRATION, "FOM", null, ENVIRONMENTS, "applied", null, null)));
+      ENVIRONMENTS.forEach(environment -> givenIn(environment, "Submitter"));
+    }
+
+    @Test
+    @DisplayName("renames it in each, and audits each")
+    void renamesEverywhere() {
+      var result = rename("Licensee submitter");
+
+      assertThat(result.updatedEnvironments()).containsExactlyElementsOf(ENVIRONMENTS);
+      for (String environment : ENVIRONMENTS) {
+        verify(cssApiService).createRole(INTEGRATION, environment, label("Licensee submitter"));
+        verify(cssApiService).deleteRole(INTEGRATION, environment, label("Submitter"));
+        verify(auditWriteService).storeRoleUpdated(DEFINER, INTEGRATION, environment,
+            "FOM_SUBMITTER", "Licensee submitter", null, "Submitter", null);
+      }
+    }
+
+    @Test
+    @DisplayName("an environment that already matches is left alone and not audited")
+    void skipsMatchingEnvironments() {
+      givenIn("prod", "Licensee submitter");
+
+      var result = rename("Licensee submitter");
+
+      assertThat(result.updatedEnvironments()).containsExactly("dev", "test");
+      assertThat(result.unchangedEnvironments()).containsExactly("prod");
+      verify(cssApiService, never()).createRole(eq(INTEGRATION), eq("prod"), anyString());
+      verify(auditWriteService, never()).storeRoleUpdated(
+          any(), anyInt(), eq("prod"), anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("a role missing from one environment changes nothing anywhere")
+    void missingSomewhereChangesNothing() {
+      when(cssApiService.getRoles(INTEGRATION, "test")).thenReturn(List.of());
+
+      assertThatThrownBy(() -> rename("Licensee submitter"))
+          .isInstanceOf(FamHttpException.class)
+          .hasMessageContaining("no role named FOM_SUBMITTER in test")
+          .hasMessageContaining("Nothing was changed");
+      verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+      verify(cssApiService, never()).deleteRole(anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("a failure in a later environment puts the earlier ones back")
+    void laterFailureUndoesEarlier() {
+      when(cssApiService.createRole(anyInt(), anyString(), anyString())).thenReturn(true);
+      doThrow(new IllegalStateException("CSS is down"))
+          .when(cssApiService).deleteRole(INTEGRATION, "test", label("Submitter"));
+
+      assertThatThrownBy(() -> rename("Licensee submitter"))
+          .isInstanceOf(FamHttpException.class)
+          .hasMessageContaining("could not be renamed in test")
+          .hasMessageContaining("every environment has been left as it was");
+
+      // dev had been renamed: its old label comes back and the new one goes.
+      verify(cssApiService).createRole(INTEGRATION, "dev", label("Submitter"));
+      verify(cssApiService).deleteRole(INTEGRATION, "dev", label("Licensee submitter"));
+      // prod was never reached.
+      verify(cssApiService, never()).createRole(eq(INTEGRATION), eq("prod"), anyString());
+      verify(auditWriteService, never()).storeRoleUpdated(
+          any(), anyInt(), anyString(), anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("needs authority over every environment, not just one")
+    void needsEveryEnvironment() {
+      doThrow(FamHttpException.forbidden(
+              ca.bc.gov.nrs.fam.constants.ErrorCode.PERMISSION_REQUIRED, "not prod"))
+          .when(authorizationService).requireRoleManagement(DEFINER, INTEGRATION, "prod");
+
+      assertThatThrownBy(() -> rename("Licensee submitter"))
+          .isInstanceOf(FamHttpException.class);
+      verify(cssApiService, never()).createRole(anyInt(), anyString(), anyString());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Role deletion
   // ---------------------------------------------------------------------------
 

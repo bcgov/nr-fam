@@ -11,10 +11,12 @@ import {
     TableRow,
     TextInput,
 } from "@carbon/react";
+import { Edit } from "@carbon/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
     CssRoleManagementApplicationDto,
     CssRoleBulkCreateResultDto,
+    CssRoleBulkUpdateResultDto,
     CssRoleOptionDto,
 } from "fam-api";
 import { useMemo, useState, type FC } from "react";
@@ -46,6 +48,7 @@ import {
     type RoleFormErrors,
 } from "./validation";
 import "./ManageRoles.css";
+import { EditRoleModal } from "./EditRoleModal";
 import { RemoveButton } from "@/components/RemoveButton";
 import { matchesTypedTextBeside } from "@/utils/ComboBoxFilter";
 
@@ -109,6 +112,10 @@ export const ManageRoles: FC = () => {
     const [pendingDelete, setPendingDelete] = useState<CssRoleOptionDto | null>(
         null
     );
+    /** The role open in the edit modal, if any. */
+    const [pendingEdit, setPendingEdit] = useState<CssRoleOptionDto | null>(null);
+    /** Why the last save failed - shown in the modal, which stays open to retry. */
+    const [editError, setEditError] = useState<string | null>(null);
 
     /**
      * The application as the picker labels it, for wording that names it.
@@ -310,6 +317,71 @@ export const ManageRoles: FC = () => {
                 )
             );
         },
+    });
+
+    /*
+        Renaming touches no one's access: the name and description live on
+        sidecar roles nobody holds, and the code is not editable. So a plain
+        toast, and the same invalidation as any other role change - pickers and
+        permission pills everywhere show the name.
+    */
+    const updateMutation = useMutation({
+        mutationFn: async (change: {
+            role: CssRoleOptionDto;
+            roleName: string;
+            description: string;
+            everywhere: boolean;
+        }) => {
+            const request = {
+                role_name: change.roleName,
+                description: change.description || undefined,
+            };
+            const api = AdminMgmtApiService.cssIntegrationsApi;
+            if (change.everywhere) {
+                const res = await api.updateCssApplicationRoleAllEnvironments(
+                    selectedApp!.integration_id,
+                    change.role.name,
+                    request
+                );
+                return {
+                    name: res.data.role_code,
+                    displayName: res.data.role_name,
+                    where: describeEnvironments(res.data),
+                    environments: res.data.updated_environments,
+                };
+            }
+            const res = await api.updateCssApplicationRole(
+                selectedApp!.integration_id,
+                selectedApp!.environment,
+                change.role.name,
+                request
+            );
+            return {
+                name: res.data.name,
+                displayName: res.data.display_name ?? res.data.name,
+                where: `in ${applicationName}`,
+                environments: [selectedApp!.environment],
+            };
+        },
+        onSuccess: (updated) => {
+            setPendingEdit(null);
+            setEditError(null);
+            permissionToast.succeeded(
+                "Role updated",
+                `${updated.name} is now called ${updated.displayName} ${updated.where}.`
+            );
+            // Each environment that changed: the caches are per environment,
+            // and pickers elsewhere may be holding another one's names.
+            for (const environment of updated.environments) {
+                invalidateAfterRoleChange(
+                    queryClient,
+                    selectedApp?.integration_id,
+                    environment
+                );
+            }
+        },
+        onError: (error: unknown) =>
+            setEditError(describeError(error, "The role could not be updated.")),
     });
 
     const deleteMutation = useMutation({
@@ -685,17 +757,34 @@ export const ManageRoles: FC = () => {
                                                             )}
                                                         </TableCell>
                                                         <TableCell>
-                                                            <RemoveButton
-                                                                accessible={`Remove ${role.name}`}
-                                                                disabled={
-                                                                    deleteMutation.isPending
-                                                                }
-                                                                onClick={() =>
-                                                                    setPendingDelete(
-                                                                        role
-                                                                    )
-                                                                }
-                                                            />
+                                                            <div className="nowrap-cell action-button-group">
+                                                                <Button
+                                                                    kind="ghost"
+                                                                    size="sm"
+                                                                    className="row-action"
+                                                                    renderIcon={Edit}
+                                                                    iconDescription={`Edit ${role.name}`}
+                                                                    aria-label={`Edit ${role.name}`}
+                                                                    title={`Edit ${role.name}`}
+                                                                    onClick={() => {
+                                                                        setEditError(null);
+                                                                        setPendingEdit(role);
+                                                                    }}
+                                                                >
+                                                                    Edit
+                                                                </Button>
+                                                                <RemoveButton
+                                                                    accessible={`Remove ${role.name}`}
+                                                                    disabled={
+                                                                        deleteMutation.isPending
+                                                                    }
+                                                                    onClick={() =>
+                                                                        setPendingDelete(
+                                                                            role
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 );
@@ -717,6 +806,32 @@ export const ManageRoles: FC = () => {
                 administrator needs before agreeing, so it is stated plainly
                 rather than left to be discovered afterwards.
             */}
+            {/*
+                Mounted only while open. Carbon keeps a closed modal in the
+                page, and its fields carry the same labels as the create form's
+                - two "Role name" inputs on one page, one of them invisible.
+            */}
+            {pendingEdit ? (
+                <EditRoleModal
+                    role={pendingEdit}
+                    saving={updateMutation.isPending}
+                    error={editError}
+                    onCancel={() => {
+                        setPendingEdit(null);
+                        setEditError(null);
+                    }}
+                    canUpdateEverywhere={canCreateInAllEnvironments}
+                    onSave={(roleName, description, everywhere) =>
+                        updateMutation.mutate({
+                            role: pendingEdit,
+                            roleName,
+                            description,
+                            everywhere,
+                        })
+                    }
+                />
+            ) : null}
+
             <DestructiveModal
                 open={pendingDelete !== null}
                 title="Delete role"
@@ -744,6 +859,20 @@ export const ManageRoles: FC = () => {
             />
         </div>
     );
+};
+
+/**
+ * Where a rename everywhere actually changed something, for the toast.
+ *
+ * Environments that already had the text were left alone; saying "in dev, test
+ * and prod" when only two changed would overstate it.
+ */
+const describeEnvironments = (result: CssRoleBulkUpdateResultDto): string => {
+    const updated = result.updated_environments;
+    if (updated.length === 0) {
+        return "in every environment (it already was)";
+    }
+    return `in ${updated.join(", ")}`;
 };
 
 /** Null is "still loading", which is not the same as nobody. */

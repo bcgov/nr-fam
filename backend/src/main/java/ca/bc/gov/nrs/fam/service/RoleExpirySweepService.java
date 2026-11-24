@@ -100,13 +100,47 @@ public class RoleExpirySweepService {
   }
 
   /**
+   * Whether CSS answered that this environment has no client at all.
+   *
+   * <p>A 404, or CSS's own wording for it - "client null not found" - in case it
+   * arrives under another status. Deliberately narrow: anything else reading
+   * roles fails as before, because an outage mistaken for "nothing here" would
+   * leave expired access in place without a word.
+   */
+  static boolean isUnprovisionedEnvironment(UpstreamException e) {
+    String message = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
+    return e.getStatus() == HttpStatus.NOT_FOUND
+        || (message.contains("client") && message.contains("not found"));
+  }
+
+  /**
    * Sweeps one integration in one environment.
    *
    * <p>An expiry is the <em>last</em> day the access is good for, so it lapses
    * once today is past it - a grant expiring today is still live all day.
    */
   public SweepResult sweep(int integrationId, String environment, LocalDate today) {
-    List<CssRoleDto> roles = cssApiService.getRoles(integrationId, environment);
+    List<CssRoleDto> roles;
+    try {
+      roles = cssApiService.getRoles(integrationId, environment);
+    } catch (UpstreamException e) {
+      if (!isUnprovisionedEnvironment(e)) {
+        throw e;
+      }
+      /*
+          Nothing to sweep, rather than a failure.
+
+          CSS lists an environment for an integration before there is a client
+          behind it - typically prod, before the request for it is approved - and
+          answers a read of its roles with "client null not found". With no
+          client there are no roles, so no grant can have expired there. Logged
+          at ERROR with a stack trace this was the same alarm every thirty
+          minutes for something nobody can act on from FAM.
+      */
+      log.info("Skipping integration {} ({}) in the expiry sweep: CSS has no client for "
+          + "that environment yet ({}).", integrationId, environment, e.getMessage());
+      return SweepResult.empty();
+    }
 
     SweepResult result = SweepResult.empty();
 

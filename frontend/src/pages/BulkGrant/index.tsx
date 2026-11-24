@@ -542,7 +542,19 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                                         }
                                                                     />
                                                                 ) : (
-                                                                    row.role_code
+                                                                    /*
+                                                                        Named when
+                                                                        the role was
+                                                                        found and the
+                                                                        row failed
+                                                                        over the
+                                                                        person; the
+                                                                        code only
+                                                                        when there is
+                                                                        no such role.
+                                                                    */
+                                                                    (row.role_display_name ??
+                                                                    row.role_code)
                                                                 )}
                                                             </TableCell>
                                                             <TableCell>

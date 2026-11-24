@@ -777,6 +777,11 @@ public class BulkGrantService {
       clientName = client.name();
     }
 
+    // From here on the role and scope are known to be real, so a row refused
+    // over the person still shows them by name. See withResolvedGrant.
+    ResolvedGrant resolvedGrant =
+        new ResolvedGrant(role.name(), role.displayName(), districtName, regionName, clientName);
+
     // Which directory the file says this user is in. Optional - blank means
     // "look in both" - but stating it is worth a column: the two directories are
     // searched in turn, and a Business BCeID user therefore costs a failed IDIR
@@ -786,7 +791,7 @@ public class BulkGrantService {
     try {
       stated = parseUserType(row.userType());
     } catch (IllegalArgumentException e) {
-      return invalid(row, district, region, clientNumber,
+      return unresolvedPerson(row, district, region, clientNumber, resolvedGrant,
           "%s is not a user type. Use IDIR or BCEID, or leave the column empty."
               .formatted(row.userType()));
     }
@@ -811,19 +816,22 @@ public class BulkGrantService {
     }
 
     if (resolved == null) {
-      return invalid(row, district, region, clientNumber, stated == null
+      return unresolvedPerson(row, district, region, clientNumber, resolvedGrant, stated == null
           ? "No IDIR or Business BCeID user is named %s.".formatted(row.userName())
           // Named rather than falling back to the other directory: the file said
           // which one, and quietly granting a different person who happens to
           // share the username is worse than refusing the row.
-          : "No %s user is named %s.".formatted(stated.getCode(), row.userName()));
+          // Said the way the Domain column says it, not as the stored code -
+          // "BCEID_BUS" means nothing to the person reading the error.
+          : "No %s user is named %s.".formatted(
+              stated == UserType.IDIR ? "IDIR" : "Business BCeID", row.userName()));
     }
 
     // The directory answered but had no GUID for them. CSS provisions by GUID
     // and nothing else, so there is nothing to grant against - and a row that
     // went ahead would be granting to nobody while reporting success.
     if (resolved.userGuid() == null || resolved.userGuid().isBlank()) {
-      return invalid(row, district, region, clientNumber,
+      return unresolvedPerson(row, district, region, clientNumber, resolvedGrant,
           "%s has no GUID in the directory and cannot be granted access."
               .formatted(row.userName()));
     }
@@ -920,6 +928,19 @@ public class BulkGrantService {
       scopes.add(new CssRoleNaming.Scope(CssRoleNaming.SCOPE_FOREST_CLIENT, clientNumber));
     }
     return scopes;
+  }
+
+  /** The names a row's role and scope resolved to, before its person was looked up. */
+  private record ResolvedGrant(
+      String roleCode, String roleDisplayName,
+      String districtName, String regionName, String clientName) {}
+
+  private static CssBulkGrantRowDto unresolvedPerson(
+      ParsedRow row, String district, String region, String clientNumber,
+      ResolvedGrant grant, String error) {
+    return invalid(row, district, region, clientNumber, error).withResolvedGrant(
+        grant.roleCode(), grant.roleDisplayName(),
+        grant.districtName(), grant.regionName(), grant.clientName());
   }
 
   private static CssBulkGrantRowDto invalid(

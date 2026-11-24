@@ -131,6 +131,25 @@ public record CssBulkGrantRowDto(
    * <p>Everything resolved - the person, the role, the scope all read normally,
    * because they are all real. Only the outcome differs.
    */
+  /**
+   * The same refused row, with the names the role and scope resolved to.
+   *
+   * <p>For a row refused over the person - not found, wrong directory, no GUID -
+   * after its role and scope were already checked. Those are known to be real,
+   * so the row reads like its neighbours ("Submitter", the organisation's name)
+   * rather than as the bare codes the file wrote, which made a row that failed
+   * for one reason look as though it had failed for all of them.
+   */
+  public CssBulkGrantRowDto withResolvedGrant(
+      String canonicalRoleCode, String resolvedRoleDisplayName,
+      String resolvedDistrictName, String resolvedRegionName, String resolvedClientName) {
+    return new CssBulkGrantRowDto(
+        lineNumber, userGuid, canonicalRoleCode, userType, userName, firstName, lastName,
+        email, organization, resolvedRoleDisplayName, district, resolvedDistrictName, region,
+        resolvedRegionName, forestClientNumber, resolvedClientName, valid, alreadyGranted,
+        error);
+  }
+
   public CssBulkGrantRowDto asAlreadyGranted() {
     return new CssBulkGrantRowDto(
         lineNumber, userGuid, roleCode, userType, userName, firstName, lastName, email,

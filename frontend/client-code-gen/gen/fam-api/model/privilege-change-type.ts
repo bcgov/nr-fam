@@ -25,7 +25,8 @@ export const PrivilegeChangeType = {
     Revoke: 'REVOKE',
     Update: 'UPDATE',
     CreateRole: 'CREATE_ROLE',
-    DeleteRole: 'DELETE_ROLE'
+    DeleteRole: 'DELETE_ROLE',
+    UpdateRole: 'UPDATE_ROLE'
 } as const;
 
 export type PrivilegeChangeType = typeof PrivilegeChangeType[keyof typeof PrivilegeChangeType];

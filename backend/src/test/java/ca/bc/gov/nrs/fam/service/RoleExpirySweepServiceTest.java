@@ -305,6 +305,39 @@ class RoleExpirySweepServiceTest {
     }
 
     @Test
+    @DisplayName("an environment CSS has no client for is skipped, not failed")
+    void unprovisionedEnvironmentIsSkipped() {
+      // CSS lists prod before the prod client exists, and answers a read of its
+      // roles with "client null not found". No client, no roles, nothing expired.
+      when(cssApiService.getIntegrations()).thenReturn(List.of(
+          new CssIntegrationDto(6732, "A", "browser", List.of("dev", "prod"), "ok", null, null)));
+      when(cssApiService.getRoles(6732, "prod")).thenThrow(new UpstreamException(
+          HttpStatus.BAD_REQUEST, "BAD_REQUEST", "client null not found", "CSS"));
+      when(cssApiService.getRoles(6732, "dev"))
+          .thenReturn(List.of(role(sidecarFor(TODAY.minusDays(1)))));
+      when(cssApiService.getUsersWithRole(eq(6732), anyString(), anyString()))
+          .thenReturn(List.of(holder("abc@azureidir")));
+
+      RoleExpirySweepService.SweepResult result = service.sweepAll(TODAY);
+
+      assertThat(result.failures()).isZero();
+      assertThat(result.assignmentsRemoved()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("any other upstream failure reading roles still counts as a failure")
+    void otherUpstreamFailuresStillFail() {
+      // Narrow on purpose: an outage read as "nothing here" would leave expired
+      // access in place without a word.
+      when(cssApiService.getIntegrations()).thenReturn(List.of(
+          new CssIntegrationDto(1, "A", "browser", List.of("dev"), "ok", null, null)));
+      when(cssApiService.getRoles(1, "dev")).thenThrow(new UpstreamException(
+          HttpStatus.BAD_GATEWAY, "UPSTREAM_ERROR", "bad gateway", "CSS"));
+
+      assertThat(service.sweepAll(TODAY).failures()).isEqualTo(1);
+    }
+
+    @Test
     void sweepsNothingWhenTheIntegrationListIsUnreachable() {
       when(cssApiService.getIntegrations()).thenThrow(new RuntimeException("CSS is down"));
 

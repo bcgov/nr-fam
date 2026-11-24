@@ -13,6 +13,8 @@ import ca.bc.gov.nrs.fam.dto.CssBulkGrantPreviewDto;
 import ca.bc.gov.nrs.fam.dto.CssDelegatedAdminRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleBulkCreateResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleCreateRequest;
+import ca.bc.gov.nrs.fam.dto.CssRoleBulkUpdateResultDto;
+import ca.bc.gov.nrs.fam.dto.CssRoleUpdateRequest;
 import ca.bc.gov.nrs.fam.dto.CssRoleDeleteResultDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleMemberCountDto;
 import ca.bc.gov.nrs.fam.dto.CssRoleOptionDto;
@@ -38,6 +40,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -185,6 +188,54 @@ public class CssIntegrationController {
 
     authorizationService.authorize(requester);
     return cssIntegrationService.createRoleInAllEnvironments(integrationId, request, requester);
+  }
+
+  /**
+   * Change a role's name and description.
+   *
+   * <p>The code is not editable: it is what people hold and what applications
+   * authorise on. Only the text shown beside it changes, and that text lives on
+   * sidecar roles nobody holds - so no one's access is touched.
+   *
+   * <p>Same authority as creating a role, since it changes what the application
+   * says its roles mean.
+   */
+  @PutMapping("/{integrationId}/{environment}/roles/{roleName}")
+  @Operation(operationId = "update_css_application_role",
+      summary = "Change a role's name and description; the role code is unchanged")
+  public CssRoleOptionDto updateCssApplicationRole(
+      @PathVariable int integrationId,
+      @PathVariable String environment,
+      @PathVariable String roleName,
+      @Valid @RequestBody CssRoleUpdateRequest request,
+      Requester requester) {
+
+    authorizationService.requireRoleManagement(requester, integrationId, environment);
+    return cssIntegrationService.updateRole(
+        integrationId, environment, roleName, request, requester);
+  }
+
+  /**
+   * Change a role's name and description in every environment the application has.
+   *
+   * <p>No {@code environment} in the path, as for creating everywhere. Requires
+   * authority over every environment, and refuses outright - changing nothing -
+   * if the code is missing from any of them. See
+   * {@link CssIntegrationService#updateRoleInAllEnvironments}, which also does the
+   * authorisation: the environments are not known until the integration is read.
+   */
+  @PutMapping("/{integrationId}/roles/{roleName}")
+  @Operation(operationId = "update_css_application_role_all_environments",
+      summary = "Change a role's name and description in every environment")
+  public CssRoleBulkUpdateResultDto updateCssApplicationRoleInAllEnvironments(
+      @PathVariable int integrationId,
+      @PathVariable String roleName,
+      @Valid @RequestBody CssRoleUpdateRequest request,
+      Requester requester) {
+
+    authorizationService.authorize(requester);
+    return cssIntegrationService.updateRoleInAllEnvironments(
+        integrationId, roleName, request, requester);
   }
 
   /**

@@ -396,6 +396,29 @@ class BulkGrantServiceTest {
   }
 
   @Test
+  @DisplayName("a row refused over the person still names its role and organization")
+  void unknownPersonStillShowsResolvedGrant() {
+    // Only the person is wrong. Showing FOM_SUBMITTER and a bare client number
+    // made the row look as though everything about it had failed.
+    when(cssIntegrationService.getRoles(INTEGRATION, ENV))
+        .thenReturn(List.of(role("FOM_SUBMITTER", false, true)));
+    givenClient("00197427", "SKWO:WECH FORESTRY LIMITED PARTNERSHIP", "ACT");
+    when(userLookupClient.getBusinessBceid(any(), any(), anyString())).thenReturn(Optional.empty());
+
+    assertThat(preview("RDeines1,BCEID,fom_submitter,,00197427"))
+        .singleElement()
+        .satisfies(row -> {
+          assertThat(row.valid()).isFalse();
+          assertThat(row.error()).isEqualTo("No Business BCeID user is named RDeines1.");
+          assertThat(row.roleCode()).isEqualTo("FOM_SUBMITTER");
+          assertThat(row.roleDisplayName()).isEqualTo("View All");
+          assertThat(row.forestClientNumber()).isEqualTo("00197427");
+          assertThat(row.forestClientName())
+              .isEqualTo("SKWO:WECH FORESTRY LIMITED PARTNERSHIP");
+        });
+  }
+
+  @Test
   @DisplayName("refuses an organization on a role that is not granted per organization")
   void refusesAClientOnAnUnscopedRole() {
     givenClient("00001012", "ACME LTD.", "ACT");
