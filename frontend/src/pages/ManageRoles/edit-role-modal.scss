@@ -1,0 +1,19 @@
+// Spaced and footed like DestructiveModal: Carbon's 3rem bottom padding trimmed
+// so the action row sits near the edge, buttons right-aligned at their own size.
+.edit-role-modal-dialog .cds--modal-content {
+  padding-block-end: 1rem;
+}
+
+.edit-role-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0;
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 0 0;
+  }
+}

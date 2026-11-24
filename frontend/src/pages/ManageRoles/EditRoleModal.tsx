@@ -1,6 +1,7 @@
-import { Checkbox, TextInput } from "@carbon/react";
+import { Button, Checkbox, InlineNotification, TextInput } from "@carbon/react";
 import type { CssRoleOptionDto } from "fam-api";
 import { useEffect, useState, type FC } from "react";
+import { InlineSpinner } from "@/components/InlineSpinner";
 import { Modal } from "@/components/Modal";
 import {
     MAX_DESCRIPTION_LENGTH,
@@ -11,6 +12,7 @@ import {
     validateRoleText,
     type RoleFormErrors,
 } from "./validation";
+import "./edit-role-modal.scss";
 
 type Props = {
     /** The role being edited. */
@@ -80,27 +82,32 @@ export const EditRoleModal: FC<Props> = ({
         }
     };
 
+    /*
+        Built like DestructiveModal, and for the same reason: a passive Modal
+        with the actions drawn here. Carbon's own footer stretches its buttons
+        edge to edge, which no other dialog in FAM does.
+    */
     return (
         <Modal
             open
+            className="edit-role-modal-dialog"
             modalHeading="Edit role"
             aria-label="Edit role"
-            primaryButtonText={
-                saving
-                    ? "Saving…"
-                    : everywhere
-                      ? "Save in all environments"
-                      : "Save"
-            }
-            secondaryButtonText="Cancel"
-            primaryButtonDisabled={saving || unchanged}
-            preventCloseOnClickOutside={saving}
-            onRequestSubmit={submit}
-            onRequestClose={onCancel}
-            onSecondarySubmit={onCancel}
+            passiveModal
             size="sm"
+            preventCloseOnClickOutside={saving}
+            onRequestClose={onCancel}
         >
             <div className="edit-role-modal">
+                {error ? (
+                    <InlineNotification
+                        kind="error"
+                        lowContrast
+                        hideCloseButton
+                        title="The role was not updated."
+                        subtitle={error}
+                    />
+                ) : null}
                 <TextInput
                     id="edit-role-code"
                     labelText="Role code"
@@ -136,20 +143,26 @@ export const EditRoleModal: FC<Props> = ({
                     <Checkbox
                         id="edit-role-everywhere"
                         labelText="Update in all environments"
-                        helperText="Renames this role in every environment the application has. If the role is missing from any of them, nothing is changed."
+                        helperText="If the role is missing from any environment, nothing is changed."
                         checked={everywhere}
                         disabled={saving}
                         onChange={(_event, { checked }) => setEverywhere(checked)}
                     />
                 ) : null}
-                                {error ? (
-                    <p
-                        className="cds--form-requirement edit-role-modal__error"
-                        role="alert"
-                    >
-                        {error}
-                    </p>
-                ) : null}
+            </div>
+            <div className="edit-role-modal__actions">
+                <Button kind="tertiary" size="md" onClick={onCancel} disabled={saving}>
+                    Cancel
+                </Button>
+                <Button
+                    kind="primary"
+                    size="md"
+                    renderIcon={saving ? InlineSpinner : undefined}
+                    onClick={submit}
+                    disabled={saving || unchanged}
+                >
+                    {everywhere ? "Save in all environments" : "Save"}
+                </Button>
             </div>
         </Modal>
     );

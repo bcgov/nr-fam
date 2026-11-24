@@ -881,7 +881,11 @@ describe("BulkGrant", () => {
         renderPage();
         await upload();
 
-        expect(await screen.findByText("Submitter")).toBeInTheDocument();
+        // As a pill, like the rows around it: the role is real, only the
+        // person was not found.
+        expect(
+            (await screen.findByText("Submitter")).closest(".fam-chip")
+        ).not.toBeNull();
         expect(screen.queryByText("FOM_SUBMITTER")).not.toBeInTheDocument();
         expect(
             screen.getByText("SKWO:WECH FORESTRY LIMITED PARTNERSHIP")
@@ -894,7 +898,10 @@ describe("BulkGrant", () => {
         renderPage();
         await upload();
 
-        expect(await screen.findByText("NOPE")).toBeInTheDocument();
+        // Plain text, not a pill: there is no such role to name.
+        expect(
+            (await screen.findByText("NOPE")).closest(".fam-chip")
+        ).toBeNull();
     });
 
     it("reports a whole-file refusal", async () => {

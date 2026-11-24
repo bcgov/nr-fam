@@ -523,18 +523,23 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                                 table it is about to
                                                                 appear in.
 
-                                                                A row that will not
-                                                                grant shows the code
-                                                                as plain text: there
-                                                                may be no such role,
-                                                                so there is no name
-                                                                to give it, and a
-                                                                pill would dress up
-                                                                something that is not
-                                                                going to happen.
+                                                                A pill whenever the
+                                                                role was found - a
+                                                                row refused over the
+                                                                person still names a
+                                                                real role, and plain
+                                                                text there made the
+                                                                role look like what
+                                                                had failed. The code
+                                                                as plain text only
+                                                                when there is no such
+                                                                role, so no name to
+                                                                give it.
                                                             */}
                                                             <TableCell>
-                                                                {row.valid || row.already_granted ? (
+                                                                {row.valid ||
+                                                                row.already_granted ||
+                                                                row.role_display_name ? (
                                                                     <Chip
                                                                         label={
                                                                             row.role_display_name ??
@@ -542,19 +547,7 @@ export const BulkGrant: FC<{ kind?: BulkKind }> = ({ kind = "users" }) => {
                                                                         }
                                                                     />
                                                                 ) : (
-                                                                    /*
-                                                                        Named when
-                                                                        the role was
-                                                                        found and the
-                                                                        row failed
-                                                                        over the
-                                                                        person; the
-                                                                        code only
-                                                                        when there is
-                                                                        no such role.
-                                                                    */
-                                                                    (row.role_display_name ??
-                                                                    row.role_code)
+                                                                    row.role_code
                                                                 )}
                                                             </TableCell>
                                                             <TableCell>
