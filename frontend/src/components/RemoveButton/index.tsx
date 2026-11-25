@@ -36,6 +36,14 @@ type Props = {
     disabledReason?: string;
     /** Overrides the visible word, for the rare row that removes something else. */
     label?: string;
+    /**
+     * The trash icon alone, with a tooltip in place of the word.
+     *
+     * <p>For action columns that hold several of these side by side, where the
+     * words made the column wider than the data. The tooltip carries what the
+     * word did - and the disabled reason, when there is one.
+     */
+    iconOnly?: boolean;
 };
 
 export const RemoveButton: FC<Props> = ({
@@ -44,20 +52,47 @@ export const RemoveButton: FC<Props> = ({
     disabled = false,
     disabledReason,
     label = "Remove",
-}) => (
-    <Button
-        kind="ghost"
-        size="sm"
-        className="remove-button"
-        renderIcon={TrashCan}
-        iconDescription={accessible}
-        aria-label={accessible}
-        title={disabled && disabledReason ? disabledReason : accessible}
-        disabled={disabled}
-        onClick={onClick}
-    >
-        {label}
-    </Button>
-);
+    iconOnly = false,
+}) => {
+    const hint = disabled && disabledReason ? disabledReason : accessible;
+
+    if (iconOnly) {
+        return (
+            <Button
+                kind="ghost"
+                size="sm"
+                className="remove-button"
+                hasIconOnly
+                renderIcon={TrashCan}
+                // Carbon draws this as the tooltip, and it is the accessible
+                // name - so never the disabled reason, see disabledReason.
+                iconDescription={accessible}
+                tooltipPosition="top"
+                aria-label={accessible}
+                // A disabled button gets no hover events, so Carbon's tooltip
+                // cannot open on it; the native title still can.
+                title={disabled && disabledReason ? disabledReason : undefined}
+                disabled={disabled}
+                onClick={onClick}
+            />
+        );
+    }
+
+    return (
+        <Button
+            kind="ghost"
+            size="sm"
+            className="remove-button"
+            renderIcon={TrashCan}
+            iconDescription={accessible}
+            aria-label={accessible}
+            title={hint}
+            disabled={disabled}
+            onClick={onClick}
+        >
+            {label}
+        </Button>
+    );
+};
 
 export default RemoveButton;

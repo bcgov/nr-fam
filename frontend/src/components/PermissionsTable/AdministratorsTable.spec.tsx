@@ -243,6 +243,29 @@ describe("AdministratorsTable", () => {
         ).toBeEnabled();
     });
 
+    it("shows removal as an icon with a tooltip, and the disabled reason on hover", async () => {
+        getCssApplicationAdministrators.mockResolvedValue({
+            data: [DELEGATE, UNIDENTIFIED],
+        });
+        renderTable("DELEGATED_ADMIN");
+
+        const remove = within(await rowFor("JSMITH")).getByRole("button", {
+            name: /^Remove /,
+        });
+        expect(remove).not.toHaveTextContent("Remove");
+        expect(within(await rowFor("JSMITH")).getByRole("tooltip", { hidden: true })).toHaveTextContent(
+            "Remove JSMITH as an administrator"
+        );
+
+        const ghost = within(await rowFor("GHOST")).getByRole("button", {
+            name: /^Remove /,
+        });
+        expect(ghost).toHaveAttribute(
+            "title",
+            expect.stringMatching(/cannot be identified/)
+        );
+    });
+
     it("says so out loud when a delegation is withdrawn", async () => {
         renderTable("DELEGATED_ADMIN");
         const row = await rowFor("JSMITH");

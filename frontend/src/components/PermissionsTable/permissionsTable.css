@@ -24,10 +24,10 @@
 }
 
 /*
-    History and Edit, worded rather than left as bare icons - see the comment in
+    History and Edit, icon-only with a tooltip - see the comment in
     CssPermissionsTable. Matched to RemoveButton, which sits beside them: same
-    ghost button, same tightened padding, same refusal to wrap the word away from
-    its icon. Only the colour differs, and only because that one is destructive.
+    ghost button, same tightened padding. Only the colour differs, and only
+    because that one is destructive.
 */
 .fam-table .action-button-group .row-action.cds--btn--ghost {
   color: var(--cds-link-primary);
@@ -187,4 +187,21 @@
   font-size: 0.75rem;
   /* Holds the two chips it sits between apart without looking like one. */
   padding-inline: 0.125rem;
+}
+
+/*
+    The administrator tables' top edge.
+
+    The users table gets its top border from the `.bordered-table` wrapper. These
+    tables have no pagination footer for that wrapper's bottom edge to close, so
+    using it would double the table's own bottom border - the toolbar takes the
+    top edge itself instead. The container padding goes too, as it does under
+    `.bordered-table`, so no white strip sits above the line.
+*/
+.administrators-table .cds--data-table-container {
+  padding-block-start: 0;
+}
+
+.administrators-table .cds--table-toolbar {
+  border-block-start: 1px solid var(--cds-border-subtle-01);
 }

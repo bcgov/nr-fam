@@ -477,6 +477,7 @@ export const AdministratorsTable: FC<Props> = ({
                                         {canRemove ? (
                                             <div className="nowrap-cell action-button-group">
                                                 <RemoveButton
+                                                    iconOnly
                                                     accessible={`Remove ${row.username} as an administrator`}
                                                     disabledReason="This administrator cannot be identified, so they cannot be removed here"
                                                     disabled={
