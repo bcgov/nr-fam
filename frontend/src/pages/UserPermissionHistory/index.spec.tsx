@@ -134,8 +134,8 @@ describe("UserPermissionHistory", () => {
         ) as HTMLElement;
         expect(within(row).getByText("FREP_EDITOR")).toBeInTheDocument();
         // Prefixed, because a bare "00001012" does not say whether it is an
-        // organisation, a district or a region.
-        expect(within(row).getByText("Organization: 00001012")).toBeInTheDocument();
+        // organisation, a district or a region - and named, as recorded.
+        expect(within(row).getByText("Org: 00001012 Timber Co")).toBeInTheDocument();
     });
 
     it("labels each scope by what kind it is", async () => {
@@ -175,7 +175,7 @@ describe("UserPermissionHistory", () => {
         expect(within(row).getByText("District: DCC")).toBeInTheDocument();
         // The name, not the code - it is what the row recorded at the time.
         expect(within(row).getByText("Region: Kootenay-Boundary")).toBeInTheDocument();
-        expect(within(row).getByText("Organization: 00001012")).toBeInTheDocument();
+        expect(within(row).getByText("Org: 00001012")).toBeInTheDocument();
     });
 
     it("shows the role by the name people know it by", async () => {

@@ -1,4 +1,6 @@
+import { Download } from "@carbon/icons-react";
 import {
+    Button,
     Table,
     TableBody,
     TableCell,
@@ -6,6 +8,9 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    TableToolbar,
+    TableToolbarContent,
+    TableToolbarSearch,
 } from "@carbon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,7 +22,7 @@ import { useMemo, useState, type FC } from "react";
 import { Chip } from "@/components/Chip";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { DestructiveModal } from "@/components/DestructiveModal";
-import { PLACE_HOLDER } from "@/constants/constants";
+import { MINIMUM_SEARCH_STR_LEN, PLACE_HOLDER } from "@/constants/constants";
 import { useErrorToast } from "@/context/notification/useErrorToast";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { domainLabel, formatFullName } from "@/utils/UserUtils";
@@ -25,6 +30,13 @@ import { sortedByRole } from "@/utils/RoleSort";
 import { AdminMgmtApiService } from "@/services/ApiServiceFactory";
 import { invalidateAfterAccessChange } from "@/utils/QueryInvalidation";
 import { describeError } from "./CssPermissionsTable";
+import {
+    csvFileName,
+    csvOf,
+    saveCsv,
+    scopeChipLabel,
+    scopeText,
+} from "./utils";
 import "./permissionsTable.css";
 import { RemoveButton } from "@/components/RemoveButton";
 
@@ -73,9 +85,35 @@ const tierLabel = (tier: AdminRoleAuthGroup) =>
 const fullNameOf = (row: CssAdministratorRowDto): string =>
     formatFullName(row.first_name, row.last_name, row.username);
 
-/** Prefers a resolved label - a district's or client's name - over the raw code. */
-const scopeTextOf = (row: CssAdministratorRowDto): string =>
-    (row.scopes ?? []).map((scope) => scope.label || scope.value).join(", ");
+/** The row's scopes as one string, read the same way as on the users tab. */
+const scopeTextOf = (row: CssAdministratorRowDto): string => scopeText(row);
+
+/** What the export file is called after the application: one name per tier. */
+const tierFileKind = (tier: AdminRoleAuthGroup) =>
+    isDelegated(tier)
+        ? "delegated-admins"
+        : isDevops(tier)
+          ? "devops-admins"
+          : "application-admins";
+
+/**
+ * Whether a row matches the keyword, against everything the row shows - and
+ * the codes behind it, which is what somebody arrives with from a ticket.
+ */
+const matchesSearch = (row: CssAdministratorRowDto, term: string): boolean =>
+    [
+        row.username,
+        row.email,
+        fullNameOf(row),
+        row.domain,
+        domainLabel(row.domain),
+        roleLabelOf(row),
+        row.delegated_role_name,
+        scopeTextOf(row),
+        ...(row.scopes ?? []).map((scope) => scope.value),
+    ]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(term));
 
 /**
  * What the delegated role is called: "Submitter (CHR)", not "CHR_FREP_EDITOR".
@@ -112,6 +150,8 @@ export const AdministratorsTable: FC<Props> = ({
     appName,
     canRemove = true,
 }) => {
+    const [search, setSearch] = useState("");
+    const [searchError, setSearchError] = useState<string | null>(null);
     const [removeError, setRemoveError] = useState<string | null>(null);
     const [pendingRemove, setPendingRemove] =
         useState<CssAdministratorRowDto | null>(null);
@@ -142,10 +182,51 @@ export const AdministratorsTable: FC<Props> = ({
         [administratorsQuery.data]
     );
 
-    /* Both tiers share four columns; a delegated administrator adds two. */
-    const headers = isDelegated(tier)
-        ? ["User Name", "Domain", "Full Name", "Email", "May grant", "Scope", "Action"]
-        : ["User Name", "Domain", "Full Name", "Email", "Action"];
+    const filteredRows = useMemo(() => {
+        const term = search.trim().toLowerCase();
+        // Below the minimum the search is not applied at all, so a half-typed
+        // word does not empty the table - the users tab's rule.
+        if (term.length < MINIMUM_SEARCH_STR_LEN) {
+            return rows;
+        }
+        return rows.filter((row) => matchesSearch(row, term));
+    }, [rows, search]);
+
+    const handleSearchChange = (value: string) => {
+        setSearch(value);
+        const term = value.trim();
+        setSearchError(
+            term.length > 0 && term.length < MINIMUM_SEARCH_STR_LEN
+                ? `Keyword must have at least ${MINIMUM_SEARCH_STR_LEN} characters`
+                : null
+        );
+    };
+
+    /* Every tier shares four columns; a delegated administrator adds two. */
+    const dataHeaders = isDelegated(tier)
+        ? ["User Name", "Domain", "Full Name", "Email", "May grant", "Scope"]
+        : ["User Name", "Domain", "Full Name", "Email"];
+    const headers = [...dataHeaders, "Action"];
+
+    /**
+     * What is on screen, as a file: the filtered rows, in their order, with the
+     * same words the cells show. No Action column - there is nothing to export
+     * from a button.
+     */
+    const downloadCsv = () =>
+        saveCsv(
+            csvOf(
+                dataHeaders,
+                filteredRows.map((row) => [
+                    row.username,
+                    domainLabel(row.domain) || row.domain,
+                    fullNameOf(row),
+                    row.email,
+                    ...(isDelegated(tier) ? [roleLabelOf(row), scopeTextOf(row)] : []),
+                ])
+            ),
+            csvFileName(appName, new Date(), tierFileKind(tier))
+        );
 
     const removeMutation = useMutation({
         mutationFn: (row: CssAdministratorRowDto) => {
@@ -239,11 +320,50 @@ export const AdministratorsTable: FC<Props> = ({
     });
 
     return (
-        <div className="fam-table administrators-table">
+        <div className="fam-table permissions-table administrators-table">
             {administratorsQuery.isLoading ? (
                 <TableSkeleton headers={headers} />
             ) : (
             <TableContainer>
+                {/* The users tab's toolbar, so every tab searches and exports alike. */}
+                <TableToolbar>
+                    <TableToolbarContent className="permissions-table__toolbar">
+                        <TableToolbarSearch
+                            // Per tier: the tabs can be mounted side by side,
+                            // and ids must not repeat on a page.
+                            id={`administrators-table-search-${tier}`}
+                            placeholder="Search by keyword"
+                            persistent
+                            value={search}
+                            onChange={(event) =>
+                                handleSearchChange(
+                                    typeof event === "string"
+                                        ? event
+                                        : (event?.target?.value ?? "")
+                                )
+                            }
+                            onClear={() => handleSearchChange("")}
+                        />
+                        {searchError ? (
+                            <div
+                                className="cds--form-requirement permissions-table__search-error"
+                                role="alert"
+                            >
+                                {searchError}
+                            </div>
+                        ) : null}
+                        <Button
+                            kind="ghost"
+                            size="sm"
+                            className="link-icon-btn"
+                            renderIcon={Download}
+                            disabled={filteredRows.length === 0}
+                            onClick={downloadCsv}
+                        >
+                            Download (.csv)
+                        </Button>
+                    </TableToolbarContent>
+                </TableToolbar>
                 <Table size="md" useZebraStyles>
                     <TableHead>
                         <TableRow>
@@ -268,7 +388,7 @@ export const AdministratorsTable: FC<Props> = ({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {rows.length === 0 ? (
+                        {filteredRows.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={headers.length}>
                                     {/*
@@ -279,11 +399,13 @@ export const AdministratorsTable: FC<Props> = ({
                                     */}
                                     {administratorsQuery.isError
                                         ? "The administrators could not be loaded."
-                                        : `${appName} has no administrators at this level`}
+                                        : rows.length > 0
+                                          ? "No administrator matches that keyword."
+                                          : `${appName} has no administrators at this level`}
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            rows.map((row, index) => (
+                            filteredRows.map((row, index) => (
                                 <TableRow
                                     key={`${row.user_guid ?? row.username}-${row.delegated_role_name ?? ""}-${scopeTextOf(row)}-${index}`}
                                 >
@@ -330,10 +452,9 @@ export const AdministratorsTable: FC<Props> = ({
                                                         {row.scopes.map((scope) => (
                                                             <Chip
                                                                 key={`${scope.type}-${scope.value}`}
-                                                                label={
-                                                                    scope.label ||
-                                                                    scope.value
-                                                                }
+                                                                label={scopeChipLabel(
+                                                                    scope
+                                                                )}
                                                             />
                                                         ))}
                                                     </span>

@@ -119,7 +119,25 @@ describe("AdministratorsTable", () => {
 
         const row = await rowFor("JSMITH");
         expect(within(row).getByText("Editor")).toBeInTheDocument();
-        expect(within(row).getByText("Cariboo-Chilcotin")).toBeInTheDocument();
+        // Labelled the way the users tab labels it.
+        expect(within(row).getByText("District: DCC")).toBeInTheDocument();
+    });
+
+    it("reads an organisation scope as its number then its name", async () => {
+        getCssApplicationAdministrators.mockResolvedValue({
+            data: [
+                {
+                    ...DELEGATE,
+                    scopes: [
+                        { type: "FOREST_CLIENT", value: "00001012", label: "ACME LTD" },
+                    ],
+                },
+            ],
+        });
+        renderTable("DELEGATED_ADMIN");
+
+        const row = await rowFor("JSMITH");
+        expect(within(row).getByText("Org: 00001012 ACME LTD")).toBeInTheDocument();
     });
 
     it("omits the role and scope columns for an application administrator", async () => {
@@ -253,6 +271,96 @@ describe("AdministratorsTable", () => {
         expect(
             await screen.findByText("CSS_OWN_INTEGRATION_ID is not set.")
         ).toBeInTheDocument();
+    });
+
+    it.each(["DELEGATED_ADMIN", "APP_ADMIN", "DEVOPS_ADMIN"] as const)(
+        "filters the %s roster by keyword",
+        async (tier) => {
+            getCssApplicationAdministrators.mockResolvedValue({
+                data: [DELEGATE, { ...DELEGATE, username: "BJONES", user_guid: "BBBB2222",
+                    first_name: "Bob", last_name: "Jones", email: "bob@gov.bc.ca" }],
+            });
+            renderTable(tier);
+            await rowFor("JSMITH");
+
+            await userEvent.type(screen.getByRole("searchbox"), "jones");
+
+            expect(screen.queryByText("JSMITH")).not.toBeInTheDocument();
+            expect(screen.getByText("BJONES")).toBeInTheDocument();
+        }
+    );
+
+    it("does not filter on a keyword shorter than the minimum", async () => {
+        renderTable("APP_ADMIN");
+        await rowFor("JSMITH");
+
+        await userEvent.type(screen.getByRole("searchbox"), "zz");
+
+        expect(screen.getByText("JSMITH")).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent(/at least 3 characters/);
+    });
+
+    it("says no administrator matches rather than that there are none", async () => {
+        renderTable("APP_ADMIN");
+        await rowFor("JSMITH");
+
+        await userEvent.type(screen.getByRole("searchbox"), "nobody");
+
+        expect(
+            screen.getByText("No administrator matches that keyword.")
+        ).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /Download/ })).toBeDisabled();
+    });
+
+    const captureCsv = async (run: () => Promise<void>) => {
+        const written: string[] = [];
+        const originalBlob = globalThis.Blob;
+        globalThis.Blob = class {
+            constructor(parts: string[]) {
+                written.push(parts.join(""));
+            }
+        } as unknown as typeof Blob;
+        Object.assign(URL, {
+            createObjectURL: vi.fn(() => "blob:x"),
+            revokeObjectURL: vi.fn(),
+        });
+        try {
+            await run();
+        } finally {
+            globalThis.Blob = originalBlob;
+        }
+        return written[0].replace(/^\ufeff/, "").split("\r\n");
+    };
+
+    it("exports a delegated roster with its role and scope columns", async () => {
+        const lines = await captureCsv(async () => {
+            renderTable("DELEGATED_ADMIN");
+            await rowFor("JSMITH");
+            await userEvent.click(screen.getByRole("button", { name: /Download/ }));
+        });
+
+        expect(lines[0]).toBe(
+            '"User Name","Domain","Full Name","Email","May grant","Scope"'
+        );
+        expect(lines[1]).toContain('"JSMITH"');
+        expect(lines[1]).toContain('"Editor"');
+        expect(lines).toHaveLength(2);
+    });
+
+    it("exports only the rows the search left, without role columns for app admins", async () => {
+        getCssApplicationAdministrators.mockResolvedValue({
+            data: [DELEGATE, { ...DELEGATE, username: "BJONES", user_guid: "BBBB2222" }],
+        });
+        const lines = await captureCsv(async () => {
+            renderTable("APP_ADMIN");
+            await rowFor("JSMITH");
+            await userEvent.type(screen.getByRole("searchbox"), "bjones");
+            await userEvent.click(screen.getByRole("button", { name: /Download/ }));
+        });
+
+        expect(lines[0]).toBe('"User Name","Domain","Full Name","Email"');
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).toContain('"BJONES"');
     });
 
     it("says the application has no administrators rather than nothing at all", async () => {
