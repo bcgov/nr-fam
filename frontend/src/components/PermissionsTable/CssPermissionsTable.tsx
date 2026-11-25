@@ -611,16 +611,11 @@ export const CssPermissionsTable: FC<Props> = ({
                                                 </TableCell>
                                                 <TableCell className="action-col">
                                                     {/*
-                                                        Worded, like the remove
-                                                        button beside them. An
-                                                        icon alone is guessed
-                                                        at, and a clock and a
-                                                        pencil are a poor pair
-                                                        to guess between - see
-                                                        RemoveButton, which
-                                                        settled this for the
-                                                        third control in this
-                                                        group.
+                                                        Icons only, each with a
+                                                        tooltip saying what it
+                                                        does - the words made
+                                                        the column wider than
+                                                        the data it acts on.
 
                                                         The accessible names
                                                         stay row-specific for
@@ -636,33 +631,24 @@ export const CssPermissionsTable: FC<Props> = ({
                                                             kind="ghost"
                                                             size="sm"
                                                             className="row-action"
-                                                            renderIcon={
-                                                                RecentlyViewed
-                                                            }
+                                                            hasIconOnly
+                                                            renderIcon={RecentlyViewed}
                                                             iconDescription={`Permission history for ${data.username}`}
-                                                            aria-label={`Permission history for ${data.username}`}
-                                                            title={`Permission history for ${data.username}`}
-                                                            onClick={() =>
-                                                                goToHistory(data)
-                                                            }
-                                                        >
-                                                            History
-                                                        </Button>
+                                                            tooltipPosition="top"
+                                                            onClick={() => goToHistory(data)}
+                                                        />
                                                         <Button
                                                             kind="ghost"
                                                             size="sm"
                                                             className="row-action"
+                                                            hasIconOnly
                                                             renderIcon={Edit}
                                                             iconDescription={`Edit ${data.role_label} for ${data.username}`}
-                                                            aria-label={`Edit ${data.role_label} for ${data.username}`}
-                                                            title={`Edit ${data.role_label} for ${data.username}`}
-                                                            onClick={() =>
-                                                                goToEdit(data)
-                                                            }
-                                                        >
-                                                            Edit
-                                                        </Button>
+                                                            tooltipPosition="top"
+                                                            onClick={() => goToEdit(data)}
+                                                        />
                                                         <RemoveButton
+                                                            iconOnly
                                                             accessible={`Remove ${data.role_label} from ${data.username}`}
                                                             disabled={
                                                                 revokeMutation.isPending

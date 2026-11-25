@@ -722,27 +722,32 @@ describe("CssPermissionsTable", () => {
         ).toBeInTheDocument();
     });
 
-    it("says what each row action does rather than leaving an icon to guess at", async () => {
+    it("shows each row action as an icon with a tooltip naming it", async () => {
         /*
-            A clock and a pencil are a poor pair to guess between, and the third
-            control in the group has said "Remove" in words since it was written.
-            The words are what the eye reads; the accessible names stay
-            row-specific, because a page of controls all called "History" is a
-            page a screen reader cannot navigate.
+            Icons only, so the tooltip is what says what each one does. The
+            names stay row-specific, because a page of controls all called
+            "History" is a page a screen reader cannot navigate.
         */
         renderTable();
         const row = await rowFor("JSMITH");
 
         const history = within(row).getByRole("button", {
-            name: /^Permission history for /,
+            name: `Permission history for ${ROW.username}`,
         });
         const edit = within(row).getByRole("button", { name: /^Edit / });
+        const remove = within(row).getByRole("button", { name: /^Remove / });
 
-        expect(history).toHaveTextContent("History");
-        expect(edit).toHaveTextContent("Edit");
-        expect(history).toHaveAccessibleName(
-            `Permission history for ${ROW.username}`
-        );
+        for (const button of [history, edit, remove]) {
+            expect(button).not.toHaveTextContent(/History|Edit|Remove/);
+        }
+        expect(within(row).getAllByRole("tooltip", { hidden: true }).map((tip) => tip.textContent))
+            .toEqual(
+                expect.arrayContaining([
+                    `Permission history for ${ROW.username}`,
+                    expect.stringMatching(/^Edit /),
+                    expect.stringMatching(/^Remove /),
+                ])
+            );
     });
 
     it("marks a new row without painting over what it has to show", async () => {
@@ -777,11 +782,13 @@ describe("CssPermissionsTable", () => {
         renderTable();
         const row = await rowFor("JSMITH");
 
-        const names = within(row)
-            .getAllByRole("button")
-            .map((button) => button.getAttribute("aria-label") ?? "");
-        const editAt = names.findIndex((name) => name.startsWith("Edit "));
-        const removeAt = names.findIndex((name) => name.startsWith("Remove "));
+        const buttons = within(row).getAllByRole("button");
+        const editAt = buttons.indexOf(
+            within(row).getByRole("button", { name: /^Edit / })
+        );
+        const removeAt = buttons.indexOf(
+            within(row).getByRole("button", { name: /^Remove / })
+        );
 
         expect(editAt).toBeGreaterThanOrEqual(0);
         expect(editAt).toBeLessThan(removeAt);
