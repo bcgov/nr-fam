@@ -35,8 +35,8 @@ public record ScopeDto(
    * resolved here: it runs to "Cariboo-Chilcotin Natural Resource District",
    * which does not fit the pill the screens draw, and the code is short,
    * familiar and what people quote. An organisation's name is the Forest Client
-   * API's to give and would cost a call per row, and its number is what people
-   * search by in any case.
+   * API's to give, so it is not resolved here either: the listings resolve every
+   * client they show in one batched lookup and build the scope themselves.
    */
   public static ScopeDto of(CssRoleNaming.Scope scope) {
     return new ScopeDto(scope.type(), scope.value(), labelFor(scope));

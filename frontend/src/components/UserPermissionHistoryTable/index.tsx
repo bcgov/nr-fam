@@ -71,9 +71,9 @@ const performer = (row: PermissionAuditHistoryDto): string => {
  * time of the change, so a region renamed since still reads as it did then - and
  * fall back to the code for rows written before that was recorded.
  *
- * <p>Districts and organisations show their code, as they do on a permission
- * pill: a district's full name is too long for a chip that already says
- * "District", and an organisation's number is what the grant was made against.
+ * <p>Districts show their code, as they do on a permission pill: a district's
+ * full name is too long for a chip that already says "District". Organisations
+ * show their number, then their name where the row recorded one.
  */
 const scopeLabel = (scope: PrivilegeDetailsScopeDto): string => {
     const value = scope.client_id ?? scope.client_name ?? "";
@@ -84,7 +84,11 @@ const scopeLabel = (scope: PrivilegeDetailsScopeDto): string => {
         case PrivilegeDetailsScopeType.Region:
             return `Region: ${scope.client_name ?? value}`;
         default:
-            return `Organization: ${value}`;
+            // Number then name, as on a permission pill. The name is the one
+            // written in at the time of the change, where the row carries one.
+            return scope.client_id && scope.client_name
+                ? `Org: ${scope.client_id} ${scope.client_name}`
+                : `Org: ${value}`;
     }
 };
 

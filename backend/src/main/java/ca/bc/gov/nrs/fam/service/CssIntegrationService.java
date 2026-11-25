@@ -3,6 +3,7 @@ package ca.bc.gov.nrs.fam.service;
 import ca.bc.gov.nrs.fam.configuration.FamProperties;
 import ca.bc.gov.nrs.fam.constants.EmailSendingStatus;
 import ca.bc.gov.nrs.fam.constants.AdminRoleAuthGroup;
+import ca.bc.gov.nrs.fam.constants.ApiInstanceEnv;
 import ca.bc.gov.nrs.fam.constants.ErrorCode;
 import ca.bc.gov.nrs.fam.constants.FamAdminRole;
 import ca.bc.gov.nrs.fam.dto.FamForestClientStatusDto;
@@ -409,6 +410,65 @@ public class CssIntegrationService {
           e.getMessage());
     }
     return byNumber;
+  }
+
+  /** Numbers per Forest Client request: each is a repeated query parameter. */
+  private static final int CLIENT_NAME_BATCH_SIZE = 100;
+
+  /**
+   * Names for every organisation a listing's scopes mention, whatever their
+   * status.
+   *
+   * <p>Unlike {@link #resolveGrantableClients}, inactive clients are kept: this
+   * names what somebody already holds, and a grant against a since-deactivated
+   * client is still a grant worth reading.
+   *
+   * <p>Batched, so a listing costs a request per hundred distinct clients rather
+   * than one per row. A failure is not fatal: the rows list with their numbers
+   * alone, which is how they read before names were shown at all.
+   */
+  private Map<String, String> resolveClientNames(
+      Collection<CssRoleNaming.ScopedRoleName> roles, String environment) {
+
+    List<String> numbers = roles.stream()
+        .flatMap(role -> role.scopes().stream())
+        .filter(scope -> CssRoleNaming.SCOPE_FOREST_CLIENT.equals(scope.type()))
+        .map(CssRoleNaming.Scope::value)
+        .distinct()
+        .toList();
+
+    if (numbers.isEmpty()) {
+      return Map.of();
+    }
+
+    Map<String, String> byNumber = new HashMap<>();
+    try {
+      ApiInstanceEnv instance = apiInstanceEnvResolver.resolve(environment);
+      for (int from = 0; from < numbers.size(); from += CLIENT_NAME_BATCH_SIZE) {
+        List<String> batch =
+            numbers.subList(from, Math.min(from + CLIENT_NAME_BATCH_SIZE, numbers.size()));
+        for (Map<String, Object> found
+            : forestClientIntegrationService.search(batch, batch.size(), instance, true)) {
+          Object name = found.get("clientName");
+          if (name != null) {
+            byNumber.put(String.valueOf(found.get("clientNumber")), String.valueOf(name));
+          }
+        }
+      }
+    } catch (RuntimeException e) {
+      log.warn("Could not resolve organisation names for a listing: {}", e.getMessage());
+    }
+    return byNumber;
+  }
+
+  /** A role's scopes as rows carry them, organisations named where known. */
+  private static List<ScopeDto> scopesOf(
+      CssRoleNaming.ScopedRoleName role, Map<String, String> clientNames) {
+    return role.scopes().stream()
+        .map(scope -> CssRoleNaming.SCOPE_FOREST_CLIENT.equals(scope.type())
+            ? new ScopeDto(scope.type(), scope.value(), clientNames.get(scope.value()))
+            : ScopeDto.of(scope))
+        .toList();
   }
 
   /**
@@ -1766,14 +1826,22 @@ public class CssIntegrationService {
             CssRoleNaming::parseLabel)
         : Map.of();
 
+    // Absent for an application administrator, who is not delegated any single
+    // role - they administer everything the application defines. Split once per
+    // role rather than per holder: it depends only on the role.
+    Map<String, CssRoleNaming.ScopedRoleName> delegations = new LinkedHashMap<>();
+    for (String roleName : roleNames) {
+      FamAdminRole.delegatedRoleOf(roleName)
+          .map(CssRoleNaming::parse)
+          .ifPresent(parsed -> delegations.put(roleName, parsed));
+    }
+
+    // Every organisation the roster names, in one lookup for the whole tab.
+    Map<String, String> clientNames = resolveClientNames(delegations.values(), environment);
+
     List<CssAdministratorRowDto> rows = new ArrayList<>();
     for (String roleName : roleNames) {
-      // Empty for an application administrator, who is not delegated any single
-      // role - they administer everything the application defines. Split here
-      // rather than per holder: it depends only on the role.
-      CssRoleNaming.ScopedRoleName delegation = FamAdminRole.delegatedRoleOf(roleName)
-          .map(CssRoleNaming::parse)
-          .orElse(null);
+      CssRoleNaming.ScopedRoleName delegation = delegations.get(roleName);
 
       for (CssApiService.CssUserDto user
           : holdersOf(ownIntegrationId, ownEnvironment(), roleName)) {
@@ -1789,9 +1857,7 @@ public class CssIntegrationService {
             roleName,
             delegation == null ? null : delegation.baseRoleName(),
             delegation == null ? null : displayNames.get(delegation.baseRoleName()),
-            delegation == null
-                ? List.of()
-                : delegation.scopes().stream().map(ScopeDto::of).toList()));
+            delegation == null ? List.of() : scopesOf(delegation, clientNames)));
       }
     }
 
@@ -2595,9 +2661,21 @@ public class CssIntegrationService {
     Map<String, List<CssApiService.CssUserDto>> holders =
         usersByRole(integrationId, environment, listed);
 
-    List<CssUserRoleRowDto> rows = new ArrayList<>();
+    // Parsed once per role, and only the roles somebody holds: a scope nobody
+    // was granted is never shown, so naming its organisation would be a wasted
+    // lookup.
+    Map<String, CssRoleNaming.ScopedRoleName> parsedRoles = new LinkedHashMap<>();
     for (String roleName : listed) {
-      CssRoleNaming.ScopedRoleName parsed = CssRoleNaming.parse(roleName);
+      if (!holders.get(roleName).isEmpty()) {
+        parsedRoles.put(roleName, CssRoleNaming.parse(roleName));
+      }
+    }
+    Map<String, String> clientNames = resolveClientNames(parsedRoles.values(), environment);
+
+    List<CssUserRoleRowDto> rows = new ArrayList<>();
+    for (Map.Entry<String, CssRoleNaming.ScopedRoleName> entry : parsedRoles.entrySet()) {
+      String roleName = entry.getKey();
+      CssRoleNaming.ScopedRoleName parsed = entry.getValue();
 
       for (CssApiService.CssUserDto user : holders.get(roleName)) {
 
@@ -2610,7 +2688,7 @@ public class CssIntegrationService {
             user.email(),
             parsed.baseRoleName(),
             displayNames.get(parsed.baseRoleName()),
-            parsed.scopes().stream().map(ScopeDto::of).toList(),
+            scopesOf(parsed, clientNames),
             expiries.get(new ExpiryKey(user.username(), roleName))));
       }
     }

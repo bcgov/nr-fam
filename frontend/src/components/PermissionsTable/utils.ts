@@ -39,8 +39,28 @@ export const toRevokeRequest = (
  * Used for sorting, filtering and the CSV, where a list of chips has to collapse
  * to one comparable string.
  */
-export const scopeText = (row: CssUserRoleRowDto): string =>
-    (row.scopes ?? []).map((scope) => scope.label || scope.value).join(", ");
+export const scopeText = (row: { scopes?: ScopeDto[] | null }): string =>
+    (row.scopes ?? []).map(scopeValueText).join(", ");
+
+const isOrganization = (scope: ScopeDto) =>
+    scope.type.toUpperCase() === "FOREST_CLIENT";
+
+/**
+ * One scope's value as it reads, without the type prefix.
+ *
+ * <p>An organisation reads as its number and then its name: the number is what
+ * the grant was made against and what people search by, the name is what makes
+ * it recognisable. Either alone loses something. Everything else prefers the
+ * resolved label and falls back to the raw value.
+ */
+export const scopeValueText = (scope: ScopeDto): string => {
+    if (isOrganization(scope)) {
+        return scope.label && scope.label !== scope.value
+            ? `${scope.value} ${scope.label}`
+            : scope.value;
+    }
+    return scope.label || scope.value;
+};
 
 /**
  * How a role reads on a permission pill: its short name when it has one.
@@ -199,39 +219,60 @@ export const expandToGrants = (
     );
 
 /** A filename a person can find again: the application, then today's date. */
-export const csvFileName = (appName: string, today: Date): string => {
+export const csvFileName = (
+    appName: string,
+    today: Date,
+    kind = "permissions"
+): string => {
     const stamp = today.toISOString().slice(0, 10);
     const safeName = appName.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
     // A name that reduces to nothing drops out entirely rather than leaving
     // "permissions-permissions".
-    const prefix = safeName ? `${safeName}-permissions` : "permissions";
+    const prefix = safeName ? `${safeName}-${kind}` : kind;
     return `${prefix}-${stamp}.csv`;
 };
 
 /**
- * Hand the CSV to the browser as a download.
+ * One header row and its data rows as RFC 4180 CSV.
  *
- * Kept apart from {@link toCsv} so the content can be tested without a DOM.
+ * <p>Every cell quoted, embedded quotes doubled - see {@link toCsv} for why
+ * quoting is not optional.
  */
-export const downloadPermissionsCsv = (
-    rows: (CssUserRoleRowDto & { group?: PermissionGroup })[],
-    appName: string
-): void => {
+export const csvOf = (headers: string[], rows: unknown[][]): string => {
+    const cell = (value: unknown): string =>
+        `"${String(value ?? "").replace(/"/g, '""')}"`;
+    return [headers, ...rows]
+        .map((row) => row.map(cell).join(","))
+        .join("\r\n");
+};
+
+/**
+ * Hand CSV text to the browser as a download.
+ *
+ * Kept apart from the builders so the content can be tested without a DOM.
+ */
+export const saveCsv = (csv: string, fileName: string): void => {
     // The BOM is what makes Excel read the file as UTF-8 rather than as the
     // local codepage, which otherwise mangles any accented name.
-    const blob = new Blob(["﻿", toCsv(expandToGrants(rows))], {
+    const blob = new Blob(["﻿", csv], {
         type: "text/csv;charset=utf-8;",
     });
 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = csvFileName(appName, new Date());
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 };
+
+/** The permissions table's export: one line per grant behind the given rows. */
+export const downloadPermissionsCsv = (
+    rows: (CssUserRoleRowDto & { group?: PermissionGroup })[],
+    appName: string
+): void => saveCsv(toCsv(expandToGrants(rows)), csvFileName(appName, new Date()));
 
 /**
  * How a grant's end date reads in the table.
@@ -349,13 +390,13 @@ export const scopeTypeLabel = (type: string): string => {
         case "REGION":
             return "Region";
         default:
-            return "Organization";
+            return "Org";
     }
 };
 
 /**
  * One scope as it reads on a pill: {@code District: DCC}, {@code Region:
- * Cariboo}, {@code Organization: 00001012}.
+ * Cariboo}, {@code Org: 00001012 ACME LTD.}.
  *
  * <p>Always prefixed. The three are not distinguishable from their values alone,
  * and a pill that says what kind of thing it is stays readable when it is lifted
@@ -364,14 +405,12 @@ export const scopeTypeLabel = (type: string): string => {
  * <p>Only regions read as a name. A district's full name runs to
  * {@code Cariboo-Chilcotin Natural Resource District}, which is too long for a
  * pill that already says "District" - and the code is short, familiar, and what
- * people quote. An organisation reads as its number for the same kind of reason:
- * it is what the grant was made against and what the picker searches by.
+ * people quote. An organisation reads as its number, then its name where the
+ * listing could resolve one - see {@link scopeValueText}.
  */
 export const scopeChipLabel = (scope: ScopeDto): string =>
     `${scopeTypeLabel(scope.type)}: ${
-        scope.type.toUpperCase() === "REGION"
-            ? scope.label || scope.value
-            : scope.value
+        scope.type.toUpperCase() === "DISTRICT" ? scope.value : scopeValueText(scope)
     }`;
 
 /**

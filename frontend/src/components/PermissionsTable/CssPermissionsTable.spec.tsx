@@ -600,7 +600,7 @@ describe("CssPermissionsTable", () => {
             // Prefixed, because the column now carries two kinds of value.
             expect(await screen.findByText("District: DCC")).toBeInTheDocument();
             expect(screen.getByText("District: DKA")).toBeInTheDocument();
-            expect(screen.getAllByText("Organization: 00001012")).toHaveLength(2);
+            expect(screen.getAllByText("Org: 00001012")).toHaveLength(2);
             // One line per pairing, not one flat list.
             expect(
                 document.querySelectorAll(".scope-combinations .scope-chips")

@@ -1142,6 +1142,69 @@ class CssIntegrationServiceTest {
   }
 
   @Test
+  @DisplayName("names an organisation scope, active or not, in one lookup")
+  void namesOrganisationScopes() {
+    givenRoles(
+        role("CHR_FREP_EDITOR_FOREST_CLIENT-00001012", false),
+        role("CHR_FREP_VIEWER_FOREST_CLIENT-00001012", false),
+        role("CHR_FREP_VIEWER_FOREST_CLIENT-00001013", false));
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "abc@azureidir", "Jane", "Smith", "jane@gov.bc.ca", null)));
+    when(forestClientIntegrationService.search(anyList(), anyInt(), any(), anyBoolean()))
+        .thenReturn(List.of(
+            Map.of("clientNumber", "00001012", "clientName", "ACME LTD.",
+                "clientStatusCode", "ACT"),
+            // Deactivated since the grant, and still worth naming.
+            Map.of("clientNumber", "00001013", "clientName", "OLD CO.",
+                "clientStatusCode", "DAC")));
+
+    assertThat(service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER))
+        .flatExtracting(CssUserRoleRowDto::scopes)
+        .containsExactlyInAnyOrder(
+            new ScopeDto("FOREST_CLIENT", "00001012", "ACME LTD."),
+            new ScopeDto("FOREST_CLIENT", "00001012", "ACME LTD."),
+            new ScopeDto("FOREST_CLIENT", "00001013", "OLD CO."));
+
+    // Each number once, across every row.
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<String>> numbers = ArgumentCaptor.forClass(List.class);
+    verify(forestClientIntegrationService, times(1))
+        .search(numbers.capture(), anyInt(), any(), anyBoolean());
+    assertThat(numbers.getValue()).containsExactlyInAnyOrder("00001012", "00001013");
+  }
+
+  @Test
+  @DisplayName("still lists organisation scopes by number when names cannot be read")
+  void organisationScopesSurviveLookupFailure() {
+    givenRoles(role("CHR_FREP_EDITOR_FOREST_CLIENT-00001012", false));
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "abc@azureidir", "Jane", "Smith", "jane@gov.bc.ca", null)));
+    when(forestClientIntegrationService.search(anyList(), anyInt(), any(), anyBoolean()))
+        .thenThrow(new RuntimeException("Forest Client API down"));
+
+    assertThat(service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER))
+        .singleElement()
+        .satisfies(row -> assertThat(row.scopes())
+            .containsExactly(new ScopeDto("FOREST_CLIENT", "00001012", null)));
+  }
+
+  @Test
+  @DisplayName("spends no lookup on a listing with no organisation scopes")
+  void noOrganisationLookupWithoutClientScopes() {
+    givenRoles(role("CHR_FREP_EDITOR_DISTRICT-DCC", false));
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "abc@azureidir", "Jane", "Smith", "jane@gov.bc.ca", null)));
+
+    service.getUserRoleAssignments(INTEGRATION, ENV, DEFINER);
+
+    verify(forestClientIntegrationService, never())
+        .search(anyList(), anyInt(), any(), anyBoolean());
+  }
+
+  @Test
   @DisplayName("leaves the description null for a role with no sidecar")
   void assignmentRowWithoutSidecarHasNoDescription() {
     // Roles predating the convention have none, and the caller falls back to
@@ -2163,6 +2226,26 @@ class CssIntegrationServiceTest {
         .satisfies(row -> assertThat(row.scopes()).containsExactly(
             new ScopeDto("DISTRICT", "DCC", null),
             new ScopeDto("FOREST_CLIENT", "00001012", null)));
+  }
+
+  @Test
+  @DisplayName("a delegation's organisation reads with its name on the roster")
+  void delegatedRowNamesItsOrganisation() {
+    when(cssApiService.getRoles(FAM_OWN_INTEGRATION, "dev")).thenReturn(List.of(
+        role("DELEGATED_ADMIN_" + INTEGRATION
+            + "_DEV__CHR_FREP_EDITOR_FOREST_CLIENT-00001012", false)));
+    when(cssApiService.getUsersWithRole(anyInt(), anyString(), anyString()))
+        .thenReturn(List.of(new CssApiService.CssUserDto(
+            "abc@azureidir", "Jane", "Smith", "jane@gov.bc.ca", null)));
+    when(forestClientIntegrationService.search(anyList(), anyInt(), any(), anyBoolean()))
+        .thenReturn(List.of(Map.of(
+            "clientNumber", "00001012", "clientName", "ACME LTD.",
+            "clientStatusCode", "ACT")));
+
+    assertThat(service.getAdministrators(INTEGRATION, ENV, AdminRoleAuthGroup.DELEGATED_ADMIN))
+        .singleElement()
+        .satisfies(row -> assertThat(row.scopes())
+            .containsExactly(new ScopeDto("FOREST_CLIENT", "00001012", "ACME LTD.")));
   }
 
   @Test

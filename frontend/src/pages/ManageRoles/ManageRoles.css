@@ -87,15 +87,3 @@
   fill: var(--cds-text-disabled);
 }
 
-
-/* The edit modal's fields, spaced like the create form's. */
-.edit-role-modal {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.edit-role-modal__error {
-    display: block;
-    color: var(--cds-text-error, #da1e28);
-}

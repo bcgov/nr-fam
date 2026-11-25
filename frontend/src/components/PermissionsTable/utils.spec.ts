@@ -2,7 +2,7 @@ import type { CssUserRoleRowDto } from "fam-api";
 import { describe, expect, it } from "vitest";
 import type { AppPermissionGrantSummary } from "@/pages/AddAppPermission/grantUtils";
 import { UserType } from "fam-api";
-import { groupScopeText, scopeChipLabel, needsScopeDetail, groupByRole, formatExpiry,
+import { groupScopeText, scopeChipLabel, scopeText, needsScopeDetail, groupByRole, formatExpiry,
     csvFileName,
     roleLabel,
     toRevokeRequest,
@@ -598,7 +598,7 @@ describe("scopeChipLabel", () => {
             "District: DCC"
         );
         expect(scopeChipLabel({ type: "FOREST_CLIENT", value: "00001012" })).toBe(
-            "Organization: 00001012"
+            "Org: 00001012"
         );
     });
 
@@ -615,16 +615,28 @@ describe("scopeChipLabel", () => {
         ).toBe("District: DQU");
     });
 
-    it("reads an organisation as its number, not its name", () => {
-        // It is what the grant was made against, what the picker searches by,
-        // and what somebody arrives with from a ticket.
+    it("reads an organisation as its number, then its name", () => {
+        // The number is what the grant was made against and what somebody
+        // arrives with from a ticket; the name is what makes it recognisable.
         expect(
             scopeChipLabel({
                 type: "FOREST_CLIENT",
                 value: "00001012",
                 label: "ACME FORESTRY LTD",
             })
-        ).toBe("Organization: 00001012");
+        ).toBe("Org: 00001012 ACME FORESTRY LTD");
+    });
+
+    it("keeps an organisation's number in the export text", () => {
+        expect(
+            scopeText({
+                scopes: [
+                    { type: "FOREST_CLIENT", value: "00001012", label: "ACME LTD" },
+                    { type: "FOREST_CLIENT", value: "00001013" },
+                    { type: "REGION", value: "KOOTENAY_BOUNDARY", label: "Kootenay-Boundary" },
+                ],
+            })
+        ).toBe("00001012 ACME LTD, 00001013, Kootenay-Boundary");
     });
 
     it("falls back to the code for a region nothing named", () => {
