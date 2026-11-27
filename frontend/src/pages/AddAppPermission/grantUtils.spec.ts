@@ -49,6 +49,16 @@ describe("planGrants", () => {
         );
     });
 
+    it("sends the comment, trimmed, on every grant", () => {
+        const planned = planGrants(form({ comment: "  Ticket FAM-123 " }));
+
+        expect(planned[0].request.comment).toBe("Ticket FAM-123");
+    });
+
+    it("omits a blank comment", () => {
+        expect(planGrants(form({ comment: "   " }))[0].request.comment).toBeUndefined();
+    });
+
     it("omits the email when the directory had none", () => {
         // Sent as absent rather than empty, so the backend's @Email constraint
         // has nothing to reject.

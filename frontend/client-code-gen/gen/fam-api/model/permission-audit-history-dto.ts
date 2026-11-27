@@ -83,6 +83,12 @@ export interface PermissionAuditHistoryDto {
      * @memberof PermissionAuditHistoryDto
      */
     'privilege_details': PrivilegeDetailsDto;
+    /**
+     * 
+     * @type {string}
+     * @memberof PermissionAuditHistoryDto
+     */
+    'comment'?: string;
 }
 
 

@@ -21,4 +21,6 @@ public record PermissionAuditHistoryDto(
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) Long changePerformerUserId,
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) PrivilegeChangeType privilegeChangeTypeCode,
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String privilegeChangeTypeDescription,
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) PrivilegeDetailsDto privilegeDetails) {}
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) PrivilegeDetailsDto privilegeDetails,
+    /** The reason the performer gave, or null when none was given. */
+    String comment) {}

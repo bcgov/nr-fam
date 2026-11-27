@@ -296,6 +296,9 @@ public class BulkGrantService {
               // And it notifies, as it always has. The per-grant opt-out belongs
               // to the screen where somebody is granting to one person they may
               // have already spoken to; a CSV of two hundred has no such context.
+              null,
+              // No comment column in the CSV either, for the same reason as
+              // expiry above.
               null),
           requester);
 

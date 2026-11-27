@@ -376,6 +376,13 @@ describe("toRevokeRequest", () => {
         expect(request.user_guid).toBe("AAAA1111");
     });
 
+    it("carries the comment when one is given, and nothing when not", () => {
+        expect(toRevokeRequest(row(), "Left the branch").comment).toBe(
+            "Left the branch"
+        );
+        expect(toRevokeRequest(row())).not.toHaveProperty("comment");
+    });
+
     it("sends both halves of a scoped assignment", () => {
         // CSS holds one concrete role, CHR_FREP_EDITOR_DISTRICT-DCC. Revoking
         // the base role would remove nothing and report success.

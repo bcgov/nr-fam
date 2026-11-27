@@ -14,7 +14,9 @@ import {
  * success.
  */
 export const toRevokeRequest = (
-    row: CssUserRoleRowDto
+    row: CssUserRoleRowDto,
+    /** Why it is being removed, stored with the audit row; omitted when none. */
+    comment?: string
 ): CssUserRoleRevokeRequest => ({
     // The GUID, not the displayed username: that is a user id once the
     // directory has named them, and <guid>@azureidir before.
@@ -27,6 +29,7 @@ export const toRevokeRequest = (
         type: scope.type,
         values: [scope.value],
     })),
+    ...(comment ? { comment } : {}),
 });
 
 /**

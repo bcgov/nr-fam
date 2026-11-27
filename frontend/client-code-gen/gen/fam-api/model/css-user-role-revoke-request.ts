@@ -50,6 +50,12 @@ export interface CssUserRoleRevokeRequest {
      * @memberof CssUserRoleRevokeRequest
      */
     'scopes'?: Array<CssScopeSelection>;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssUserRoleRevokeRequest
+     */
+    'comment'?: string;
 }
 
 

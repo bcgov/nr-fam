@@ -8,6 +8,7 @@ import {
     toScopeSelections,
     type RoleScopeSelection,
 } from "@/utils/ScopeUtils";
+import { toCommentPayload } from "@/components/PermissionCommentField";
 import type { SelectedUser } from "@/types/SelectUserType";
 import {
     UserType,
@@ -97,6 +98,12 @@ export type AppPermissionFormType = {
      * correction, or a grant made while on the phone to them.
      */
     notifyUser: boolean;
+    /**
+     * Why the access is being granted, or "" for no reason given. One comment
+     * for the whole form: it is recorded on the audit row of every grant the
+     * form makes.
+     */
+    comment: string;
 };
 
 /** Re-exported so the grant screen has one import for its form vocabulary. */
@@ -130,6 +137,7 @@ export const getDefaultFormData = (
     roles: [],
     expiresOn: "",
     notifyUser: true,
+    comment: "",
 });
 
 export const validateAppPermissionForm = () =>
@@ -229,6 +237,8 @@ export const planGrants = (
                     // Absent means notify, so only an explicit false suppresses
                     // it - see CssUserRoleAssignmentRequest.notifyUser.
                     notify_user: formData.notifyUser,
+                    // Stored with the audit row; omitted when blank.
+                    comment: toCommentPayload(formData.comment ?? ""),
                 },
             });
         }

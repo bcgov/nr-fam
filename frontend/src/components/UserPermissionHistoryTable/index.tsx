@@ -45,7 +45,7 @@ type Props = {
     environment: string;
 };
 
-const HEADERS = ["Date", "Activity", "Role", "Scope", "Performed by"];
+const HEADERS = ["Date", "Activity", "Role", "Scope", "Performed by", "Comment"];
 
 /** "Jane Smith (JSMITH)", or nothing when the system performed it. */
 const performer = (row: PermissionAuditHistoryDto): string => {
@@ -253,6 +253,14 @@ export const UserPermissionHistoryTable: FC<Props> = ({
                                         ))}
                                     </TableCell>
                                     <TableCell>{performer(row)}</TableCell>
+                                    {/*
+                                        The reason the performer gave. Rows
+                                        written before comments existed, and
+                                        changes made without one, have none.
+                                    */}
+                                    <TableCell className="history-comment">
+                                        {row.comment?.trim() || PLACE_HOLDER}
+                                    </TableCell>
                                 </TableRow>
                             ))
                         )}

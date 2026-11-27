@@ -53,6 +53,10 @@ import {
 } from "./utils";
 import "./permissionsTable.css";
 import { RemoveButton } from "@/components/RemoveButton";
+import {
+    PermissionCommentField,
+    toCommentPayload,
+} from "@/components/PermissionCommentField";
 
 /**
  * Permissions sourced from CSS, in the table this screen has always used.
@@ -198,6 +202,8 @@ export const CssPermissionsTable: FC<Props> = ({
     const [pageSize, setPageSize] = useState(DEFAULT_ROW_PER_PAGE);
     /** The row awaiting confirmation, and the only thing that opens the modal. */
     const [pendingRevoke, setPendingRevoke] = useState<PermissionRow | null>(null);
+    // Why the permission is being removed; stored with each revocation's audit row.
+    const [revokeComment, setRevokeComment] = useState("");
 
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -388,18 +394,25 @@ export const CssPermissionsTable: FC<Props> = ({
             failure should stop rather than race - `mutateAsync` rejects on the
             first, leaving the rest in place and the reason on screen.
         */
-        mutationFn: async (row: PermissionRow) => {
+        mutationFn: async ({
+            row,
+            comment,
+        }: {
+            row: PermissionRow;
+            comment?: string;
+        }) => {
             for (const assignment of row.group.assignments) {
                 await AdminMgmtApiService.cssIntegrationsApi.deleteCssUserRoleAssignment(
                     integrationId,
                     environment,
-                    toRevokeRequest(assignment)
+                    toRevokeRequest(assignment, comment)
                 );
             }
         },
-        onSuccess: (_result, row) => {
+        onSuccess: (_result, { row }) => {
             setRevokeError(null);
             setPendingRevoke(null);
+            setRevokeComment("");
 
             // Said out loud, because the only other evidence is a row vanishing
             // - which on a paginated table can happen off-screen.
@@ -691,9 +704,16 @@ export const CssPermissionsTable: FC<Props> = ({
                 title="Remove permission"
                 confirmButtonText="Remove"
                 loading={revokeMutation.isPending}
-                onCancel={() => setPendingRevoke(null)}
+                onCancel={() => {
+                    setPendingRevoke(null);
+                    setRevokeComment("");
+                }}
                 onConfirm={() =>
-                    pendingRevoke && revokeMutation.mutate(pendingRevoke)
+                    pendingRevoke &&
+                    revokeMutation.mutate({
+                        row: pendingRevoke,
+                        comment: toCommentPayload(revokeComment),
+                    })
                 }
                 message={
                     pendingRevoke ? (
@@ -735,7 +755,15 @@ export const CssPermissionsTable: FC<Props> = ({
                         ""
                     )
                 }
-            />
+            >
+                <PermissionCommentField
+                    id="remove-permission-comment"
+                    helperText="Recorded in the user's permission history."
+                    value={revokeComment}
+                    onChange={setRevokeComment}
+                    disabled={revokeMutation.isPending}
+                />
+            </DestructiveModal>
         </div>
     );
 };

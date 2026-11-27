@@ -27,6 +27,11 @@ export type DestructiveModalProps = {
   loading?: boolean;
   /** Modal width. Defaults to `sm` — confirmation dialogs are short. */
   size?: 'xs' | 'sm' | 'md' | 'lg';
+  /**
+   * Anything to collect before confirming, such as a comment. Rendered below
+   * the message rather than inside it, because the message is a paragraph.
+   */
+  children?: ReactNode;
 };
 
 /**
@@ -44,6 +49,7 @@ export const DestructiveModal: FC<DestructiveModalProps> = ({
   onCancel,
   loading = false,
   size = 'sm',
+  children,
 }) => {
   const warningId = 'destructive-modal-warning';
 
@@ -67,6 +73,7 @@ export const DestructiveModal: FC<DestructiveModalProps> = ({
         >
           {message}
         </p>
+        {children}
       </div>
       <div className="destructive-modal__actions">
         <Button kind="tertiary" size="md" onClick={onCancel} disabled={loading}>

@@ -78,6 +78,25 @@ public class PermissionAuditWriteService {
       String cssEnvironment,
       String roleName,
       List<CssUserRoleAssignmentResult> results) {
+    storeCssGranted(requester, targetUserGuid, targetUserType, cssIntegrationId,
+        cssEnvironment, roleName, results, null);
+  }
+
+  /**
+   * Record a grant made through CSS, with the reason the granter gave.
+   *
+   * @param comment free text from the person granting, or null for none
+   */
+  @Transactional
+  public void storeCssGranted(
+      Requester requester,
+      String targetUserGuid,
+      UserType targetUserType,
+      int cssIntegrationId,
+      String cssEnvironment,
+      String roleName,
+      List<CssUserRoleAssignmentResult> results,
+      String comment) {
 
     List<CssUserRoleAssignmentResult> assigned =
         results.stream().filter(CssUserRoleAssignmentResult::assigned).toList();
@@ -89,7 +108,7 @@ public class PermissionAuditWriteService {
 
     save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.GRANT,
-        toCssDetails(cssIntegrationId, cssEnvironment, roleName, assigned));
+        toCssDetails(cssIntegrationId, cssEnvironment, roleName, assigned), comment);
   }
 
   /**
@@ -107,6 +126,25 @@ public class PermissionAuditWriteService {
       String cssEnvironment,
       String roleName,
       List<String> revokedRoleNames) {
+    storeCssRevoked(requester, targetUserGuid, targetUserType, cssIntegrationId,
+        cssEnvironment, roleName, revokedRoleNames, null);
+  }
+
+  /**
+   * Record a revocation made through CSS, with the reason the revoker gave.
+   *
+   * @param comment free text from the person revoking, or null for none
+   */
+  @Transactional
+  public void storeCssRevoked(
+      Requester requester,
+      String targetUserGuid,
+      UserType targetUserType,
+      int cssIntegrationId,
+      String cssEnvironment,
+      String roleName,
+      List<String> revokedRoleNames,
+      String comment) {
 
     if (revokedRoleNames.isEmpty()) {
       log.debug("No roles revoked; no audit record to store.");
@@ -120,7 +158,7 @@ public class PermissionAuditWriteService {
 
     save(requester, targetUserGuid, targetUserType, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.REVOKE,
-        toCssDetails(cssIntegrationId, cssEnvironment, roleName, asResults));
+        toCssDetails(cssIntegrationId, cssEnvironment, roleName, asResults), comment);
   }
 
   /**
@@ -159,7 +197,8 @@ public class PermissionAuditWriteService {
             (scopeTypes == null ? List.<String>of() : scopeTypes).stream()
                 .map(PermissionAuditWriteService::toRequiredScopeType)
                 .filter(java.util.Objects::nonNull)
-                .toList()));
+                .toList()),
+        null);
   }
 
   /**
@@ -184,7 +223,8 @@ public class PermissionAuditWriteService {
 
     save(requester, null, null, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.DELETE_ROLE,
-        RoleDeletionDetailsDto.of(roleCode, roleName, removedRoles, membersAffected));
+        RoleDeletionDetailsDto.of(roleCode, roleName, removedRoles, membersAffected),
+        null);
   }
 
   /**
@@ -208,7 +248,8 @@ public class PermissionAuditWriteService {
     save(requester, null, null, cssIntegrationId, cssEnvironment,
         PrivilegeChangeType.UPDATE_ROLE,
         ca.bc.gov.nrs.fam.dto.RoleUpdateDetailsDto.of(
-            roleCode, roleName, description, previousRoleName, previousDescription));
+            roleCode, roleName, description, previousRoleName, previousDescription),
+        null);
   }
 
   /**
@@ -235,7 +276,8 @@ public class PermissionAuditWriteService {
       PrivilegeChangeType changeType,
       // Typed as Object because the document's shape follows the change type: a
       // grant records privileges, a role definition records a role.
-      Object privilegeDetails) {
+      Object privilegeDetails,
+      String comment) {
 
     FamPrivilegeChangeAudit audit = new FamPrivilegeChangeAudit();
     audit.setCssIntegrationId(cssIntegrationId);
@@ -271,10 +313,28 @@ public class PermissionAuditWriteService {
           targetDetails(cssEnvironment, targetUserGuid, targetUserType)));
     }
     audit.setPrivilegeDetails(toJson(privilegeDetails));
+    audit.setChangeComment(normaliseComment(comment));
 
     log.debug("Adding audit record for {} on integration {}/{}",
         changeType, cssIntegrationId, cssEnvironment);
     auditRepository.save(audit);
+  }
+
+  /**
+   * Trimmed, with a blank comment stored as none.
+   *
+   * <p>Truncated rather than refused past the column's width. The request
+   * already rejects an over-long comment, so this only guards the column - and
+   * by the time it runs the change has happened in CSS, so failing here would
+   * leave it unrecorded, which is far worse than a shortened reason.
+   */
+  static String normaliseComment(String comment) {
+    if (comment == null || comment.isBlank()) {
+      return null;
+    }
+    String trimmed = comment.strip();
+    int max = ca.bc.gov.nrs.fam.dto.CssUserRoleAssignmentRequest.MAX_COMMENT_LENGTH;
+    return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
   }
 
   /**

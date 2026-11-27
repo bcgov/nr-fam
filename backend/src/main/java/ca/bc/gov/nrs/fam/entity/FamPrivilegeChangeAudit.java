@@ -130,4 +130,11 @@ public class FamPrivilegeChangeAudit extends AuditedEntity {
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "privilege_details", nullable = false)
   private String privilegeDetails;
+
+  /**
+   * Why the performer made the change, in their own words, or null when they
+   * gave no reason. Rows written before V5 have none.
+   */
+  @Column(name = "change_comment", length = 500)
+  private String changeComment;
 }
