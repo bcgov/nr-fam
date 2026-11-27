@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.annotation.PostConstruct;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,6 +21,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +50,22 @@ import org.springframework.web.client.RestClient;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/*
+    Bound by Jackson and named nowhere else.
+
+    AOT registers the types a controller mentions, because it can see them in a
+    signature. These are read from upstream responses inside this class, so it
+    cannot - and in the native image Jackson then has no constructor to call.
+    The symptom is not an error about reflection: readValue returns null and the
+    caller reports whatever it makes of an empty result, which for the token
+    exchange was "CSS token response contained no access_token".
+*/
+@RegisterReflectionForBinding({
+    CssApiService.TokenResponse.class,
+    CssApiService.CssUserDto.class,
+    CssIntegrationDto.class,
+    CssRoleDto.class,
+})
 public class CssApiService {
 
   private static final String UPSTREAM = "css-api";
@@ -514,7 +530,9 @@ public class CssApiService {
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  private record TokenResponse(
+  // Package-private, not private: the @RegisterReflectionForBinding on the class
+  // above has to name it, and an annotation sits outside the class body.
+  record TokenResponse(
       @JsonProperty("access_token") String accessToken,
       @JsonProperty("expires_in") Long expiresIn) {}
 
@@ -548,9 +566,13 @@ public class CssApiService {
           objectMapper.treeAsTokens(data),
           objectMapper.getTypeFactory().constructCollectionType(List.class, type));
     } catch (Exception e) {
+      // The body is other people's data - a CSS listing is names and work email
+      // addresses - and this message reaches the browser as well as the log. See
+      // UpstreamBody.
+      log.debug("Unreadable CSS response while reading a list of {}: {}",
+          type.getSimpleName(), UpstreamBody.preview(body));
       throw new UpstreamException(HttpStatus.BAD_GATEWAY, ErrorCode.INVALID_OPERATION,
-          "Unreadable response from the CSS API: " + new String(body, StandardCharsets.UTF_8),
-          UPSTREAM, e);
+          "Unreadable response from the CSS API.", UPSTREAM, e);
     }
   }
 
@@ -558,6 +580,18 @@ public class CssApiService {
     try {
       return body == null || body.length == 0 ? null : objectMapper.readValue(body, type);
     } catch (Exception e) {
+      /*
+          Null, as before - callers treat an unreadable body as an absent one -
+          but no longer silently.
+
+          A parse failure and an empty response were indistinguishable in the
+          log, which cost a deployment: in the native image Jackson could not
+          construct the token record for want of a reflection hint, and all the
+          operator saw was "CSS token response contained no access_token" from
+          the caller.
+      */
+      log.warn("Could not read a {} from the CSS response: {}",
+          type.getSimpleName(), e.getMessage());
       return null;
     }
   }

@@ -148,7 +148,19 @@ public class UpstreamErrorTranslator {
         return firstError.get("message").asText();
       }
     }
-    return (rawBody == null || rawBody.isBlank()) ? reasonPhrase : rawBody;
+    /*
+        Capped, because this becomes the message the browser is shown as well as
+        the one logged at ERROR - see GlobalExceptionHandler.handleUpstream.
+
+        An upstream error body is usually small and says something useful, which
+        is why it is quoted at all. But it is somebody else's response: it can be
+        an HTML error page that floods the log, or carry data that has no reason
+        to reach our caller. Three hundred characters is enough to read what went
+        wrong. See UpstreamBody.
+    */
+    return (rawBody == null || rawBody.isBlank())
+        ? reasonPhrase
+        : UpstreamBody.preview(rawBody);
   }
 
   /** GC Notify reports problems as {@code {"errors": [{"error": ..., "message": ...}]}}. */

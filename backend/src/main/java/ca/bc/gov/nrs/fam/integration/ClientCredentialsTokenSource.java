@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +33,12 @@ import org.springframework.web.client.RestClient;
  * spec; each matches what its upstream expects.
  */
 @Slf4j
+// Read from the token endpoint's response and named nowhere else, so AOT does
+// not see them - see the note in CssApiService.
+@RegisterReflectionForBinding({
+    ClientCredentialsTokenSource.TokenResponse.class,
+    ClientCredentialsTokenSource.TokenErrorResponse.class,
+})
 public final class ClientCredentialsTokenSource {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -179,8 +186,21 @@ public final class ClientCredentialsTokenSource {
 
     TokenResponse parsed = parse(body);
     if (parsed == null || parsed.accessToken() == null || parsed.accessToken().isBlank()) {
+      /*
+          Deliberately without the body.
+
+          The endpoint answered 200, so whatever is in there is a token
+          response - quoting it into an exception message puts a credential in
+          the log. The HTTP-error path above is different: that body is an
+          OAuth error, which names the misconfiguration and holds no secret.
+
+          What is left is the length, which distinguishes the two ways this
+          fails: an empty answer, or one this cannot parse - the shape of a
+          missing reflection hint in a native image.
+      */
       throw new IllegalStateException(
-          "Token endpoint returned no access_token: " + describe(body));
+          "Token endpoint returned no access_token (%d byte response)"
+              .formatted(body.length()));
     }
     return parsed;
   }
@@ -215,8 +235,9 @@ public final class ClientCredentialsTokenSource {
     }
   }
 
+  // Package-private for the same reason as TokenResponse below.
   @JsonIgnoreProperties(ignoreUnknown = true)
-  private record TokenErrorResponse(
+  record TokenErrorResponse(
       @JsonProperty("error") String error,
       @JsonProperty("error_description") String errorDescription) {}
 

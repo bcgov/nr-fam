@@ -8,7 +8,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -279,10 +278,10 @@ public class ForestClientIntegrationService {
     try {
       return objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {});
     } catch (IOException e) {
+      // Client records, and this message reaches the browser. See UpstreamBody.
+      log.debug("Unreadable Forest Client response: {}", UpstreamBody.preview(body));
       throw new UpstreamException(HttpStatus.BAD_GATEWAY, null,
-          "Unreadable response from Forest Client API: "
-              + new String(body, StandardCharsets.UTF_8),
-          UPSTREAM, e);
+          "Unreadable response from Forest Client API.", UPSTREAM, e);
     }
   }
 
