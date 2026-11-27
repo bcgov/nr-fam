@@ -15,6 +15,10 @@ import { RoleMultiSelectTable } from "@/components/AddPermissions/RoleMultiSelec
 import { Chip } from "@/components/Chip";
 import { InlineSpinner } from "@/components/InlineSpinner";
 import { PageTitle } from "@/components/PageTitle";
+import {
+    PermissionCommentField,
+    toCommentPayload,
+} from "@/components/PermissionCommentField";
 import { StepContainer } from "@/components/StepContainer";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import type { CssUserRoleRowDto } from "fam-api";
@@ -84,6 +88,11 @@ export const EditAppPermission: FC = () => {
 
     const [roles, setRoles] = useState<RoleScopeSelection[]>([]);
     const [expiresOn, setExpiresOn] = useState(heldExpiry);
+    /*
+        Why the permission is being changed. An edit is saved as the grants and
+        revokes it is made of, so each of those audit rows carries this comment.
+    */
+    const [comment, setComment] = useState("");
     const [errors, setErrors] = useState(NO_ERRORS);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
@@ -343,6 +352,7 @@ export const EditAppPermission: FC = () => {
 
             const userType =
                 target.domain === "BCEID" ? UserType.BceidBus : UserType.Idir;
+            const reason = toCommentPayload(comment);
 
             /*
                 Worked out per role, then applied in one pass.
@@ -419,6 +429,7 @@ export const EditAppPermission: FC = () => {
                             values: [scope.value],
                         })),
                         expires_on: expiresOn || undefined,
+                        comment: reason,
                     }
                 );
             }
@@ -427,7 +438,7 @@ export const EditAppPermission: FC = () => {
                 await AdminMgmtApiService.cssIntegrationsApi.deleteCssUserRoleAssignment(
                     integrationId,
                     environment,
-                    toRevokeRequest(assignment)
+                    toRevokeRequest(assignment, reason)
                 );
             }
 
@@ -608,6 +619,20 @@ export const EditAppPermission: FC = () => {
                         value={expiresOn}
                         onChange={setExpiresOn}
                         invalidText={errors.expiresOn}
+                    />
+                </StepContainer>
+
+                <StepContainer
+                    title="Add a comment"
+                    subtitle="Add a brief reason for this access change. This comment will be saved in the user’s permission history for future reference."
+                    className="comment-step"
+                    divider
+                >
+                    <PermissionCommentField
+                        id="edit-permission-comment"
+                        value={comment}
+                        onChange={setComment}
+                        disabled={saveMutation.isPending}
                     />
                 </StepContainer>
 

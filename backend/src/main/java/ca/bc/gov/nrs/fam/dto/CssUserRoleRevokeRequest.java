@@ -6,6 +6,7 @@ import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 /**
  * One assignment to take away: this role, from this user.
@@ -33,7 +34,15 @@ public record CssUserRoleRevokeRequest(
      * <p>All of a compound role's scopes are required: named with only one, the
      * rebuilt name is a role nobody holds and the removal quietly does nothing.
      */
-    @Valid List<CssScopeSelection> scopes) {
+    @Valid List<CssScopeSelection> scopes,
+
+    /**
+     * Why the access is being removed, in the revoker's words. Optional.
+     *
+     * <p>Stored on the audit row for this revocation and shown in the user's
+     * permission history.
+     */
+    @Size(max = CssUserRoleAssignmentRequest.MAX_COMMENT_LENGTH) String comment) {
 
   public List<CssScopeSelection> scopes() {
     return scopes == null ? List.of() : scopes;

@@ -1630,6 +1630,11 @@
             "type" : "boolean",
             "default" : true,
             "description" : "Send the access-granted notification. Defaults to true."
+          },
+          "comment" : {
+            "type" : "string",
+            "maxLength" : 500,
+            "minLength" : 0
           }
         },
         "required" : [ "role_name", "user_guid", "user_type" ]
@@ -1919,6 +1924,9 @@
           },
           "privilege_details" : {
             "$ref" : "#/components/schemas/PrivilegeDetailsDto"
+          },
+          "comment" : {
+            "type" : "string"
           }
         },
         "required" : [ "change_date", "change_performer_user_details", "change_performer_user_id", "create_date", "create_user", "privilege_change_audit_id", "privilege_change_type_code", "privilege_change_type_description", "privilege_details" ]
@@ -2358,6 +2366,11 @@
             "items" : {
               "$ref" : "#/components/schemas/CssScopeSelection"
             }
+          },
+          "comment" : {
+            "type" : "string",
+            "maxLength" : 500,
+            "minLength" : 0
           }
         },
         "required" : [ "role_name", "user_guid", "user_type" ]

@@ -25,3 +25,10 @@
   color: var(--cds-text-secondary);
   font-size: 0.875rem;
 }
+
+/* Free text: keep line breaks the author typed, wrap long words, cap the width. */
+.user-permission-table .history-comment {
+  max-width: 20rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

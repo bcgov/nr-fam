@@ -281,9 +281,10 @@ describe("UserPermissionHistory", () => {
         const row = (await screen.findByText("Permission revoked")).closest(
             "tr"
         ) as HTMLElement;
-        // Twice over: nobody performed it, and it was scoped to nothing. Both
-        // are absences worth marking rather than leaving as empty cells.
-        expect(within(row).getAllByText("—")).toHaveLength(2);
+        // Three times over: nobody performed it, it was scoped to nothing, and
+        // no comment was given. All are absences worth marking rather than
+        // leaving as empty cells.
+        expect(within(row).getAllByText("—")).toHaveLength(3);
     });
 
     it("says so when there is no history", async () => {

@@ -9,6 +9,7 @@ import { Chip } from "@/components/Chip";
 import { InlineSpinner } from "@/components/InlineSpinner";
 import { PageTitle } from "@/components/PageTitle";
 import { UserSearch } from "@/components/Search/UserSearch";
+import { PermissionCommentField } from "@/components/PermissionCommentField";
 import { StepContainer } from "@/components/StepContainer";
 import { usePermissionToast } from "@/context/notification/usePermissionToast";
 import { toGrantToast } from "@/pages/ManagePermissions/utils";
@@ -61,6 +62,8 @@ export const AddAppPermission: FC = () => {
         no action, and turning it off is a deliberate choice about one grant.
     */
     const [notifyUser, setNotifyUser] = useState(true);
+    // Why the access is being granted; recorded with every grant's audit row.
+    const [comment, setComment] = useState("");
     const [errors, setErrors] = useState(NO_ERRORS);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -98,6 +101,7 @@ export const AddAppPermission: FC = () => {
                 roles,
                 expiresOn,
                 notifyUser,
+                comment,
             });
 
             // One call per user per role. Sequential rather than concurrent:
@@ -181,6 +185,7 @@ export const AddAppPermission: FC = () => {
         roles,
         expiresOn,
         notifyUser,
+        comment,
     });
 
     /**
@@ -392,6 +397,27 @@ export const AddAppPermission: FC = () => {
                             setNotifyUser(checked)
                         }
                     />
+                ) : null}
+
+                {/*
+                    Once there is something to explain. The comment is stored on
+                    the audit row of every grant this form makes and shown in
+                    the user's permission history.
+                */}
+                {users.length > 0 && roles.length > 0 ? (
+                    <StepContainer
+                        title="Add a comment"
+                        subtitle="Add a brief reason for this access change. This comment will be saved in the user’s permission history for future reference."
+                        className="comment-step"
+                        divider
+                    >
+                        <PermissionCommentField
+                            id="add-permission-comment"
+                            value={comment}
+                            onChange={setComment}
+                            disabled={grantMutation.isPending}
+                        />
+                    </StepContainer>
                 ) : null}
 
                 {permissionTotal > 0 ? (

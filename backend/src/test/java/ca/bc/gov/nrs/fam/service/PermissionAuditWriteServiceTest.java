@@ -230,6 +230,50 @@ class PermissionAuditWriteServiceTest {
   }
 
   @Test
+  @DisplayName("stores the granter's comment on the grant row, trimmed")
+  void storesTheGrantComment() {
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "R", List.of(assigned("R")), "  Ticket FAM-123  ");
+
+    assertThat(captureSaved().getChangeComment()).isEqualTo("Ticket FAM-123");
+  }
+
+  @Test
+  @DisplayName("stores the revoker's comment on the revocation row")
+  void storesTheRevokeComment() {
+    service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "CHR_FREP_EDITOR", List.of("CHR_FREP_EDITOR_DISTRICT-DCC"), "Left the branch");
+
+    assertThat(captureSaved().getChangeComment()).isEqualTo("Left the branch");
+  }
+
+  @Test
+  @DisplayName("a blank comment, or none, is stored as no comment")
+  void blankCommentIsStoredAsNull() {
+    service.storeCssGranted(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "R", List.of(assigned("R")), "   ");
+
+    assertThat(captureSaved().getChangeComment()).isNull();
+  }
+
+  @Test
+  @DisplayName("callers that give no comment record none")
+  void legacySignatureRecordsNoComment() {
+    // The expiry sweep and the administrator paths take no comment.
+    service.storeCssRevoked(requester, TARGET_GUID, UserType.IDIR, 54321, "dev",
+        "R", List.of("R"));
+
+    assertThat(captureSaved().getChangeComment()).isNull();
+  }
+
+  @Test
+  @DisplayName("an over-long comment is shortened to the column rather than losing the row")
+  void overLongCommentIsTruncated() {
+    assertThat(PermissionAuditWriteService.normaliseComment("x".repeat(600)))
+        .hasSize(500);
+  }
+
+  @Test
   @DisplayName("records what the application and the role were called at the time")
   void recordsTheNamesAsASnapshot() {
     /*

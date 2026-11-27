@@ -44,3 +44,12 @@
   color: var(--cds-text-error);
   font-size: 0.875rem;
 }
+
+/*
+    Room above the comment step. It follows the expiry step's divider on both
+    the add and edit screens, and sat too tight against it. Padding rather than
+    margin so it cannot collapse into the divider's own margin.
+*/
+.add-app-permission-container .comment-step {
+  padding-top: 1.5rem;
+}

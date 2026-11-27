@@ -2290,7 +2290,7 @@ public class CssIntegrationService {
 
     auditWriteService.storeCssGranted(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, request.roleName(), results);
+        integrationId, environment, request.roleName(), results, request.comment());
 
     return results;
   }
@@ -2364,7 +2364,8 @@ public class CssIntegrationService {
     // After the removal and only for what was actually removed.
     auditWriteService.storeCssRevoked(
         requester, request.userGuid(), request.userType(),
-        integrationId, environment, request.roleName(), List.of(cssRoleName));
+        integrationId, environment, request.roleName(), List.of(cssRoleName),
+        request.comment());
   }
 
   /**

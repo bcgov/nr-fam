@@ -279,7 +279,8 @@ public class PermissionAuditService {
         withDisplayNames(
             readJson(audit.getPrivilegeDetails(), PrivilegeDetailsDto.class,
                 audit.getPrivilegeChangeAuditId(), "privilege_details"),
-            displayNames));
+            displayNames),
+        audit.getChangeComment());
   }
 
   /**

@@ -68,6 +68,12 @@ export interface CssUserRoleAssignmentRequest {
      * @memberof CssUserRoleAssignmentRequest
      */
     'notify_user'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof CssUserRoleAssignmentRequest
+     */
+    'comment'?: string;
 }
 
 

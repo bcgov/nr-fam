@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -84,7 +85,18 @@ public record CssUserRoleAssignmentRequest(
      */
     @Schema(defaultValue = "true",
         description = "Send the access-granted notification. Defaults to true.")
-    Boolean notifyUser) {
+    Boolean notifyUser,
+
+    /**
+     * Why the grant is being made, in the granter's words. Optional.
+     *
+     * <p>Stored on the audit row for this grant and shown in the user's
+     * permission history. It is not sent to CSS and decides nothing.
+     */
+    @Size(max = CssUserRoleAssignmentRequest.MAX_COMMENT_LENGTH) String comment) {
+
+  /** The longest comment the audit column holds. */
+  public static final int MAX_COMMENT_LENGTH = 500;
 
   /** Never null, so callers can iterate without a guard. */
   public List<CssScopeSelection> scopes() {
